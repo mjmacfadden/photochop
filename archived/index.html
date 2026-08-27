@@ -1,0 +1,32 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>PhotoChop</title>
+  <link rel="stylesheet" href="css/styles.css?v=5">
+</head>
+<body>
+  <div id="app">
+    <div id="menu-bar"></div>
+    <div id="options-bar"></div>
+    <div id="main-content">
+      <div id="toolbar"></div>
+      <div id="workspace">
+        <div id="canvas-container" class="hidden">
+          <canvas id="main-canvas"></canvas>
+          <canvas id="overlay-canvas"></canvas>
+        </div>
+      </div>
+      <div id="panels"></div>
+    </div>
+    <div id="status-bar"></div>
+  </div>
+
+  <div id="dialog-overlay" class="hidden">
+    <div id="dialog-container"></div>
+  </div>
+
+  <script type="module" src="js/app.js?v=5"></script>
+</body>
+</html>
