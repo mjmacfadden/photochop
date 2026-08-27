@@ -9,8 +9,11 @@ import Helper_class from './../../libs/helpers.js';
 import Tools_translate_class from './../../modules/tools/translate.js';
 import alertify from './../../../../node_modules/alertifyjs/build/alertify.min.js';
 import Base_gui_class from '../base-gui.js';
+import GUI_shortcuts_class from './gui-shortcuts.js';
+import Dialog_class from './../../libs/popup.js';
 
 var instance = null;
+var Helper = new Helper_class();
 
 /**
  * GUI class responsible for rendering left sidebar tools
@@ -70,8 +73,16 @@ class GUI_tools_class {
 
 	render_main_tools() {
 		this.load_plugins();
+		var shortcuts = new GUI_shortcuts_class();
+
+		// Build reverse map: tool name -> shortcut key
+		this.tool_shortcuts = {};
+		for (var key in shortcuts.keymap) {
+			this.tool_shortcuts[shortcuts.keymap[key]] = key.toUpperCase();
+		}
 
 		this.render_tools();
+		this.render_color_swatches();
 	}
 
 	render_tools() {
@@ -93,6 +104,10 @@ class GUI_tools_class {
 				var title = item.title;
 			else
 				var title = this.Helper.ucfirst(item.name).replace(/_/, ' ');
+
+			if (this.tool_shortcuts && this.tool_shortcuts[item.name]) {
+				title += ' [' + this.tool_shortcuts[item.name] + ']';
+			}
 
 			var itemDom = document.createElement('span');
 			itemDom.id = item.name;
@@ -377,6 +392,214 @@ class GUI_tools_class {
 		if (config.LANG != 'en') {
 			//retranslate
 			this.Tools_translate.translate(config.LANG);
+		}
+	}
+
+	render_color_swatches() {
+		var _this = this;
+		var container = document.getElementById('tools_container');
+
+		var swatchesDiv = document.createElement('div');
+		swatchesDiv.className = 'toolbar-color-swatches';
+
+		var innerDiv = document.createElement('div');
+		innerDiv.className = 'toolbar-color-swatches-inner';
+
+		var bgSwatch = document.createElement('div');
+		bgSwatch.id = 'toolbar_bg_swatch';
+		bgSwatch.className = 'toolbar-swatch toolbar-swatch-bg';
+		bgSwatch.title = 'Background Color (click to change)';
+		bgSwatch.style.background = config.COLOR_BG;
+
+		var fgSwatch = document.createElement('div');
+		fgSwatch.id = 'toolbar_fg_swatch';
+		fgSwatch.className = 'toolbar-swatch toolbar-swatch-fg';
+		fgSwatch.title = 'Foreground Color (click to change)';
+		fgSwatch.style.background = config.COLOR;
+
+		innerDiv.appendChild(bgSwatch);
+		innerDiv.appendChild(fgSwatch);
+
+		var buttonsDiv = document.createElement('div');
+		buttonsDiv.className = 'toolbar-color-buttons';
+
+		var swapBtn = document.createElement('button');
+		swapBtn.id = 'toolbar_swap_colors';
+		swapBtn.className = 'toolbar-color-btn';
+		swapBtn.title = 'Swap Colors (X)';
+		swapBtn.innerHTML = '<svg width="10" height="10" viewBox="0 0 16 16" fill="currentColor"><path d="M11 1.5v1H3.5l2.3-2.3-.7-.7L1.5 2l3.6 3.6.7-.7L3.5 2.5H11V1.5zM5 14.5v-1h7.5l-2.3 2.3.7.7L14.5 14l-3.6-3.6-.7.7L11.5 12.5H5v1z"/></svg>';
+
+		var defaultBtn = document.createElement('button');
+		defaultBtn.id = 'toolbar_default_colors';
+		defaultBtn.className = 'toolbar-color-btn';
+		defaultBtn.title = 'Default Colors (D)';
+		defaultBtn.innerHTML = '<svg width="10" height="10" viewBox="0 0 16 16" fill="currentColor"><rect x="1" y="1" width="6" height="6" fill="#000" stroke="#888" stroke-width="1"/><rect x="5" y="5" width="6" height="6" fill="#fff" stroke="#888" stroke-width="1"/></svg>';
+
+		buttonsDiv.appendChild(swapBtn);
+		buttonsDiv.appendChild(defaultBtn);
+
+		swatchesDiv.appendChild(innerDiv);
+		swatchesDiv.appendChild(buttonsDiv);
+		container.appendChild(swatchesDiv);
+
+		fgSwatch.addEventListener('click', function () {
+			_this.open_fg_color_picker();
+		});
+		bgSwatch.addEventListener('click', function () {
+			_this.open_bg_color_picker();
+		});
+		swapBtn.addEventListener('click', function () {
+			_this.swap_colors();
+		});
+		defaultBtn.addEventListener('click', function () {
+			_this.default_colors();
+		});
+	}
+
+	open_fg_color_picker() {
+		var _this = this;
+		var selectedColor = config.COLOR;
+		var currentColor = config.COLOR;
+		var popup = new Dialog_class();
+		var settings = {
+			title: 'Foreground Color',
+			className: 'color_picker',
+			on_load: function (params, popupInstance) {
+				var content = popupInstance.el.querySelector('.dialog_content');
+				content.innerHTML = ''
+					+ '<div id="toolbar_picker_gradient" style="padding:0 0 80% 0;position:relative;width:100%;"></div>'
+					+ '<div style="display:flex;gap:8px;align-items:center;margin-top:8px;">'
+					+ '<label style="min-width:30px;">Hex</label>'
+					+ '<input id="toolbar_color_hex" type="text" value="' + currentColor + '" maxlength="7" style="flex:1;">'
+					+ '<div id="toolbar_color_preview" style="width:30px;height:24px;border:1px solid #444;background:' + currentColor + ';"></div>'
+					+ '</div>';
+
+				var hexInput = content.querySelector('#toolbar_color_hex');
+				var preview = content.querySelector('#toolbar_color_preview');
+
+				var rgb = Helper.hexToRgb(currentColor);
+				var hsv = Helper.rgbToHsv(rgb.r, rgb.g, rgb.b);
+
+				var $gradient = $(content.querySelector('#toolbar_picker_gradient')).uiColorPickerGradient();
+				$gradient.uiColorPickerGradient('set_hsv', hsv);
+
+				$gradient.on('input', function () {
+					var hsv = $gradient.uiColorPickerGradient('get_hsv');
+					var hex = Helper.hsvToHex(hsv.h, hsv.s, hsv.v);
+					hexInput.value = hex;
+					preview.style.background = hex;
+					selectedColor = hex;
+				});
+
+				hexInput.addEventListener('input', function () {
+					if (/^\#[0-9A-F]{6}$/gi.test(hexInput.value)) {
+						var rgb = Helper.hexToRgb(hexInput.value);
+						var hsv = Helper.rgbToHsv(rgb.r, rgb.g, rgb.b);
+						$gradient.uiColorPickerGradient('set_hsv', hsv);
+						preview.style.background = hexInput.value;
+						selectedColor = hexInput.value;
+					}
+				});
+			},
+			on_finish: function () {
+				if (/^\#[0-9A-F]{6}$/gi.test(selectedColor)) {
+					config.COLOR = selectedColor;
+					_this.update_toolbar_swatches();
+					_this.Helper.setCookie('color', config.COLOR);
+					app.GUI.GUI_colors.render_selected_color();
+				}
+			},
+		};
+		popup.show(settings);
+	}
+
+	open_bg_color_picker() {
+		var _this = this;
+		var selectedColor = config.COLOR_BG;
+		var currentColor = config.COLOR_BG;
+		var popup = new Dialog_class();
+		var settings = {
+			title: 'Background Color',
+			className: 'color_picker',
+			on_load: function (params, popupInstance) {
+				var content = popupInstance.el.querySelector('.dialog_content');
+				content.innerHTML = ''
+					+ '<div id="toolbar_picker_gradient" style="padding:0 0 80% 0;position:relative;width:100%;"></div>'
+					+ '<div style="display:flex;gap:8px;align-items:center;margin-top:8px;">'
+					+ '<label style="min-width:30px;">Hex</label>'
+					+ '<input id="toolbar_color_hex" type="text" value="' + currentColor + '" maxlength="7" style="flex:1;">'
+					+ '<div id="toolbar_color_preview" style="width:30px;height:24px;border:1px solid #444;background:' + currentColor + ';"></div>'
+					+ '</div>';
+
+				var hexInput = content.querySelector('#toolbar_color_hex');
+				var preview = content.querySelector('#toolbar_color_preview');
+
+				var rgb = Helper.hexToRgb(currentColor);
+				var hsv = Helper.rgbToHsv(rgb.r, rgb.g, rgb.b);
+
+				var $gradient = $(content.querySelector('#toolbar_picker_gradient')).uiColorPickerGradient();
+				$gradient.uiColorPickerGradient('set_hsv', hsv);
+
+				$gradient.on('input', function () {
+					var hsv = $gradient.uiColorPickerGradient('get_hsv');
+					var hex = Helper.hsvToHex(hsv.h, hsv.s, hsv.v);
+					hexInput.value = hex;
+					preview.style.background = hex;
+					selectedColor = hex;
+				});
+
+				hexInput.addEventListener('input', function () {
+					if (/^\#[0-9A-F]{6}$/gi.test(hexInput.value)) {
+						var rgb = Helper.hexToRgb(hexInput.value);
+						var hsv = Helper.rgbToHsv(rgb.r, rgb.g, rgb.b);
+						$gradient.uiColorPickerGradient('set_hsv', hsv);
+						preview.style.background = hexInput.value;
+						selectedColor = hexInput.value;
+					}
+				});
+			},
+			on_finish: function () {
+				if (/^\#[0-9A-F]{6}$/gi.test(selectedColor)) {
+					config.COLOR_BG = selectedColor;
+					_this.update_toolbar_swatches();
+					_this.Helper.setCookie('color_bg', config.COLOR_BG);
+					app.GUI.GUI_colors.render_selected_color();
+				}
+			},
+		};
+		popup.show(settings);
+	}
+
+	swap_colors() {
+		var tmpColor = config.COLOR;
+		var tmpAlpha = config.ALPHA;
+		config.COLOR = config.COLOR_BG;
+		config.ALPHA = config.ALPHA_BG;
+		config.COLOR_BG = tmpColor;
+		config.ALPHA_BG = tmpAlpha;
+		this.update_toolbar_swatches();
+		this.Helper.setCookie('color', config.COLOR);
+		this.Helper.setCookie('color_bg', config.COLOR_BG);
+	}
+
+	default_colors() {
+		config.COLOR = '#000000';
+		config.ALPHA = 255;
+		config.COLOR_BG = '#ffffff';
+		config.ALPHA_BG = 255;
+		this.update_toolbar_swatches();
+		this.Helper.setCookie('color', config.COLOR);
+		this.Helper.setCookie('color_bg', config.COLOR_BG);
+	}
+
+	update_toolbar_swatches() {
+		var fgSwatch = document.getElementById('toolbar_fg_swatch');
+		var bgSwatch = document.getElementById('toolbar_bg_swatch');
+		if (fgSwatch) {
+			fgSwatch.style.background = config.COLOR;
+		}
+		if (bgSwatch) {
+			bgSwatch.style.background = config.COLOR_BG;
 		}
 	}
 

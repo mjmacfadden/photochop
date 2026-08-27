@@ -4,14 +4,14 @@
  */
 
 import config from './../../config.js';
+import app from './../../app.js';
 import Helper_class from './../../libs/helpers.js';
 import Tools_translate_class from './../../modules/tools/translate.js';
-
 const Helper = new Helper_class();
 
 const sidebarTemplate = `
+	<div id="selected_color_sample" class="ui_color_sample" title="Current Color Preview"></div>
 	<div class="ui_flex_group justify_content_space_between stacked">
-		<div id="selected_color_sample" class="ui_color_sample" title="Current Color Preview"></div>
 		<div class="ui_button_group">
 			<button id="toggle_color_picker_section_button" aria-pressed="true" class="ui_icon_button trn" title="Toggle Color Picker">
 				<span class="sr_only">Toggle Color Picker</span>
@@ -293,10 +293,6 @@ class GUI_colors_class {
 				}
 				Helper.setCookie('toggle_color_picker', isPressed ? 1 : 0);
 			});
-		this.inputs.sample.on('click', (event) => {
-			this.buttons.toggleColorPicker.click();
-		});
-
 		// Restore toggle preference, default to visible for picker
 		const saved_toggle_color_picker = Helper.getCookie('toggle_color_picker');
 		if (saved_toggle_color_picker === 0) {
@@ -454,6 +450,9 @@ class GUI_colors_class {
 			} else {
 				config.COLOR = newColor != null ? newColor : config.COLOR;
 				config.ALPHA = newAlpha != null ? newAlpha : config.ALPHA;
+				if (app.GUI && app.GUI.GUI_tools && app.GUI.GUI_tools.update_toolbar_swatches) {
+					app.GUI.GUI_tools.update_toolbar_swatches();
+				}
 			}
 			if (hsl && !hsv) {
 				hsv = Helper.hslToHsv(hsl.h, hsl.s, hsl.l);
@@ -484,6 +483,9 @@ class GUI_colors_class {
 
 		if (this.uiType !== 'dialog') {
 			this.inputs.swatches.uiSwatches('set_selected_hex', COLOR);
+			if (app.GUI && app.GUI.GUI_tools && app.GUI.GUI_tools.update_toolbar_swatches) {
+				app.GUI.GUI_tools.update_toolbar_swatches();
+			}
 		}
 
 		const hexInput = this.inputs.hex[0];

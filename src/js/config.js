@@ -11,6 +11,8 @@ config.visible_width = null;
 config.visible_height = null;
 config.COLOR = '#008000';
 config.ALPHA = 255;
+config.COLOR_BG = '#ffffff';
+config.ALPHA_BG = 255;
 config.ZOOM = 1;
 config.SNAP = true;
 config.pixabay_key = '3ca2cd8af3fde33af218bea02-9021417';
@@ -119,6 +121,10 @@ config.TOOLS = [
 			size: 30,
 			circle: true,
 			strict: true,
+			erase_to: {
+				value: 'Transparent',
+				values: ['Transparent', 'Background Color'],
+			},
 		},
 	},
 	{

@@ -440,6 +440,64 @@ IMPORTANT: any new icon should also must be added on /service-worker.js + its ve
 	margin: 5px;
 }
 
+/* toolbar color swatches (left sidebar) */
+.toolbar-color-swatches {
+	display: flex;
+	align-items: flex-end;
+	gap: 2px;
+	padding: 2px;
+	margin-top: 4px;
+	border-top: 1px solid #555;
+}
+.toolbar-color-swatches-inner {
+	position: relative;
+	width: 24px;
+	height: 24px;
+	flex-shrink: 0;
+}
+.toolbar-swatch {
+	position: absolute;
+	width: 16px;
+	height: 16px;
+	border: 1px solid #888;
+	cursor: pointer;
+	box-shadow: 0 0 0 1px #333;
+}
+.toolbar-swatch:hover {
+	border-color: #ccc;
+}
+.toolbar-swatch-fg {
+	top: 0;
+	left: 0;
+	z-index: 2;
+}
+.toolbar-swatch-bg {
+	bottom: 0;
+	right: 0;
+	z-index: 1;
+}
+.toolbar-color-buttons {
+	display: flex;
+	flex-direction: column;
+	gap: 1px;
+}
+.toolbar-color-btn {
+	background: none;
+	border: 1px solid transparent;
+	color: #999;
+	cursor: pointer;
+	padding: 1px;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	width: 14px;
+	height: 14px;
+}
+.toolbar-color-btn:hover {
+	color: #fff;
+	border-color: #666;
+}
+
 /* layers */
 .layers_list{
 	margin-top: 10px;
