@@ -105,6 +105,26 @@ class GUI_layers_class {
 	}
 
 	/**
+	 * returns thumbnail HTML for layer type
+	 */
+	get_layer_thumb(layer) {
+		if (layer.type === 'text') {
+			return '<svg class="thumb_icon thumb_text" viewBox="0 0 16 16" fill="currentColor"><path d="M2 2h12v3h-1V3H9v10h2v1H5v-1h2V3H3v2H2V2z"/></svg>';
+		}
+		if (layer.type === 'image') {
+			return '<svg class="thumb_icon thumb_image" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.2"><rect x="1.5" y="2.5" width="13" height="11" rx="1"/><circle cx="5.5" cy="6" r="1.5"/><path d="M2 12l3.5-4 2.5 2.5 2-1.5L14 12"/></svg>';
+		}
+		if (layer.type === 'brush' || layer.type === 'pencil') {
+			return '<svg class="thumb_icon thumb_brush" viewBox="0 0 16 16" fill="currentColor"><path d="M12.5 1.5l2 2-9 9-3 1 1-3 9-9zM3.5 12.5l-2 2H1v-2.5l2-2"/></svg>';
+		}
+		if (layer.type === 'gradient') {
+			return '<svg class="thumb_icon thumb_gradient" viewBox="0 0 16 16"><defs><linearGradient id="tg" x1="0" y1="0" x2="1" y2="0"><stop offset="0%" stop-color="currentColor"/><stop offset="100%" stop-color="currentColor" stop-opacity="0.2"/></linearGradient></defs><rect x="1.5" y="2.5" width="13" height="11" rx="1" fill="url(#tg)" stroke="currentColor" stroke-width="1.2"/></svg>';
+		}
+		// Default: shape/other layers
+		return '<svg class="thumb_icon thumb_shape" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.2"><rect x="2.5" y="2.5" width="11" height="11" rx="1"/></svg>';
+	}
+
+	/**
 	 * renders layers list
 	 */
 	render_layers() {
@@ -133,6 +153,8 @@ class GUI_layers_class {
 					html += '	<button class="visibility visible trn" id="visibility" data-id="' + value.id + '" title="Hide"></button>';
 				else
 					html += '	<button class="visibility trn" id="visibility" data-id="' + value.id + '" title="Show"></button>';
+				
+				html += '	<span class="layer_thumb">' + this.get_layer_thumb(value) + '</span>';
 				
 				if(value.composition === 'source-atop'){
 					html += '	<button class="arrow_down" data-id="' + value.id + '" ></button>';

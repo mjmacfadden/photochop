@@ -477,7 +477,7 @@ IMPORTANT: any new icon should also must be added on /service-worker.js + its ve
 	display:block;
 	padding: 2px 5px;
 	height: 20px;
-	width: calc(100% - 44px);
+	width: calc(100% - 64px);
 	text-align: left;
 	overflow:hidden;
 	background-color: transparent;
@@ -489,7 +489,7 @@ IMPORTANT: any new icon should also must be added on /service-worker.js + its ve
 	white-space: nowrap;
 }
 .layers_list .item.shorter .layer_name{
-	width: calc(100% - 60px);
+	width: calc(100% - 80px);
 }
 .layers_list .item.active .layer_name{
 	background-color: transparent;
@@ -539,6 +539,44 @@ IMPORTANT: any new icon should also must be added on /service-worker.js + its ve
 	filter: invert(0.7);
 }
 .layers_list .visible{ opacity:0.8; }
+.layers_list .layer_thumb{
+	display: inline-block;
+	float: left;
+	width: 20px;
+	height: 20px;
+	margin-right: 4px;
+	text-align: center;
+	vertical-align: middle;
+}
+.layers_list .thumb_icon{
+	width: 16px;
+	height: 16px;
+	vertical-align: middle;
+}
+.layers_list .thumb_text{
+	color: #cccccc;
+}
+.layers_list .thumb_image{
+	color: #999999;
+}
+.layers_list .thumb_brush{
+	color: #999999;
+}
+.layers_list .thumb_gradient{
+	color: #999999;
+}
+.layers_list .thumb_shape{
+	color: #999999;
+}
+.layers_list .item.active .thumb_text{
+	color: #ffffff;
+}
+.layers_list .item.active .thumb_image,
+.layers_list .item.active .thumb_brush,
+.layers_list .item.active .thumb_gradient,
+.layers_list .item.active .thumb_shape{
+	color: #cccccc;
+}
 .layers_list .delete{
 	float:right;
 	cursor:pointer;
