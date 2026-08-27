@@ -79,7 +79,34 @@ class GUI_shortcuts_class {
 				event.stopImmediatePropagation();
 				app.GUI.GUI_tools.activate_tool(this.keymap[key]);
 			}
+
+			// [ and ] = Decrease/Increase brush size
+			if (key === '[' || key === ']') {
+				event.preventDefault();
+				event.stopImmediatePropagation();
+				this.adjust_brush_size(key === ']' ? 1 : -1);
+			}
 		}, true);
+	}
+
+	adjust_brush_size(delta) {
+		if (!config.TOOL || !config.TOOL.attributes) return;
+		if (config.TOOL.attributes.size == null) return;
+
+		const oldSize = config.TOOL.attributes.size;
+		const newSize = Math.max(1, Math.min(999, oldSize + delta));
+		if (newSize === oldSize) return;
+
+		config.TOOL.attributes.size = newSize;
+
+		// Update the UI input if it exists
+		const sizeInput = document.querySelector('#size');
+		if (sizeInput && sizeInput.closest) {
+			const $input = $(sizeInput);
+			if ($input.uiNumberInput) {
+				$input.uiNumberInput('set_value', newSize);
+			}
+		}
 	}
 
 }

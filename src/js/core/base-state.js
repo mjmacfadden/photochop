@@ -49,7 +49,7 @@ class Base_state_class {
 				this.undo();
 				event.preventDefault();
 			}
-			if (key == "y" && (event.ctrlKey == true || event.metaKey)) {
+			if (key == "z" && (event.ctrlKey == true || event.metaKey) && event.shiftKey) {
 				// Redo
 				this.redo();
 				event.preventDefault();

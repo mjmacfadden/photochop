@@ -12,7 +12,7 @@ class Help_shortcuts_class {
 			title: 'Keyboard Shortcuts',
 			className: 'shortcuts',
 			params: [
-				{title: "V", value: 'Select / Move Tool'},
+				{title: "V", value: 'Move Tool'},
 				{title: "B", value: 'Brush Tool'},
 				{title: "E", value: 'Eraser Tool'},
 				{title: "I", value: 'Eyedropper Tool'},
@@ -30,6 +30,9 @@ class Help_shortcuts_class {
 				{title: "---", value: "Colors"},
 				{title: "X", value: 'Swap Foreground/Background'},
 				{title: "D", value: 'Default Colors (Black/White)'},
+				{title: "---", value: "Brush Size"},
+				{title: "[", value: 'Decrease Brush Size'},
+				{title: "]", value: 'Increase Brush Size'},
 				{title: "---", value: "General"},
 				{title: "F", value: 'Auto Adjust Colors'},
 				{title: "F3 / &#8984; + F", value: 'Search'},

@@ -99,7 +99,7 @@ const menuDefinition = [
 			},
 			{
 				name: 'Redo',
-				shortcut: 'Ctrl+Y',
+				shortcut: 'Ctrl+Shift+Z',
 				target: 'edit/redo.redo'
 			},
 			{

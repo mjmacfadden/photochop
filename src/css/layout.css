@@ -205,15 +205,20 @@ body .sp-preview{
 .logo{
 	position: relative;
 	display: inline-block;
-	height: 28px;
-	width: 120px;
-	padding: 5px 5px 5px 8px;
+	height: 36px;
+	width: 153px;
+	padding: 1px 5px 1px 8px;
 	margin: 4px;
 	font-size: 13px;
 	text-decoration: none;
 	font-weight: bold;
 	color: #cccccc;
 	letter-spacing: 1px;
+}
+.logo img{
+	height: 100%;
+	width: auto;
+	vertical-align: middle;
 }
 .logo:after{
 	display: none;
@@ -790,6 +795,26 @@ IMPORTANT: any new icon should also must be added on /service-worker.js + its ve
 	-ms-grid-column: 2;
 	grid-area: main;
 	background-color: #404040;
+}
+.middle_area.tool-brush,
+.middle_area.tool-pencil,
+.middle_area.tool-erase,
+.middle_area.tool-clone,
+.middle_area.tool-blur,
+.middle_area.tool-sharpen,
+.middle_area.tool-desaturate,
+.middle_area.tool-bulge_pinch{
+	cursor: none !important;
+}
+.middle_area.tool-brush *,
+.middle_area.tool-pencil *,
+.middle_area.tool-erase *,
+.middle_area.tool-clone *,
+.middle_area.tool-blur *,
+.middle_area.tool-sharpen *,
+.middle_area.tool-desaturate *,
+.middle_area.tool-bulge_pinch *{
+	cursor: none !important;
 }
 .main_wrapper{
 	position:absolute;

@@ -56,13 +56,29 @@ export class Activate_tool_action extends Base_action {
 
 			//set default cursor
 			const mainWrapper = document.getElementById('main_wrapper');
-			const defaultCursor = config.TOOL && config.TOOL.name === 'text' ? 'text' : 'default';
+			const middleArea = document.querySelector('.middle_area');
+			const brushTools = ['brush', 'pencil', 'erase', 'clone', 'blur', 'sharpen', 'desaturate', 'bulge_pinch'];
+			const defaultCursor = config.TOOL && brushTools.includes(config.TOOL.name) ? 'none' : (config.TOOL && config.TOOL.name === 'text' ? 'text' : 'default');
 			if (mainWrapper.style.cursor != defaultCursor) {
 				mainWrapper.style.cursor = defaultCursor;
+			}
+			// Toggle brush tool class on middle_area
+			if (middleArea) {
+				middleArea.classList.remove(...brushTools.map(t => 'tool-' + t));
+				if (brushTools.includes(config.TOOL.name)) {
+					middleArea.classList.add('tool-' + config.TOOL.name);
+				}
 			}
 
 			app.GUI.GUI_tools.show_action_attributes();
 			app.GUI.GUI_tools.Helper.setCookie('active_tool', app.GUI.GUI_tools.active_tool);
+
+			// Show brush cursor immediately if switching to a brush tool
+			if (brushTools.includes(config.TOOL.name)) {
+				this.show_brush_cursor(config.TOOL.attributes.size);
+			} else {
+				this.hide_brush_cursor();
+			}
 		}
 
 		//send activate event to new tool
@@ -111,9 +127,25 @@ export class Activate_tool_action extends Base_action {
 
 		//set default cursor
 		const mainWrapper = document.getElementById('main_wrapper');
-		const defaultCursor = config.TOOL && config.TOOL.name === 'text' ? 'text' : 'default';
+		const middleArea = document.querySelector('.middle_area');
+		const brushTools = ['brush', 'pencil', 'erase', 'clone', 'blur', 'sharpen', 'desaturate', 'bulge_pinch'];
+		const defaultCursor = config.TOOL && brushTools.includes(config.TOOL.name) ? 'none' : (config.TOOL && config.TOOL.name === 'text' ? 'text' : 'default');
 		if (mainWrapper.style.cursor != defaultCursor) {
 			mainWrapper.style.cursor = defaultCursor;
+		}
+		// Toggle brush tool class on middle_area
+		if (middleArea) {
+			middleArea.classList.remove(...brushTools.map(t => 'tool-' + t));
+			if (brushTools.includes(config.TOOL.name)) {
+				middleArea.classList.add('tool-' + config.TOOL.name);
+			}
+		}
+
+		// Show brush cursor immediately if switching to a brush tool
+		if (brushTools.includes(config.TOOL.name)) {
+			this.show_brush_cursor(config.TOOL.attributes.size);
+		} else {
+			this.hide_brush_cursor();
 		}
 
 		// Undo leave actions
@@ -140,6 +172,27 @@ export class Activate_tool_action extends Base_action {
 				action.free();
 			}
 			this.tool_leave_actions = null;
+		}
+	}
+
+	show_brush_cursor(size) {
+		const element = document.getElementById('mouse');
+		const wrapper = document.getElementById('canvas_wrapper');
+		if (!element || !wrapper || !size) return;
+		const zoom = config.ZOOM || 1;
+		const px = Math.max(size * zoom, 5);
+		const wRect = wrapper.getBoundingClientRect();
+		element.style.width = px + 'px';
+		element.style.height = px + 'px';
+		element.style.left = (wRect.width / 2 - px / 2) + 'px';
+		element.style.top = (wRect.height / 2 - px / 2) + 'px';
+		element.className = 'circle';
+	}
+
+	hide_brush_cursor() {
+		const element = document.getElementById('mouse');
+		if (element) {
+			element.className = '';
 		}
 	}
 }

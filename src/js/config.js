@@ -84,7 +84,7 @@ config.FONTS = [
 config.TOOLS = [
 	{
 		name: 'select',
-		title: 'Select object tool',
+		title: 'Move Tool',
 		attributes: {
 			auto_select: true,
 		},
@@ -97,7 +97,7 @@ config.TOOLS = [
 	{
 		name: 'brush',
 		attributes: {
-			size: 4,
+			size: 13,
 			pressure: false,
 		},
 	},
