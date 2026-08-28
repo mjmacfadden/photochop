@@ -34,6 +34,10 @@ config.guides = [];
 config.ruler_active = false;
 config.enable_autoresize_by_default = true;
 
+// Renderer selection: 'auto' | 'canvas2d' | 'webgl'
+// 'auto' tries WebGL first, falls back to Canvas 2D
+config.RENDERER = 'auto';
+
 //requires styles in reset.css
 config.themes = [
 	'dark',

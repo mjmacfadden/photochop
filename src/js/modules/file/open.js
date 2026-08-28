@@ -75,8 +75,86 @@ class File_open_class {
 			data: data,
 		};
 		app.State.do_action(
-			new app.Actions.Insert_layer_action(new_layer)
+			new app.Actions.Insert_layer_action(new_layer, false)
 		);
+	}
+
+	/**
+	 * opens file picker and adds selected image as a new layer
+	 * without resizing the canvas (Place Embed / Open as Layer)
+	 */
+	open_file_as_layer() {
+		var _this = this;
+
+		alertify.success('Image will be added as a new layer.');
+
+		document.getElementById("tmp").innerHTML = '';
+		var a = document.createElement('input');
+		a.setAttribute("id", "file_open_as_layer");
+		a.type = 'file';
+		a.multiple = 'multiple';
+		document.getElementById("tmp").appendChild(a);
+		document.getElementById('file_open_as_layer').addEventListener('change', function (e) {
+			_this.open_handler_as_layer(e);
+		}, false);
+
+		//force click
+		document.querySelector('#file_open_as_layer').click();
+	}
+
+	/**
+	 * handler for opening files as new layers (no canvas resize)
+	 */
+	async open_handler_as_layer(e) {
+		var _this = this;
+		var files = e.target.files;
+
+		var auto_increment = this.Base_layers.auto_increment;
+
+		if (files == undefined) {
+			files = e.dataTransfer.files;
+		}
+
+		//sort
+		var orders = [];
+		for (var i = 0, f; i < files.length; i++) {
+			orders.push(files[i].name);
+		}
+		orders.sort();
+		var order_map = [];
+		for (var i in orders) {
+			order_map[orders[i]] = parseInt(i);
+		}
+
+		for (var i = 0, f; i < files.length; i++) {
+			f = files[i];
+			if (!f.type.match('image.*')) {
+				alertify.error('Wrong file type, must be image.');
+				continue;
+			}
+
+			var FR = new FileReader();
+			FR.file = files[i];
+
+			FR.onload = function (event) {
+				var order = auto_increment + order_map[this.file.name];
+				var new_layer = {
+					name: this.file.name,
+					type: 'image',
+					data: event.target.result,
+					order: order,
+					_exif: _this.extract_exif(this.file),
+				};
+				// Insert as layer WITHOUT autoresize (can_automate = false)
+				app.State.do_action(
+					new app.Actions.Insert_layer_action(new_layer, false)
+				);
+			};
+			FR.readAsDataURL(f);
+
+			//sleep after last image import
+			await new Promise(r => setTimeout(r, 10));
+		}
 	}
 
 	open_file() {

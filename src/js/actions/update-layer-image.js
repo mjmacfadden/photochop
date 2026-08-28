@@ -96,6 +96,7 @@ export class Update_layer_image_action extends Base_action {
 
 		this.canvas = null;
 		config.need_render = true;
+		app.Layers.notify_layer_data_changed(this.layer_id);
 	}
 
 	async undo() {
@@ -117,6 +118,7 @@ export class Update_layer_image_action extends Base_action {
 		this.reference_layer._link_database_id = this.old_link_database_id;
 		this.reference_layer = null;
 		config.need_render = true;
+		app.Layers.notify_layer_data_changed(this.layer_id);
 	}
 
 	async free() {

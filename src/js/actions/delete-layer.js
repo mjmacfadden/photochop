@@ -63,6 +63,9 @@ export class Delete_layer_action extends Base_action {
 		// Remove layer from list
 		this.deleted_layer = config.layers.splice(this.delete_index, 1)[0];
 
+		// Invalidate renderer texture cache for deleted layer
+		app.Layers.notify_layer_data_changed(id);
+
 		// Estimate memory
 		if (this.deleted_layer.link && this.deleted_layer.link.src && typeof this.deleted_layer.link.src === 'string') {
 			this.memory_estimate = new Blob([this.deleted_layer.link.src]).size;

@@ -10,38 +10,29 @@ const menuDefinition = [
 				divider: true
 			},
 			{
-				name: 'Open',
-				children: [
-					{
-						name: 'Open File',
-						shortcut: 'O',
-						ellipsis: true,
-						target: 'file/open.open_file'
-					},
-					{
-						name: 'Open Directory',
-						ellipsis: true,
-						target: 'file/open.open_dir'
-					},
-					{
-						name: 'Open from Webcam',
-						target: 'file/open.open_webcam'
-					},
-					{
-						name: 'Open URL',
-						ellipsis: true,
-						target: 'file/open.open_url'
-					},
-					{
-						name: 'Open Data URL',
-						ellipsis: true,
-						target: 'file/open.open_data_url'
-					},
-					{
-						name: 'Open Test Template',
-						target: 'file/open.open_template_test'
-					}
-				]
+				name: 'Open as Layer',
+				shortcut: 'O',
+				ellipsis: true,
+				target: 'file/open.open_file_as_layer'
+			},
+			{
+				name: 'Open Directory',
+				ellipsis: true,
+				target: 'file/open.open_dir'
+			},
+			{
+				name: 'Open from Webcam',
+				target: 'file/open.open_webcam'
+			},
+			{
+				name: 'Open URL',
+				ellipsis: true,
+				target: 'file/open.open_url'
+			},
+			{
+				name: 'Open Data URL',
+				ellipsis: true,
+				target: 'file/open.open_data_url'
 			},
 			{
 				name: 'Search Images',

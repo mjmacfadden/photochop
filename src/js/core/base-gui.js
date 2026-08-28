@@ -266,6 +266,11 @@ class Base_gui_class {
 		document.getElementById('canvas_wrapper').style.width = w + 'px';
 		document.getElementById('canvas_wrapper').style.height = h + 'px';
 
+		// Notify renderer of document dimensions (for WebGL offscreen canvas)
+		if (this.Base_layers && this.Base_layers.active_renderer) {
+			this.Base_layers.active_renderer.on_document_resize(config.WIDTH, config.HEIGHT);
+		}
+
 		this.check_canvas_offset();
 	}
 

@@ -38,6 +38,11 @@ export class Autoresize_canvas_action extends Base_action {
 			return;
 		}
 
+		// When can_automate is false (paste, open as layer), skip all resizing
+		if (can_automate === false) {
+			throw new Error('Aborted - Autoresize disabled')
+		}
+
 		// Resize up
 		if (width > new_config_width || height > new_config_height) {
 			const wrapper = document.getElementById('main_wrapper');

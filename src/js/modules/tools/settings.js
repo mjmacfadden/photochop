@@ -1,4 +1,5 @@
 import config from './../../config.js';
+import app from './../../app.js';
 import Dialog_class from './../../libs/popup.js';
 import Helper_class from './../../libs/helpers.js';
 import Base_gui_class from './../../core/base-gui.js';
@@ -33,6 +34,7 @@ class Tools_settings_class {
 		var resolution = this.get_setting('resolution');
 		var thick_guides = this.get_setting('thick_guides');
 		var enable_autoresize = this.get_setting('enable_autoresize');
+		var renderer = this.get_setting('renderer');
 
 		var settings = {
 			title: 'Settings',
@@ -44,6 +46,7 @@ class Tools_settings_class {
 				{name: "default_units", title: "Units", values: default_units_all, value: default_units, type: "select"},
 				{name: "resolution", title: "Resolution:", type: "select",
 					value: resolution, values: resolutions_values},
+				{name: "renderer", title: "Rendering:", values: ['auto', 'canvas2d', 'webgl'], value: renderer, type: "select"},
 				{name: "snap", title: "Enable snap:", value: snap},
 				{name: "guides", title: "Enable guides:", value: guides},
 				{name: "safe_search", title: "Safe search:", value: safe_search},
@@ -79,15 +82,23 @@ class Tools_settings_class {
 		this.save_setting('resolution', params.resolution);
 		this.save_setting('thick_guides', params.thick_guides);
 		this.save_setting('enable_autoresize', params.enable_autoresize);
+		this.save_setting('renderer', params.renderer);
 
 		//update config
 		config.TRANSPARENCY = this.get_setting('transparency');
 		config.TRANSPARENCY_TYPE = this.get_setting('transparency_type');
 		config.SNAP = this.get_setting('snap');
 		config.guides_enabled = this.get_setting('guides');
+		config.RENDERER = this.get_setting('renderer');
 		this.Base_gui.change_theme(this.get_setting('theme'));
 		this.Base_gui.GUI_information.update_units();
-		
+
+		// Switch renderer if changed
+		var renderer_mode = config.RENDERER;
+		if (app && app.Layers && app.Layers.switchRenderer) {
+			app.Layers.switchRenderer(renderer_mode);
+		}
+
 		//finish
 		this.Base_gui.prepare_canvas();
 		config.need_render = true;
@@ -130,6 +141,7 @@ class Tools_settings_class {
 			'resolution': 72,
 			'thick_guides': false,
 			'enable_autoresize': config.enable_autoresize_by_default,
+			'renderer': 'auto',
 		};
 
 		var value = this.Helper.getCookie(key);

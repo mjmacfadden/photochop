@@ -13,6 +13,7 @@ import zoomView from "./../libs/zoomView.js";
 import Helper_class from "./../libs/helpers.js";
 import Mask_class from "./../modules/mask/mask.js";
 import alertify from "./../../../node_modules/alertifyjs/build/alertify.min.js";
+import { create_renderer, get_renderer, switch_renderer } from "./renderer/index.js";
 
 var instance = null;
 
@@ -93,6 +94,10 @@ class Base_layers_class {
 			"main"
 		);
 
+		// Initialize renderer (defaults to Canvas 2D if WebGL unavailable)
+		var renderer_mode = config.RENDERER || 'auto';
+		this.active_renderer = create_renderer(renderer_mode, config.WIDTH, config.HEIGHT);
+
 		this.render(true);
 	}
 
@@ -168,41 +173,93 @@ class Base_layers_class {
 				this.Base_gui.GUI_preview.zoom_data.move_pos = null;
 			}
 
-			//prepare
-			this.pre_render();
-
 			//take data
 			var layers_sorted = this.get_sorted_layers();
 
-			zoomView.apply();
+			// Check if active renderer supports direct layer compositing (WebGL)
+			var renderer = get_renderer();
+			if (renderer && renderer.type === 'webgl' && renderer.available) {
+				// ---- WebGL rendering path ----
+				// Renders layers to offscreen WebGL canvas, then composites
+				// onto main canvas. Overlays remain Canvas 2D.
 
-			const newCanvas = this.create_new_canvas(
-				null,
-				config.WIDTH,
-				config.HEIGHT
-			);
+				// Prepare main canvas (clear, save state)
+				this.pre_render();
 
-			this.render_objects(this.ctx, newCanvas, layers_sorted, ()=>{
-				this.ctx.save();
-			});
+				// Apply zoom transform to main canvas for overlays
+				zoomView.apply();
 
-			//grid
-			this.Base_gui.draw_grid(this.ctx);
+				// WebGL renders layers to its offscreen canvas
+				renderer.clear();
+				renderer.begin_frame();
+				renderer.render_layers(
+					layers_sorted,
+					config.ZOOM,
+					{ x: 0, y: 0 },
+					config.WIDTH,
+					config.HEIGHT
+				);
+				renderer.end_frame();
 
-			//guides
-			this.Base_gui.draw_guides(this.ctx);
+				// Composite WebGL output onto main canvas
+				// The WebGL canvas contains the composited layers at document
+				// resolution. We draw it with the zoom transform applied.
+				var glCanvas = renderer.getCanvas();
+				if (glCanvas) {
+					this.ctx.save();
+					zoomView.canvasDefault();
+					this.ctx.imageSmoothingEnabled = (config.ZOOM < 1);
+					this.ctx.drawImage(glCanvas, 0, 0, config.WIDTH * config.ZOOM, config.HEIGHT * config.ZOOM);
+					this.ctx.restore();
+					zoomView.apply();
+				}
 
-			//render selected object controls
-			this.Base_selection.draw_selection();
+				// Draw grid, guides, selection, tool overlays on main canvas (2D)
+				this.Base_gui.draw_grid(this.ctx);
+				this.Base_gui.draw_guides(this.ctx);
+				this.Base_selection.draw_selection();
+				this.render_overlay();
 
-			//active tool overlay
-			this.render_overlay();
+				// Render preview (still uses Canvas 2D)
+				this.render_preview(layers_sorted);
 
-			//render preview
-			this.render_preview(layers_sorted);
+				// Reset
+				this.after_render();
+			} else {
+				// ---- Canvas 2D rendering path (existing) ----
+				//prepare
+				this.pre_render();
 
-			//reset
-			this.after_render();
+				zoomView.apply();
+
+				const newCanvas = this.create_new_canvas(
+					null,
+					config.WIDTH,
+					config.HEIGHT
+				);
+
+				this.render_objects(this.ctx, newCanvas, layers_sorted, ()=>{
+					this.ctx.save();
+				});
+
+				//grid
+				this.Base_gui.draw_grid(this.ctx);
+
+				//guides
+				this.Base_gui.draw_guides(this.ctx);
+
+				//render selected object controls
+				this.Base_selection.draw_selection();
+
+				//active tool overlay
+				this.render_overlay();
+
+				//render preview
+				this.render_preview(layers_sorted);
+
+				//reset
+				this.after_render();
+			}
 
 			this.last_zoom = config.ZOOM;
 
@@ -1051,6 +1108,60 @@ class Base_layers_class {
 		}
 
 		return filter;
+	}
+
+	// ---- Renderer management ----
+
+	/**
+	 * Switch the active renderer.
+	 *
+	 * @param {'canvas2d'|'webgl'} mode
+	 */
+	switchRenderer(mode) {
+		var renderer = switch_renderer(mode, config.WIDTH, config.HEIGHT);
+		this.active_renderer = renderer;
+
+		// Re-initialize zoom library with the new renderer's context
+		if (renderer.type === 'canvas2d') {
+			zoomView.setContext(this.ctx);
+		}
+		// For WebGL, zoom is handled in the shader; the main canvas context stays the same
+
+		config.need_render = true;
+	}
+
+	/**
+	 * Returns the type of the currently active renderer.
+	 * @returns {'canvas2d'|'webgl'}
+	 */
+	get_renderer_type() {
+		var renderer = get_renderer();
+		return renderer ? renderer.type : 'canvas2d';
+	}
+
+	/**
+	 * Notify the renderer that a layer's pixel data has changed.
+	 * The renderer should invalidate any cached GPU texture for that layer.
+	 *
+	 * @param {number} layerId
+	 */
+	notify_layer_data_changed(layerId) {
+		var renderer = get_renderer();
+		if (renderer && renderer.on_layer_data_changed) {
+			renderer.on_layer_data_changed(layerId);
+		}
+	}
+
+	/**
+	 * Notify the renderer that a layer's mask has changed.
+	 *
+	 * @param {number} layerId
+	 */
+	notify_mask_changed(layerId) {
+		var renderer = get_renderer();
+		if (renderer && renderer.on_mask_changed) {
+			renderer.on_mask_changed(layerId);
+		}
 	}
 }
 
