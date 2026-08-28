@@ -242,12 +242,35 @@ class Brush_class extends Base_tools_class {
 			});
 		}
 		else {
+			// Reuse existing brush layer, but re-baseline its data to the
+			// document origin and reset bounds to full document. Otherwise the
+			// layer keeps the previous stroke's tight bounds and new stroke
+			// points (stored relative to layer.x/y) fall outside them,
+			// clipping the stroke in the WebGL renderer's offscreen canvas.
 			const new_data = JSON.parse(JSON.stringify(config.layer.data));
+			const dx = config.layer.x || 0;
+			const dy = config.layer.y || 0;
+			if (dx !== 0 || dy !== 0) {
+				for (let k = 0; k < new_data.length; k++) {
+					const group_data = new_data[k];
+					if (!group_data) continue;
+					for (let i = 0; i < group_data.length; i++) {
+						if (group_data[i]) {
+							group_data[i][0] += dx;
+							group_data[i][1] += dy;
+						}
+					}
+				}
+			}
 			new_data.push([]);
 			app.State.do_action(
 				new app.Actions.Bundle_action('update_brush_layer', 'Update Brush Layer', [
 					new app.Actions.Update_layer_action(config.layer.id, {
-						data: new_data
+						data: new_data,
+						x: 0,
+						y: 0,
+						width: config.WIDTH,
+						height: config.HEIGHT
 					})
 				])
 			);
