@@ -54,6 +54,9 @@ class Base_selection_class {
 		// True if dragging from inside canvas area
 		this.is_drag = false;
 		this.current_angle = null;
+		// marching ants animation state
+		this.ant_offset = 0;
+		this.ant_keep_rendering = false;
 
 		this.events();
 	}
@@ -163,6 +166,24 @@ class Base_selection_class {
 		var settings = this.find_settings();
 		var data = settings.data;
 
+		//draw every persistent marching-ants selection - they stay visible
+		//even when another tool (brush, pencil, fill, ...) is active
+		var marquees = this.get_marquee_selections();
+		if (marquees.length) {
+			this.ctx.save();
+			this.ctx.globalAlpha = 1;
+			for (var m = 0; m < marquees.length; m++) {
+				this.draw_marching_ants(marquees[m].data);
+			}
+			this.ctx.restore();
+			this.ant_keep_rendering = true;
+		}
+
+		//the active tool is a marching-ants one - box controls are not needed
+		if (settings.marching_ants_mode === true) {
+			return;
+		}
+
 		if (settings.data === null || settings.data.status == 'draft'
 			|| (settings.data.hide_selection_if_active === true && settings.data.type == config.TOOL.name)) {
 			return;
@@ -192,6 +213,7 @@ class Base_selection_class {
 
 		this.ctx.save();
 		this.ctx.globalAlpha = 1;
+
 		let isRotated = false;
 		if (data.rotate != null && data.rotate != 0) {
 			//rotate
@@ -354,6 +376,222 @@ class Base_selection_class {
 
 		//restore
 		this.ctx.restore();
+	}
+
+	/**
+	 * appends the selection shape (rect/ellipse/lasso) to the current path -
+	 * does not start a new path, so callers can accumulate a union of regions.
+	 */
+	_build_shape_path(ctx, data) {
+		var x = data.x;
+		var y = data.y;
+		var w = data.width;
+		var h = data.height;
+		var shape = data.shape || 'rect';
+
+		if (shape == 'ellipse') {
+			ctx.ellipse(x + w / 2, y + h / 2, Math.abs(w) / 2, Math.abs(h) / 2, 0, 0, 2 * Math.PI);
+		}
+		else if (shape == 'lasso' && data.path != null && data.path.length > 1) {
+			ctx.moveTo(data.path[0][0], data.path[0][1]);
+			for (var i = 1; i < data.path.length; i++) {
+				ctx.lineTo(data.path[i][0], data.path[i][1]);
+			}
+			ctx.closePath();
+		}
+		else {
+			ctx.rect(x, y, w, h);
+		}
+	}
+
+	/**
+	 * builds the current selection path (rect/ellipse/lasso) in world coordinates.
+	 */
+	build_selection_path(ctx, data) {
+		ctx.beginPath();
+		this._build_shape_path(ctx, data);
+	}
+
+	/**
+	 * flattens a marching-ants selection into a list of regions to draw or
+	 * process. Composed selections return their committed regions (shift/alt
+	 * modes), simple selections fall back to the top-level geometry as a single
+	 * 'add' region. The in-progress drag preview is appended on request.
+	 *
+	 * @param {object} data
+	 * @param {boolean} [includeActive] - also append the current drag preview region
+	 */
+	get_selection_regions(data, includeActive) {
+		var regions = [];
+		if (data == null)
+			return regions;
+
+		if (Array.isArray(data.regions)) {
+			regions = data.regions.slice();
+			if (includeActive === true && data.active_region != null
+				&& data.active_region.width != null && data.active_region.height != null) {
+				regions.push(data.active_region);
+			}
+		}
+		else if (includeActive === true && data.active_region != null
+			&& data.active_region.width != null && data.active_region.height != null) {
+			regions = [data.active_region];
+		}
+		else if (data.x != null && data.width != null && data.height != null) {
+			regions = [{
+				shape: data.shape || 'rect',
+				x: data.x,
+				y: data.y,
+				width: data.width,
+				height: data.height,
+				path: data.path || null,
+				mode: 'add',
+			}];
+		}
+		return regions;
+	}
+
+	/**
+	 * returns {settings, data} pairs for every active marching-ants selection,
+	 * regardless of which tool is currently active.
+	 */
+	get_marquee_selections() {
+		var list = [];
+		for (var k in settings_all) {
+			var s = settings_all[k];
+			if (s == null || s.marching_ants_mode !== true)
+				continue;
+
+			var data = null;
+			if (s.data_function != null)
+				data = s.data_function.call();
+			if (data == null)
+				continue;
+			if (data.status == 'draft')
+				continue;
+			if (data.hide_selection_if_active === true && data.type == config.TOOL.name)
+				continue;
+			if (data.x == null || data.y == null || data.width == null || data.height == null)
+				continue;
+
+			list.push({ settings: s, data: data });
+		}
+		return list;
+	}
+
+	/**
+	 * returns the data object of the active persistent marching-ants selection,
+	 * or null when nothing is selected. Used to constrain layer rendering.
+	 */
+	get_committed_selection_data() {
+		var marquees = this.get_marquee_selections();
+		if (marquees.length > 0)
+			return marquees[0].data;
+		return null;
+	}
+
+	/**
+	 * draws Photoshop-style animated marching ants selection border.
+	 * Every committed region is outlined in its own color: 'add' uses the
+	 * classic black/white ants, 'subtract' red, 'intersect' blue.
+	 */
+	draw_marching_ants(data) {
+		var ctx = this.ctx;
+		var Z = config.ZOOM || 1;
+
+		var regions = this.get_selection_regions(data, true);
+		if (!regions.length)
+			return;
+
+		//animate - one dash step every ~50 ms
+		var phase = Math.floor(performance.now() / 50);
+		this.ant_offset = -(phase % 8) / Z;
+
+		var dash = 4 / Z;
+		var gap = 4 / Z;
+
+		ctx.save();
+		for (var i = 0; i < regions.length; i++) {
+			var region = regions[i];
+			if (region == null || region.x == null || region.width == null || region.height == null)
+				continue;
+
+			var mode = region.mode || 'add';
+			var color = '#000000';
+			if (mode == 'subtract')
+				color = '#ff2d2d';
+			else if (mode == 'intersect')
+				color = '#1285ff';
+
+			this.build_selection_path(ctx, region);
+
+			//white underlay - always visible
+			ctx.strokeStyle = '#ffffff';
+			ctx.lineWidth = 2.5 / Z;
+			ctx.lineJoin = 'round';
+			ctx.stroke();
+
+			//animated dashes in the mode color
+			ctx.strokeStyle = color;
+			ctx.lineWidth = 1.5 / Z;
+			ctx.lineJoin = 'round';
+			ctx.setLineDash([dash, gap]);
+			ctx.lineDashOffset = this.ant_offset;
+			ctx.stroke();
+			ctx.setLineDash([]);
+		}
+		ctx.restore();
+	}
+
+	/**
+	 * clips the existing content of the given context to the committed
+	 * selection interior: union of 'add'/'intersect' regions minus 'subtract'
+	 * regions. Coordinates are world-space; the context transform maps them to
+	 * the target buffer.
+	 */
+	apply_selection_constraint(ctx, data) {
+		if (data == null)
+			return;
+		var regions = this.get_selection_regions(data, false);
+		if (!regions.length)
+			return;
+
+		ctx.save();
+
+		//union of all add/intersect regions - keep only their interior
+		ctx.beginPath();
+		var has_add = false;
+		for (var i = 0; i < regions.length; i++) {
+			if (regions[i].mode == 'subtract')
+				continue;
+			this._build_shape_path(ctx, regions[i]);
+			has_add = true;
+		}
+		if (has_add) {
+			ctx.globalCompositeOperation = 'destination-in';
+			ctx.fillStyle = '#000000';
+			ctx.fill();
+		}
+
+		//carve out subtract regions
+		for (var i = 0; i < regions.length; i++) {
+			if (regions[i].mode != 'subtract')
+				continue;
+			ctx.beginPath();
+			this.build_selection_path(ctx, regions[i]);
+			ctx.globalCompositeOperation = 'destination-out';
+			ctx.fillStyle = '#000000';
+			ctx.fill();
+		}
+
+		ctx.restore();
+	}
+
+	/**
+	 * returns true while a marching-ants selection should keep animating.
+	 */
+	is_marching_ants_active() {
+		return this.get_marquee_selections().length > 0;
 	}
 
 	selected_object_actions(e) {

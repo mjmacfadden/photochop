@@ -23,13 +23,21 @@ export class Reset_selection_action extends Base_action {
 			x: null,
 			y: null,
 			width: null,
-			height: null
+			height: null,
+			shape: null,
+			path: null,
+			regions: null,
+			active_region: null
 		}
 		if (this.mirror_selection_settings) {
 			this.mirror_selection_settings.x = null;
 			this.mirror_selection_settings.y = null;
 			this.mirror_selection_settings.width = null;
 			this.mirror_selection_settings.height = null;
+			this.mirror_selection_settings.shape = null;
+			this.mirror_selection_settings.path = null;
+			this.mirror_selection_settings.regions = null;
+			this.mirror_selection_settings.active_region = null;
 		}
 		config.need_render = true;
 	}
@@ -37,7 +45,7 @@ export class Reset_selection_action extends Base_action {
 	async undo() {
 		super.undo();
 		if (this.old_settings_data) {
-			for (let prop of ['x', 'y', 'width', 'height']) {
+			for (let prop of ['x', 'y', 'width', 'height', 'shape', 'path', 'regions', 'active_region']) {
 				this.settings_reference.data[prop] = this.old_settings_data[prop];
 				if (this.mirror_selection_settings) {
 					this.mirror_selection_settings[prop] = this.old_settings_data[prop];

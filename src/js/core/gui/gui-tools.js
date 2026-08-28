@@ -100,6 +100,20 @@ class GUI_tools_class {
 		//left menu
 		for (var i in config.TOOLS) {
 			var item = config.TOOLS[i];
+
+			//apply saved marquee shape to the selection tool group
+			if (item.tool_group) {
+				var saved_shape = this.Helper.getCookie('selection_shape');
+				if (saved_shape != null) {
+					for (var j in item.tool_group.items) {
+						if (item.tool_group.items[j].shape == saved_shape) {
+							item.tool_group.active_shape = saved_shape;
+							break;
+						}
+					}
+				}
+			}
+
 			if(item.title)
 				var title = item.title;
 			else
@@ -112,20 +126,49 @@ class GUI_tools_class {
 			var itemDom = document.createElement('span');
 			itemDom.id = item.name;
 			itemDom.title = title;
+			itemDom._toolGroupBaseTitle = title;
+
+			//marquee group - show the active shape on the button
+			if (item.tool_group && config.TOOLS[i].tool_group.active_shape) {
+				var active_shape = config.TOOLS[i].tool_group.active_shape;
+				for (var k in item.tool_group.items) {
+					if (item.tool_group.items[k].shape == active_shape) {
+						itemDom.title = item.tool_group.items[k].title
+							+ (this.tool_shortcuts && this.tool_shortcuts[item.name] ? ' [' + this.tool_shortcuts[item.name] + ']' : '');
+						itemDom._toolGroupBaseTitle = itemDom.title;
+						break;
+					}
+				}
+				itemDom.classList.add('marquee_' + active_shape);
+			}
+
 			if (item.name == this.active_tool) {
-				itemDom.className = 'item trn active ' + item.name;
+				itemDom.classList.add('item', 'trn', 'active', item.name);
 			}
 			else {
-				itemDom.className = 'item trn ' + item.name;
+				itemDom.classList.add('item', 'trn', item.name);
 			}
 			if(item.visible === false){
 				itemDom.style.display = 'none';
 			}
 
-			//event
+			//events
 			itemDom.addEventListener('click', function (event) {
 				_this.activate_tool(this.id);
 			});
+
+			if (item.tool_group) {
+				//right click pops the group flyout up (Photoshop style)
+				itemDom.addEventListener('contextmenu', function (event) {
+					event.preventDefault();
+					if (_this._tool_group_popout) {
+						_this.hide_tool_group();
+					}
+					else {
+						_this.show_tool_group(this.id);
+					}
+				});
+			}
 
 			//register
 			document.getElementById(target_id).appendChild(itemDom);
@@ -134,6 +177,118 @@ class GUI_tools_class {
 		this.show_action_attributes();
 		new app.Actions.Activate_tool_action(this.active_tool, true).do();
 		this.Base_gui.check_canvas_offset();
+	}
+
+	show_tool_group(name) {
+		var _this = this;
+		var item = document.getElementById(name);
+		var itemDef = null;
+		for (var i in config.TOOLS) {
+			if (config.TOOLS[i].name == name) {
+				itemDef = config.TOOLS[i];
+				break;
+			}
+		}
+		if (item == null || itemDef == null || itemDef.tool_group == null)
+			return;
+
+		this.hide_tool_group();
+
+		var rect = item.getBoundingClientRect();
+		var pop = document.createElement('div');
+		pop.className = 'tool_group_popout';
+		pop.dataset.toolName = name;
+
+		var current_shape = (itemDef.tool_group.active_shape)
+			|| this.Helper.getCookie('selection_shape')
+			|| 'rect';
+		for (var j in itemDef.tool_group.items) {
+			var it = itemDef.tool_group.items[j];
+			var row = document.createElement('div');
+			row.className = 'tool_group_item' + (it.shape == current_shape ? ' active' : '');
+			row.dataset.shape = it.shape;
+			row.innerHTML = '<span class="tg_icon ' + it.icon + '"></span><span class="tg_name">' + it.title + '</span>';
+			(function (shape) {
+				row.addEventListener('click', function (event) {
+					event.stopPropagation();
+					_this.hide_tool_group();
+					_this.update_marquee_shape(shape);
+				});
+			})(it.shape);
+			pop.appendChild(row);
+		}
+
+		//attach to body so it can not be clipped, and place it beside the button
+		document.body.appendChild(pop);
+		pop.style.position = 'fixed';
+		pop.style.left = (rect.right + 4) + 'px';
+		var top = rect.top - 6;
+		var vh = window.innerHeight || document.documentElement.clientHeight || 0;
+		if (top + pop.offsetHeight > vh - 8) {
+			top = vh - pop.offsetHeight - 8;
+		}
+		if (top < 4) {
+			top = 4;
+		}
+		pop.style.top = top + 'px';
+		this._tool_group_popout = pop;
+
+		//close when clicking elsewhere
+		if (this._group_doc_handler == null) {
+			this._group_doc_handler = function (event) {
+				if (event.target != null && event.target.closest != null && event.target.closest('.tool_group_popout'))
+					return;
+				_this.hide_tool_group();
+			};
+		}
+		setTimeout(function () {
+			document.addEventListener('click', _this._group_doc_handler);
+		}, 0);
+	}
+
+	hide_tool_group() {
+		if (this._tool_group_popout) {
+			if (this._tool_group_popout.parentNode != null) {
+				this._tool_group_popout.parentNode.removeChild(this._tool_group_popout);
+			}
+			this._tool_group_popout = null;
+		}
+		if (this._group_doc_handler) {
+			document.removeEventListener('click', this._group_doc_handler);
+		}
+	}
+
+	update_marquee_shape(shape) {
+		this.Helper.setCookie('selection_shape', shape);
+		for (var i in config.TOOLS) {
+			if (config.TOOLS[i].name == 'selection' && config.TOOLS[i].tool_group != null) {
+				config.TOOLS[i].tool_group.active_shape = shape;
+				break;
+			}
+		}
+
+		//refresh the toolbar button look (icon + title)
+		var btn = document.getElementById('selection');
+		var itemDef = null;
+		for (var j in config.TOOLS) {
+			if (config.TOOLS[j].name == 'selection' && config.TOOLS[j].tool_group != null) {
+				itemDef = config.TOOLS[j];
+				break;
+			}
+		}
+		if (btn != null && itemDef != null) {
+			btn.classList.remove('marquee_rect', 'marquee_ellipse', 'marquee_lasso');
+			btn.classList.add('marquee_' + shape);
+			for (var k in itemDef.tool_group.items) {
+				if (itemDef.tool_group.items[k].shape == shape) {
+					btn.title = itemDef.tool_group.items[k].title
+						+ (this.tool_shortcuts && this.tool_shortcuts['selection'] ? ' [' + this.tool_shortcuts['selection'] + ']' : '');
+					break;
+				}
+			}
+		}
+
+		this.activate_tool('selection');
 	}
 
 	async activate_tool(key) {
@@ -383,6 +538,18 @@ class GUI_tools_class {
 
 				itemDom.appendChild(elementTitle);
 				itemDom.appendChild($colorInput[0]);
+			}
+			else if (typeof item == 'string') {
+				//plain string (non-color) - render as a read-only label,
+				//some tools carry internal string state here
+				var elementTitle = document.createElement('label');
+				elementTitle.className = 'trn';
+				elementTitle.innerHTML = title + ':';
+				var elementValue = document.createElement('span');
+				elementValue.className = 'attribute_value';
+				elementValue.innerHTML = item;
+				itemDom.appendChild(elementTitle);
+				itemDom.appendChild(elementValue);
 			}
 			else {
 				alertify.error('Error: unsupported attribute type:' + typeof item + ', ' + k);

@@ -6,12 +6,13 @@ export class Set_selection_action extends Base_action {
 	/**
 	 * Sets the selection to the specified position and dimensions
 	 */
-	constructor(x, y, width, height, old_settings_override) {
+	constructor(x, y, width, height, old_settings_override, extra_data) {
 		super('set_selection', 'Set Selection');
 		this.x = x;
 		this.y = y;
 		this.width = width;
 		this.height = height;
+		this.extra_data = extra_data ? JSON.parse(JSON.stringify(extra_data)) : null;
 		this.settings_reference = null;
 		this.old_settings_data = null;
 		this.old_settings_override = old_settings_override ? JSON.parse(JSON.stringify(old_settings_override)) || null : null;
@@ -29,6 +30,11 @@ export class Set_selection_action extends Base_action {
 			this.settings_reference.data.width = this.width;
 		if (this.height != null)
 			this.settings_reference.data.height = this.height;
+		if (this.extra_data != null) {
+			for (let prop in this.extra_data) {
+				this.settings_reference.data[prop] = this.extra_data[prop];
+			}
+		}
 
 		config.need_render = true;
 	}

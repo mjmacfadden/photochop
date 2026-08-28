@@ -58,19 +58,42 @@ class Layer_new_class {
 		var left = selection.x - layer.x;
 		var top = selection.y - layer.y;
 		
+		//remember original world-space geometry before adaptation (selection.width/height get adapted below)
+		var world_sel = {
+			x: selection.x,
+			y: selection.y,
+			width: selection.width,
+			height: selection.height,
+			shape: selection.shape || 'rect',
+			path: selection.path || null,
+		};
+		
 		//adapt to origin size
 		selection.width = selection.width / width_ratio;
 		selection.height = selection.height / height_ratio;
 		
 		//create new layer
 		var canvas = document.createElement('canvas');
+		var cw = Math.max(1, Math.round(selection.width));
+		var ch = Math.max(1, Math.round(selection.height));
 		var ctx = canvas.getContext("2d");
-		canvas.width = Math.round(selection.width);
-		canvas.height = Math.round(selection.height);
+		canvas.width = cw;
+		canvas.height = ch;
 		
 		ctx.translate(-left / width_ratio, -top / height_ratio);
 		ctx.drawImage(config.layer.link, 0, 0);
 		ctx.translate(0, 0);
+
+		//ellipse / lasso - crop only inside the selection shape
+		if (world_sel.shape != 'rect') {
+			ctx.save();
+			ctx.translate(-world_sel.x, -world_sel.y);
+			ctx.scale(1 / width_ratio, 1 / height_ratio);
+			this.Selection.build_selection_path(ctx, world_sel);
+			ctx.clip();
+			ctx.clearRect(0, 0, cw, ch);
+			ctx.restore();
+		}
 
 		//register it
 		var params = {

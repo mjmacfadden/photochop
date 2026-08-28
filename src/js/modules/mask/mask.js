@@ -133,6 +133,20 @@ class Mask_class {
 			return mask;
 		}
 
+		var shape = selection.shape || 'rect';
+		if (shape != 'rect') {
+			//ellipse / lasso - paint the reveal/hide color only inside the selection shape
+			var selection_module = app.GUI.GUI_tools.tools_modules['selection'].object;
+			ctx.save();
+			ctx.translate(-layer.x, -layer.y);
+			selection_module.build_selection_path(ctx, selection);
+			ctx.clip();
+			ctx.fillStyle = (reveal === false) ? '#000000' : '#ffffff';
+			ctx.fillRect(0, 0, mask.link.width, mask.link.height);
+			ctx.restore();
+			return mask;
+		}
+
 		//find intersection between selection and layer bounds (world coords)
 		var x1 = Math.max(selection.x, layer.x);
 		var y1 = Math.max(selection.y, layer.y);

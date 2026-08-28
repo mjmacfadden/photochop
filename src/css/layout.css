@@ -383,6 +383,47 @@ IMPORTANT: any new icon should also must be added on /service-worker.js + its ve
 .sidebar_left .bulge_pinch:after{ background-image: url('images/icons/bulge_pinch.svg'); }
 .sidebar_left .animation:after{ background-image: url('images/icons/animation.svg'); }
 
+/* marquee tool group - button shows the active shape icon */
+.sidebar_left .item.selection{ overflow: visible; }
+.sidebar_left .item.selection.marquee_ellipse:after{ background-image: url('images/icons/selection_ellipse.svg'); }
+.sidebar_left .item.selection.marquee_lasso:after{ background-image: url('images/icons/lasso.svg'); }
+
+/* Photoshop-style tool group flyout */
+.tool_group_popout{
+	z-index: 2000;
+	min-width: 190px;
+	background: #2c2c2c;
+	border: 1px solid #4a4a4a;
+	border-radius: 3px;
+	padding: 4px 0;
+	box-shadow: 0 4px 14px rgba(0,0,0,0.45);
+	color: #ddd;
+	white-space: nowrap;
+	font-size: 12px;
+	user-select: none;
+}
+.tool_group_item{
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	padding: 6px 10px;
+	cursor: pointer;
+}
+.tool_group_item:hover{ background: #3d3d3d; }
+.tool_group_item.active{ background: #1d4566; color: #ffffff; }
+.tg_icon{
+	width: 18px;
+	height: 18px;
+	flex: 0 0 18px;
+	background-position: center;
+	background-repeat: no-repeat;
+	background-size: 16px;
+	filter: var(--menu-icons-filter);
+}
+.tg_icon.selection{ background-image: url('images/icons/selection.svg'); }
+.tg_icon.selection_ellipse{ background-image: url('images/icons/selection_ellipse.svg'); }
+.tg_icon.lasso{ background-image: url('images/icons/lasso.svg'); }
+
 @media screen and (max-width:550px){
 	#sidebar_left{
 		left: -110px;

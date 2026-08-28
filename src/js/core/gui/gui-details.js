@@ -708,6 +708,13 @@ class GUI_details_class {
 
 				item_row.appendChild($colorInput[0]);
 			}
+			else if (typeof item == 'string') {
+				//plain string (non-color) - read-only label
+				var elementValue = document.createElement('span');
+				elementValue.className = 'attribute_value';
+				elementValue.innerHTML = item;
+				item_row.appendChild(elementValue);
+			}
 			else {
 				alertify.error('Error: unsupported attribute type:' + typeof item + ', ' + k);
 			}

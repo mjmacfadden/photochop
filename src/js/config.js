@@ -92,8 +92,30 @@ config.TOOLS = [
 	},
 	{
 		name: 'selection',
+		title: 'Rectangular Marquee Tool',
 		attributes: {},
 		on_leave: 'on_leave',
+		tool_group: {
+			label: 'Selection Tools',
+			hidden: false,
+			items: [
+				{
+					shape: 'rect',
+					title: 'Rectangular Marquee Tool',
+					icon: 'selection',
+				},
+				{
+					shape: 'ellipse',
+					title: 'Elliptical Marquee Tool',
+					icon: 'selection_ellipse',
+				},
+				{
+					shape: 'lasso',
+					title: 'Lasso Tool',
+					icon: 'lasso',
+				},
+			],
+		},
 	},
 	{
 		name: 'brush',
