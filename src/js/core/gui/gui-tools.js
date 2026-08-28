@@ -168,6 +168,11 @@ class GUI_tools_class {
 						_this.show_tool_group(this.id);
 					}
 				});
+
+				//add corner triangle indicator for right-clickable tools
+				var triangle = document.createElement('span');
+				triangle.className = 'corner_triangle';
+				itemDom.appendChild(triangle);
 			}
 
 			//register

@@ -480,6 +480,33 @@ class Base_selection_class {
 	}
 
 	/**
+	 * Static method to get the current marquee selection position
+	 * without needing an instance. Returns {x, y} or null.
+	 */
+	static get_marquee_position() {
+		for (var k in settings_all) {
+			var s = settings_all[k];
+			if (s == null || s.marching_ants_mode !== true)
+				continue;
+
+			var data = null;
+			if (s.data_function != null)
+				data = s.data_function.call();
+			if (data == null)
+				continue;
+			if (data.status == 'draft')
+				continue;
+			if (data.hide_selection_if_active === true && data.type == config.TOOL.name)
+				continue;
+			if (data.x == null || data.y == null)
+				continue;
+
+			return { x: data.x, y: data.y };
+		}
+		return null;
+	}
+
+	/**
 	 * returns the data object of the active persistent marching-ants selection,
 	 * or null when nothing is selected. Used to constrain layer rendering.
 	 */

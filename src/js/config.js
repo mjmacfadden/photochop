@@ -2,7 +2,7 @@
 
 var config = {};
 
-config.TRANSPARENCY = false;
+config.TRANSPARENCY = true;
 config.TRANSPARENCY_TYPE = 'squares'; //squares, green, grey
 config.LANG = 'en';
 config.WIDTH = null;
@@ -92,7 +92,9 @@ config.TOOLS = [
 		title: 'Move Tool',
 		attributes: {
 			auto_select: true,
+			show_transform_controls: true,
 		},
+		on_update: 'on_update',
 	},
 	{
 		name: 'selection',

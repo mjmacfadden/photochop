@@ -170,6 +170,69 @@ class GUI_layers_class {
 			_this.show_mask_context_menu(event.clientX, event.clientY, layer_id);
 		});
 
+		// Drag-to-reorder layers
+		var drag_layer_id = null;
+		document.getElementById('layers_base').addEventListener('dragstart', function (event) {
+			var item = event.target.closest('.item');
+			if (!item) return;
+			var layer = app.Layers.get_layer(parseInt(item.dataset.id));
+			if (layer && layer.locked) {
+				event.preventDefault();
+				return;
+			}
+			drag_layer_id = parseInt(item.dataset.id);
+			item.classList.add('dragging');
+			event.dataTransfer.effectAllowed = 'move';
+			event.dataTransfer.setData('text/plain', drag_layer_id);
+		});
+
+		document.getElementById('layers_base').addEventListener('dragover', function (event) {
+			event.preventDefault();
+			event.dataTransfer.dropEffect = 'move';
+			var item = event.target.closest('.item');
+			if (item) {
+				item.classList.add('drag_over');
+			}
+		});
+
+		document.getElementById('layers_base').addEventListener('dragleave', function (event) {
+			var item = event.target.closest('.item');
+			if (item) {
+				item.classList.remove('drag_over');
+			}
+		});
+
+		document.getElementById('layers_base').addEventListener('drop', function (event) {
+			event.preventDefault();
+			var item = event.target.closest('.item');
+			if (!item || drag_layer_id === null) return;
+
+			var target_id = parseInt(item.dataset.id);
+			if (drag_layer_id === target_id) return;
+
+			var drag_layer = app.Layers.get_layer(drag_layer_id);
+			var target_layer = app.Layers.get_layer(target_id);
+			if (!drag_layer || !target_layer) return;
+			if (drag_layer.locked) return;
+
+			// Swap order values
+			var temp_order = drag_layer.order;
+			drag_layer.order = target_layer.order;
+			target_layer.order = temp_order;
+
+			drag_layer_id = null;
+			app.Layers.render();
+			app.GUI.GUI_layers.render_layers();
+		});
+
+		document.getElementById('layers_base').addEventListener('dragend', function (event) {
+			drag_layer_id = null;
+			var items = document.querySelectorAll('#layers_base .item');
+			for (var i = 0; i < items.length; i++) {
+				items[i].classList.remove('dragging', 'drag_over');
+			}
+		});
+
 	}
 
 	/**
@@ -296,13 +359,13 @@ class GUI_layers_class {
 					class_extra += ' active';
 				}
 
-				html += '<div class="item ' + class_extra + '" data-id="' + value.id + '">';
-				if (value.visible == true)
-					html += '	<button class="visibility visible trn" id="visibility" data-id="' + value.id + '" title="Hide"></button>';
-				else
-					html += '	<button class="visibility trn" id="visibility" data-id="' + value.id + '" title="Show"></button>';
-				
-				html += '	<span class="layer_thumb" data-id="' + value.id + '">' + this.get_layer_thumb(value) + '</span>';
+				html += '<div class="item ' + class_extra + (value.locked ? ' locked' : '') + '" data-id="' + value.id + '" draggable="' + (value.locked ? 'false' : 'true') + '">';
+			if (value.visible == true)
+				html += '	<button class="visibility visible trn" id="visibility" data-id="' + value.id + '" title="Hide"></button>';
+			else
+				html += '	<button class="visibility trn" id="visibility" data-id="' + value.id + '" title="Show"></button>';
+			
+			html += '	<span class="layer_thumb" data-id="' + value.id + '">' + this.get_layer_thumb(value) + '</span>';
 
 				if (value.mask != null) {
 					var mask_class = 'mask_thumb';
@@ -325,8 +388,13 @@ class GUI_layers_class {
 
 				var layer_title = this.Helper.escapeHtml(value.name);
 				
-				html += '	<button class="layer_name" id="layer_name" data-id="' + value.id + '">' + layer_title + '</button>';
-				html += '	<div class="clear"></div>';
+			html += '	<button class="layer_name" id="layer_name" data-id="' + value.id + '">' + layer_title + '</button>';
+
+			if (value.locked) {
+				html += '	<span class="lock_icon" data-id="' + value.id + '" title="Locked"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg></span>';
+			}
+
+			html += '	<div class="clear"></div>';
 				html += '</div>';
 
 				//show filters

@@ -74,6 +74,14 @@ class File_open_class {
 			type: 'image',
 			data: data,
 		};
+
+		//use stored clipboard position if available
+		if (config._clipboard_position) {
+			new_layer.x = config._clipboard_position.x;
+			new_layer.y = config._clipboard_position.y;
+			config._clipboard_position = null;
+		}
+
 		app.State.do_action(
 			new app.Actions.Insert_layer_action(new_layer, false)
 		);

@@ -39,6 +39,15 @@ class Select_tool_class extends Base_tools_class {
 		this.Base_selection = new Base_selection_class(ctx, sel_config, this.name);
 	}
 
+	on_update(settings) {
+		if (settings.key === 'show_transform_controls') {
+			this.Base_selection.settings.enable_borders = settings.value;
+			this.Base_selection.settings.enable_controls = settings.value;
+			this.Base_selection.settings.enable_rotation = settings.value;
+			config.need_render = true;
+		}
+	}
+
 	load() {
 		var _this = this;
 

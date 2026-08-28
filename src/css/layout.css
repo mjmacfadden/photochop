@@ -384,9 +384,24 @@ IMPORTANT: any new icon should also must be added on /service-worker.js + its ve
 .sidebar_left .animation:after{ background-image: url('images/icons/animation.svg'); }
 
 /* marquee tool group - button shows the active shape icon */
-.sidebar_left .item.selection{ overflow: visible; }
+.sidebar_left .item.selection{ overflow: visible; width: 20px; height: 20px; }
+.sidebar_left .item.selection:after{ background-size: 16px 16px; }
 .sidebar_left .item.selection.marquee_ellipse:after{ background-image: url('images/icons/selection_ellipse.svg'); }
 .sidebar_left .item.selection.marquee_lasso:after{ background-image: url('images/icons/lasso.svg'); }
+.sidebar_left .item.selection .corner_triangle{
+	position: absolute;
+	right: 0;
+	bottom: 0;
+	width: 0;
+	height: 0;
+	border-style: solid;
+	border-width: 0 0 6px 6px;
+	border-color: transparent transparent #999 transparent;
+	pointer-events: none;
+}
+.sidebar_left .item.selection.active .corner_triangle{
+	border-color: transparent transparent #fff transparent;
+}
 
 /* Photoshop-style tool group flyout */
 .tool_group_popout{
@@ -595,6 +610,11 @@ IMPORTANT: any new icon should also must be added on /service-worker.js + its ve
 .layers_list .item.shorter .layer_name{
 	width: calc(100% - 104px);
 }
+.layers_list .item.locked .layer_name{
+	float: left;
+	width: calc(100% - 104px);
+	text-overflow: ellipsis;
+}
 .layers_list .item.active .layer_name{
 	background-color: transparent;
 	color: #ffffff;
@@ -622,7 +642,7 @@ IMPORTANT: any new icon should also must be added on /service-worker.js + its ve
 	position: relative;
 	float:left;
 	cursor:pointer;
-	padding:0px 2px 0px 2px;
+	padding:2px 2px 0px 2px;
 	margin-right: 4px;
 	width:18px;
 	height:18px;
@@ -649,6 +669,7 @@ IMPORTANT: any new icon should also must be added on /service-worker.js + its ve
 	width: 20px;
 	height: 20px;
 	margin-right: 4px;
+	margin-top: 2px;
 	text-align: center;
 	vertical-align: middle;
 }
@@ -687,6 +708,7 @@ IMPORTANT: any new icon should also must be added on /service-worker.js + its ve
 	width: 14px;
 	height: 18px;
 	margin-right: 4px;
+	margin-top: 2px;
 	background-size: contain;
 	background-repeat: no-repeat;
 	background-position: center center;
@@ -740,6 +762,30 @@ IMPORTANT: any new icon should also must be added on /service-worker.js + its ve
 .mask_context_menu_item:hover{
 	background: #4a4a4a;
 	color: #ffffff;
+}
+.layers_list .lock_icon{
+	display: block;
+	float: right;
+	width: 14px;
+	height: 18px;
+	margin-right: 4px;
+	margin-top: 2px;
+	color: #999;
+	opacity: 0.7;
+	text-align: center;
+	line-height: 18px;
+}
+.layers_list .item.dragging{
+	opacity: 0.4;
+}
+.layers_list .item.drag_over{
+	border-top: 2px solid #4a9eff;
+}
+.layers_list .item.drag_over .layer_name,
+.layers_list .item.drag_over .visibility,
+.layers_list .item.drag_over .layer_thumb,
+.layers_list .item.drag_over .mask_thumb{
+	padding-top: 2px;
 }
 .layers_list .delete{
 	float:right;

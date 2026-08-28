@@ -76,7 +76,20 @@ class Base_layers_class {
 	init() {
 		this.init_zoom_lib();
 
-		new app.Actions.Insert_layer_action({name: 'Background'}).do();
+		// Create white-filled canvas for the background layer
+		var bgCanvas = document.createElement('canvas');
+		bgCanvas.width = config.WIDTH;
+		bgCanvas.height = config.HEIGHT;
+		var bgCtx = bgCanvas.getContext('2d');
+		bgCtx.fillStyle = '#ffffff';
+		bgCtx.fillRect(0, 0, config.WIDTH, config.HEIGHT);
+
+		new app.Actions.Insert_layer_action({
+			name: 'Background',
+			locked: true,
+			type: 'image',
+			data: bgCanvas.toDataURL(),
+		}).do();
 
 		var sel_config = {
 			enable_background: false,

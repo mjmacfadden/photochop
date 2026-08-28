@@ -1,5 +1,6 @@
 import config from "../../config";
 import Base_layers_class from './../../core/base-layers.js';
+import Base_selection_class from './../../core/base-selection.js';
 import File_save_class from './../file/save.js';
 import Helper_class from './../../libs/helpers.js';
 import alertify from './../../../../node_modules/alertifyjs/build/alertify.min.js';
@@ -48,6 +49,14 @@ class Copy_class {
 				ctx.globalCompositeOperation = 'destination-over';
 				this.File_save.fillCanvasBackground(ctx, '#ffffff');
 				ctx.globalCompositeOperation = 'source-over';
+			}
+
+			//store marquee selection position for paste, fallback to layer position
+			var marquee = Base_selection_class.get_marquee_position();
+			if (marquee) {
+				config._clipboard_position = marquee;
+			} else {
+				config._clipboard_position = { x: config.layer.x, y: config.layer.y };
 			}
 
 			//save using lib

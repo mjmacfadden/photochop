@@ -468,10 +468,12 @@ class WebGL_renderer_class {
 			// Set opacity
 			gl.uniform1f(this.uniforms.u_opacity, (layer.opacity || 100) / 100);
 
-			// Set destination rectangle: [x, y, width, height] in document pixels
+			// Set destination rectangle: [x, y, width, height] in document pixels.
+			// Expand by pad so the padded texture maps correctly.
+			var pad = texInfo.pad || 0;
 			gl.uniform4f(this.uniforms.u_dstRect,
-				layer.x || 0, layer.y || 0,
-				layer.width || 0, layer.height || 0
+				(layer.x || 0) - pad, (layer.y || 0) - pad,
+				(layer.width || 0) + pad * 2, (layer.height || 0) + pad * 2
 			);
 
 			// Set rotation (convert degrees to radians, negate for WebGL Y-flip)
@@ -590,14 +592,17 @@ class WebGL_renderer_class {
 		if (srcWidth <= 0 || srcHeight <= 0) return null;
 
 		// Check if we need to re-upload
+		// render_function layers (brush, text, etc.) change content every frame
+		// without dimension changes, so never cache them
 		if (cached &&
+			!layer.render_function &&
 			cached.width === srcWidth &&
 			cached.height === srcHeight) {
 			// Reuse existing texture
 			return cached;
 		}
 
-		// Delete old texture if dimensions changed
+		// Delete old texture if not reusing (dimensions changed or content changed)
 		if (cached) {
 			gl.deleteTexture(cached.texture);
 		}
@@ -615,9 +620,13 @@ class WebGL_renderer_class {
 		gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
 		gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
 
-		// Use nearest filtering for pixel-perfect rendering at 1:1 zoom,
-		// linear for scaled rendering
-		if (config.ZOOM >= 1) {
+		// Render-function layers are supersampled at 2x, so always use LINEAR
+		// to get smooth anti-aliased downscaling. Image layers use NEAREST
+		// at high zoom for pixel-perfect rendering.
+		if (layer.render_function) {
+			gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+			gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+		} else if (config.ZOOM >= 1) {
 			gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
 			gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
 		} else {
@@ -630,6 +639,7 @@ class WebGL_renderer_class {
 			width: srcWidth,
 			height: srcHeight,
 			maskTexture: null,
+			pad: source._pad || 0,
 		};
 
 		this.textureCache[id] = texInfo;
@@ -712,9 +722,21 @@ class WebGL_renderer_class {
 		// Non-image layers: render to offscreen canvas using the tool's render function
 		// This falls back to Canvas 2D for now
 		if (layer.render_function) {
+			// Supersample at 2x for anti-aliased edges on brush/text/shape layers.
+			// The texture is uploaded at 2x but drawn at 1x via the destination rect,
+			// so LINEAR filtering produces smooth anti-aliased output.
+			var SUPER = 2;
+
+			// Pad the canvas to prevent clipping from line caps, joins, and
+			// anti-aliasing halos at the edges of the stroke bounding box.
+			var brushSize = (layer.params && layer.params.size) || 0;
+			var pad = Math.ceil(brushSize / 2) + 1;
+
+			var w = Math.max(1, Math.round(layer.width || 1));
+			var h = Math.max(1, Math.round(layer.height || 1));
 			var canvas = document.createElement('canvas');
-			canvas.width = Math.max(1, Math.round(layer.width || 1));
-			canvas.height = Math.max(1, Math.round(layer.height || 1));
+			canvas.width = (w + pad * 2) * SUPER;
+			canvas.height = (h + pad * 2) * SUPER;
 			var ctx = canvas.getContext('2d');
 
 			try {
@@ -734,7 +756,13 @@ class WebGL_renderer_class {
 					if (this._gui_tools_ref.tools_modules[render_class] &&
 						typeof this._gui_tools_ref.tools_modules[render_class].object[render_function] === 'function') {
 
+						ctx.save();
+						ctx.scale(SUPER, SUPER);
+						// Shift by pad so strokes at the bounding-box edge have room
+						ctx.translate(pad - (layer.x || 0), pad - (layer.y || 0));
 						this._gui_tools_ref.tools_modules[render_class].object[render_function](ctx, layer, false);
+						ctx.restore();
+						canvas._pad = pad;
 						return canvas;
 					}
 				}

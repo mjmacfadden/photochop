@@ -92,13 +92,11 @@ class Base_gui_class {
 		//transparency
 		var transparency_cookie = this.Helper.getCookie('transparency');
 		if (transparency_cookie === null) {
-			//default
-			config.TRANSPARENCY = false;
-		}
-		if (transparency_cookie) {
+			//no saved preference - default to showing checkerboard
 			config.TRANSPARENCY = true;
-		}
-		else {
+		} else if (transparency_cookie) {
+			config.TRANSPARENCY = true;
+		} else {
 			config.TRANSPARENCY = false;
 		}
 		

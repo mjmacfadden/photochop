@@ -107,6 +107,19 @@ class GUI_shortcuts_class {
 				$input.uiNumberInput('set_value', newSize);
 			}
 		}
+
+		// Immediately update the brush cursor on screen
+		var mouseEl = document.getElementById('mouse');
+		if (mouseEl && mouseEl.classList.contains('circle')) {
+			var curW = parseFloat(mouseEl.style.width) || 0;
+			var zoomedSize = newSize * config.ZOOM;
+			var left = parseFloat(mouseEl.style.left) || 0;
+			var top = parseFloat(mouseEl.style.top) || 0;
+			mouseEl.style.width = zoomedSize + 'px';
+			mouseEl.style.height = zoomedSize + 'px';
+			mouseEl.style.left = (left + (curW - zoomedSize) / 2) + 'px';
+			mouseEl.style.top = (top + (curW - zoomedSize) / 2) + 'px';
+		}
 	}
 
 }
