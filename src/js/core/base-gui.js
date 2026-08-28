@@ -129,6 +129,15 @@ class Base_gui_class {
 		else{
 			config.guides_enabled = Boolean(guides_cookie);
 		}
+
+		//preview panel visibility
+		var preview_cookie = this.Helper.getCookie('preview_panel');
+		if (preview_cookie != null && preview_cookie == 0) {
+			var preview_node = document.querySelector('.sidebar_right .preview.block');
+			if (preview_node != null) {
+				preview_node.classList.add('hidden');
+			}
+		}
 	}
 
 	render_main_gui() {
@@ -263,6 +272,20 @@ class Base_gui_class {
 		//change wrapper dimensions
 		document.getElementById('canvas_wrapper').style.width = w + 'px';
 		document.getElementById('canvas_wrapper').style.height = h + 'px';
+
+		//size the transform-controls overlay so handles can draw past the
+		//document edge. The canvas has a 1px border, so the overlay origin is
+		//offset to keep its drawing aligned with the main canvas content.
+		var margin = config.TRANSFORM_MARGIN;
+		var overlay = document.getElementById('canvas_overlay');
+		if (overlay != null) {
+			overlay.width = w + margin * 2;
+			overlay.height = h + margin * 2;
+			overlay.style.width = (w + margin * 2) + 'px';
+			overlay.style.height = (h + margin * 2) + 'px';
+			overlay.style.left = (1 - margin) + 'px';
+			overlay.style.top = (1 - margin) + 'px';
+		}
 
 		// Notify renderer of document dimensions (for WebGL offscreen canvas)
 		if (this.Base_layers && this.Base_layers.active_renderer) {

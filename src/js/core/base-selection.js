@@ -4,6 +4,7 @@
  */
 
 import config from './../config.js';
+import zoomView from './../libs/zoomView.js';
 
 var instance = null;
 var settings_all = [];
@@ -166,6 +167,17 @@ class Base_selection_class {
 		var settings = this.find_settings();
 		var data = settings.data;
 
+		//always clear the transform overlay so stray handles never linger.
+		//clear under identity - the overlay transform may be left over from
+		//the previous frame's drawing
+		var overlay_el = document.getElementById('canvas_overlay');
+		var overlay_ctx = null;
+		if (overlay_el != null) {
+			overlay_ctx = overlay_el.getContext('2d');
+			overlay_ctx.setTransform(1, 0, 0, 1, 0, 0);
+			overlay_ctx.clearRect(0, 0, overlay_el.width, overlay_el.height);
+		}
+
 		//draw every persistent marching-ants selection - they stay visible
 		//even when another tool (brush, pencil, fill, ...) is active
 		var marquees = this.get_marquee_selections();
@@ -216,6 +228,17 @@ class Base_selection_class {
 
 		this.ctx.save();
 		this.ctx.globalAlpha = 1;
+
+		//draw the transform controls (box + handles) on the dedicated overlay
+		//canvas, which is larger than the document, so they stay visible even
+		//when the layer extends past the canvas edge. The overlay origin is
+		//shifted by TRANSFORM_MARGIN to line up with the document origin.
+		var main_ctx = this.ctx;
+		if (overlay_ctx != null) {
+			this.ctx = overlay_ctx;
+			var mm = zoomView.matrix;
+			this.ctx.setTransform(mm[0], mm[1], mm[2], mm[3], mm[4] + config.TRANSFORM_MARGIN, mm[5] + config.TRANSFORM_MARGIN);
+		}
 
 		let isRotated = false;
 		if (data.rotate != null && data.rotate != 0) {
@@ -332,6 +355,11 @@ class Base_selection_class {
 
 		//restore
 		this.ctx.restore();
+		if (this.ctx != main_ctx) {
+			this.ctx = main_ctx;
+			//reset the overlay transform so next frame's clear spans the whole canvas
+			overlay_ctx.setTransform(1, 0, 0, 1, 0, 0);
+		}
 	}
 
 	/**

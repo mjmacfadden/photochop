@@ -382,6 +382,19 @@ IMPORTANT: any new icon should also must be added on /service-worker.js + its ve
 .sidebar_left .desaturate:after{ background-image: url('images/icons/desaturate.svg'); }
 .sidebar_left .bulge_pinch:after{ background-image: url('images/icons/bulge_pinch.svg'); }
 .sidebar_left .animation:after{ background-image: url('images/icons/animation.svg'); }
+.sidebar_left .pan:after{ background-image: url('images/icons/pan.svg'); }
+
+/* pan (hand) tool - grab/grabbing cursor, overrides inline cursor set by selection code */
+body.tool-pan #main_wrapper,
+body.tool-pan .middle_area,
+body.tool-pan #canvas_minipaint{
+	cursor: grab !important;
+}
+body.tool-pan.pan-dragging #main_wrapper,
+body.tool-pan.pan-dragging .middle_area,
+body.tool-pan.pan-dragging #canvas_minipaint{
+	cursor: grabbing !important;
+}
 
 /* marquee tool group - button shows the active shape icon */
 .sidebar_left .item.selection{ overflow: visible; width: 20px; height: 20px; }
@@ -425,7 +438,7 @@ IMPORTANT: any new icon should also must be added on /service-worker.js + its ve
 	cursor: pointer;
 }
 .tool_group_item:hover{ background: #3d3d3d; }
-.tool_group_item.active{ background: #1d4566; color: #ffffff; }
+.tool_group_item.active{ background: #383838; color: #ffffff; }
 .tg_icon{
 	width: 18px;
 	height: 18px;
@@ -997,6 +1010,14 @@ IMPORTANT: any new icon should also must be added on /service-worker.js + its ve
 	width:10px;
 	height:10px;
 	z-index:10;
+}
+/* transform-controls overlay - larger than the document so handles stay
+visible around/outside the canvas edge; never blocks pointer events */
+#canvas_overlay.transform-overlay{
+	position:absolute;
+	z-index:3;
+	pointer-events:none;
+	border: 0;
 }
 #mouse.rect{
 	border:1px solid rgba(0,0,0,0.5);

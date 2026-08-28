@@ -13,6 +13,7 @@ class GUI_shortcuts_class {
 
 	constructor() {
 		this.Helper = new Helper_class();
+		this.space_pan_tool = null;
 
 		this.keymap = {
 			'v': 'select',
@@ -76,6 +77,17 @@ class GUI_shortcuts_class {
 				return;
 			}
 
+			// Space = temporary pan (hand) tool
+			if (event.code === 'Space' && !event.ctrlKey && !event.metaKey && !event.altKey) {
+				event.preventDefault();
+				event.stopImmediatePropagation();
+				if (this.space_pan_tool == null) {
+					this.space_pan_tool = app.GUI.GUI_tools.active_tool;
+					app.GUI.GUI_tools.activate_tool('pan');
+				}
+				return;
+			}
+
 			if (event.ctrlKey || event.metaKey || event.altKey) return;
 
 			const key = event.key.toLowerCase();
@@ -125,6 +137,23 @@ class GUI_shortcuts_class {
 				event.stopImmediatePropagation();
 				this.adjust_brush_size(key === ']' ? 1 : -1);
 			}
+		}, true);
+
+		document.addEventListener('keyup', (event) => {
+			if (event.code !== 'Space' || this.space_pan_tool == null) {
+				return;
+			}
+
+			//end any in-progress pan drag before restoring the previous tool
+			var pan_tool = app.GUI.GUI_tools.tools_modules['pan'].object;
+			if (pan_tool && pan_tool.is_drag) {
+				pan_tool.mouseup();
+			}
+			var restore_tool = this.space_pan_tool;
+			this.space_pan_tool = null;
+			event.preventDefault();
+			event.stopImmediatePropagation();
+			app.GUI.GUI_tools.activate_tool(restore_tool);
 		}, true);
 	}
 

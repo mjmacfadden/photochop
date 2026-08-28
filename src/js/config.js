@@ -34,6 +34,10 @@ config.guides = [];
 config.ruler_active = false;
 config.enable_autoresize_by_default = true;
 
+//Screen-px margin around the document on the transform-controls overlay canvas,
+//so selection/transform handles stay visible even when a layer extends past the canvas edge.
+config.TRANSFORM_MARGIN = 300;
+
 // Renderer selection: 'auto' | 'canvas2d' | 'webgl'
 // 'auto' tries WebGL first, falls back to Canvas 2D
 config.RENDERER = 'auto';
@@ -539,6 +543,11 @@ config.TOOLS = [
 			border_color: '#555555',
 			fill_color: '#aaaaaa',
 		},
+	},
+	{
+		name: 'pan',
+		title: 'Pan Tool',
+		attributes: {},
 	},
 ];
 

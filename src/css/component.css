@@ -694,7 +694,7 @@ button img{
     content: '';
 }
 .ui_toggle_button[aria-pressed="true"]:before {
-    background-color: #2a6bb5;
+    background-color: #383838;
     background-image: url('data:image/svg+xml;utf8,<svg width="0.7em" height="1em" viewBox="0 0 16 16" class="bi bi-check2" fill="white" xmlns="http://www.w3.org/2000/svg"><path fill-rule="evenodd" d="M13.854 3.646a.5.5 0 0 1 0 .708l-7 7a.5.5 0 0 1-.708 0l-3.5-3.5a.5.5 0 1 1 .708-.708L6.5 10.293l6.646-6.647a.5.5 0 0 1 .708 0z"/></svg>');
 }
 
@@ -712,7 +712,7 @@ button img{
 	font-size: 11px;
 }
 .media-paging button.selected{
-	background-color: #2a6bb5;
+	background-color: #383838;
 	color: #ffffff;
 }
 
@@ -726,7 +726,7 @@ button img{
     font-size: 11px;
 }
 #global_search_results .search-result.active{
-    background-color: #2a6bb5;
+    background-color: #383838;
     color: #ffffff;
     border-radius: 2px;
 }

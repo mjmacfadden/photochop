@@ -216,13 +216,14 @@ class Base_layers_class {
 
 				// Composite WebGL output onto main canvas
 				// The WebGL canvas contains the composited layers at document
-				// resolution. We draw it with the zoom transform applied.
+				// resolution. Apply the zoomView transform (zoom + pan) so the
+				// visible area follows navigator/pan/zoom like the 2D path.
 				var glCanvas = renderer.getCanvas();
 				if (glCanvas) {
 					this.ctx.save();
-					zoomView.canvasDefault();
+					zoomView.apply();
 					this.ctx.imageSmoothingEnabled = (config.ZOOM < 1);
-					this.ctx.drawImage(glCanvas, 0, 0, config.WIDTH * config.ZOOM, config.HEIGHT * config.ZOOM);
+					this.ctx.drawImage(glCanvas, 0, 0, config.WIDTH, config.HEIGHT);
 					this.ctx.restore();
 					zoomView.apply();
 				}

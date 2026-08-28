@@ -13,7 +13,7 @@
 	--header-background-color: #1e1e1e;
 	--button-background-color: #3c3c3c;
 	--button-background-color-hover: #505050;
-	--button-background-color-active: #2a6bb5;
+	--button-background-color-active: #383838;
 	--button-shadow-color: rgba(0, 0, 0, 0.4);
 	--button-text-color-active: #ffffff;
 	--button-border-radius: 2px;
@@ -31,7 +31,7 @@
 	--menu-icons-filter-active: none;
 	--menu-text-color: #cccccc;
 	--number-input-arrow-width: 1.6rem;
-	--background-color-active: #2a6bb5;
+	--background-color-active: #383838;
 	--background-color-hover: #404040;
 	--text-color-active: #ffffff;
 	--border-color: #505050;

@@ -189,6 +189,10 @@ const menuDefinition = [
 				target: 'view/ruler.ruler'
 			},
 			{
+				name: 'Preview',
+				target: 'view/preview.preview'
+			},
+			{
 				divider: true
 			},
 			{

@@ -69,6 +69,8 @@ export class Activate_tool_action extends Base_action {
 					middleArea.classList.add('tool-' + config.TOOL.name);
 				}
 			}
+			// Toggle pan tool class on body (grab/grabbing cursor)
+			document.body.classList.toggle('tool-pan', config.TOOL && config.TOOL.name === 'pan');
 
 			app.GUI.GUI_tools.show_action_attributes();
 			app.GUI.GUI_tools.Helper.setCookie('active_tool', app.GUI.GUI_tools.active_tool);
@@ -140,6 +142,8 @@ export class Activate_tool_action extends Base_action {
 				middleArea.classList.add('tool-' + config.TOOL.name);
 			}
 		}
+		// Toggle pan tool class on body (grab/grabbing cursor)
+		document.body.classList.toggle('tool-pan', config.TOOL && config.TOOL.name === 'pan');
 
 		// Show brush cursor immediately if switching to a brush tool
 		if (brushTools.includes(config.TOOL.name)) {
