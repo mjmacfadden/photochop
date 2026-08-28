@@ -97,6 +97,11 @@ class Selection_class extends Base_tools_class {
 				e.preventDefault();
 				this.select_all();
 			}
+			if (code == 68 && (e.ctrlKey == true || e.metaKey)) {
+				//Ctrl+D - deselect
+				e.preventDefault();
+				this.clear_selection();
+			}
 		}, false);
 	}
 

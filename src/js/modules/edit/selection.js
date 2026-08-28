@@ -18,6 +18,10 @@ class Edit_selection_class {
 		this.Selection.select_all();
 	}
 
+	deselect() {
+		this.Selection.clear_selection();
+	}
+
 	delete() {
 		this.Selection.delete_selection();
 	}

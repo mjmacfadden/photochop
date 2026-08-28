@@ -44,14 +44,14 @@ class Base_state_class {
 			if (this.Helper.is_input(event.target))
 				return;
 
-			if (key == "z" && (event.ctrlKey == true || event.metaKey)) {
-				// Undo
-				this.undo();
+			if (key == "z" && (event.ctrlKey == true || event.metaKey) && event.shiftKey) {
+				// Redo (must be checked before undo - Ctrl+Shift+Z also matches Ctrl+Z)
+				this.redo();
 				event.preventDefault();
 			}
-			if (key == "z" && (event.ctrlKey == true || event.metaKey) && event.shiftKey) {
-				// Redo
-				this.redo();
+			else if (key == "z" && (event.ctrlKey == true || event.metaKey)) {
+				// Undo
+				this.undo();
 				event.preventDefault();
 			}
 		}, false);

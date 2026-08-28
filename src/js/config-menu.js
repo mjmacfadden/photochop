@@ -131,6 +131,11 @@ const menuDefinition = [
 				name: 'Select All',
 				shortcut: 'Ctrl+A',
 				target: 'edit/selection.select_all'
+			},
+			{
+				name: 'Deselect',
+				shortcut: 'Ctrl+D',
+				target: 'edit/selection.deselect'
 			}
 		]
 	},
@@ -303,7 +308,7 @@ const menuDefinition = [
 			},
 			{
 				name: 'Duplicate',
-				shortcut: 'D',
+				shortcut: 'Ctrl+J',
 				target: 'layer/duplicate.duplicate'
 			},
 			{

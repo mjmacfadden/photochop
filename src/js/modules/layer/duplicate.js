@@ -28,8 +28,8 @@ class Layer_duplicate_class {
 			if (this.Helper.is_input(event.target))
 				return;
 
-			if (code == 68) {
-				//D - duplicate
+			if (code == 74 && (event.ctrlKey == true || event.metaKey)) {
+				//Ctrl+J - duplicate layer
 				this.duplicate();
 				event.preventDefault();
 			}
