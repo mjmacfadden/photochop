@@ -138,10 +138,12 @@ const menuDefinition = [
 				children: [
 					{
 						name: 'Zoom In',
+						shortcut: 'Ctrl + +',
 						target: 'view/zoom.in'
 					},
 					{
 						name: 'Zoom Out',
+						shortcut: 'Ctrl + -',
 						target: 'view/zoom.out'
 					},
 					{
@@ -153,6 +155,7 @@ const menuDefinition = [
 					},
 					{
 						name: 'Fit Window',
+						shortcut: 'Ctrl + 0',
 						target: 'view/zoom.auto'
 					}
 				]
@@ -182,6 +185,7 @@ const menuDefinition = [
 			},
 			{
 				name: 'Ruler',
+				shortcut: 'Ctrl + R',
 				target: 'view/ruler.ruler'
 			},
 			{

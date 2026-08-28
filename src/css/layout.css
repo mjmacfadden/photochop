@@ -475,7 +475,7 @@ IMPORTANT: any new icon should also must be added on /service-worker.js + its ve
 /* preview */
 .canvas_preview_wrapper{
 	position:relative;
-	height:80px;
+	height:100px;
 	margin: 5px 5px 8px 5px;
 }
 .canvas_preview_details{
@@ -927,14 +927,14 @@ IMPORTANT: any new icon should also must be added on /service-worker.js + its ve
 	position: absolute;
 	left:0;
 	top: 20px;
-	background-color: #ccc;
+	background-color: #303030;
 }
 .ruler_top{
 	display: none;
 	position: absolute;
 	left: 20px;
 	top:0;
-	background-color: #ccc;
+	background-color: #303030;
 }
 .middle_area{
 	position: relative;

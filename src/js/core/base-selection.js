@@ -8,7 +8,14 @@ import config from './../config.js';
 var instance = null;
 var settings_all = [];
 
-const handle_size = 12;
+const handle_size = 8;
+
+//Rotate cursor - used when hovering just outside the selection bounds.
+//The URL is resolved relative to the document root (see layout.css icon refs).
+const ROTATE_CURSOR = "url('images/icons/rotate.svg') 12 12, default";
+
+//Thickness (in screen px) of the rotation ring just outside the layer bounds.
+const rotate_zone = 12;
 
 const DRAG_TYPE_TOP = 1;
 const DRAG_TYPE_BOTTOM = 2;
@@ -47,13 +54,14 @@ class Base_selection_class {
 		this.ctx = ctx;
 		this.mouse_lock = null;
 		this.selected_obj_positions = {};
-		this.selected_obj_rotate_position = {};
 		this.selected_object_drag_type = null;
 		this.click_details = {};
 		this.is_touch = false;
 		// True if dragging from inside canvas area
 		this.is_drag = false;
 		this.current_angle = null;
+		// state captured when a rotate drag starts (for relative rotation)
+		this.rotate_drag = null;
 		// marching ants animation state
 		this.ant_offset = 0;
 		this.ant_keep_rendering = false;
@@ -151,14 +159,6 @@ class Base_selection_class {
 		return settings;
 	}
 
-	calcRotateDistanceFromX(layerW) {
-		const block_size = handle_size / config.ZOOM;
-	
-		return Math.max(
-		  Math.min(layerW * 0.9, Math.abs(layerW - 2 * block_size)),
-		  layerW / 2 - block_size / 2
-		);
-	}
 	/**
 	 * marks object as selected, and draws corners
 	 */
@@ -189,6 +189,11 @@ class Base_selection_class {
 			return;
 		}
 
+		//locked layers never show transform controls
+		if (settings.data.locked === true) {
+			return;
+		}
+
 		var x = settings.data.x;
 		var y = settings.data.y;
 		var w = settings.data.width;
@@ -201,12 +206,10 @@ class Base_selection_class {
 
 		var block_size_default = handle_size / config.ZOOM;
 
-		if (config.ZOOM != 1) {
-			x = Math.round(x);
-			y = Math.round(y);
-			w = Math.round(w);
-			h = Math.round(h);
-		}
+		//NOTE: x/y/w/h are intentionally NOT rounded - rounding at non-1 zoom
+		//shifts the bounding box off the layer's pixel edges, introducing
+		//padding/misalignment when zooming.
+
 		var block_size = block_size_default;
 		var corner_offset = (block_size / 2.4);
 		var middle_offset = (block_size / 1.9);
@@ -220,8 +223,8 @@ class Base_selection_class {
 			isRotated = true;
 			this.ctx.translate(data.x + data.width / 2, data.y + data.height / 2);
 			this.ctx.rotate(data.rotate * Math.PI / 180);
-			x = Math.round(-data.width / 2);
-			y = Math.round(-data.height / 2);
+			x = -data.width / 2;
+			y = -data.height / 2;
 		}
 
 		//fill
@@ -233,14 +236,11 @@ class Base_selection_class {
 		const wholeLineWidth = 2 / config.ZOOM;
 		const halfLineWidth = wholeLineWidth / 2;
 
-		//borders
+		//borders - centered on the layer bounds so no padding is added
 		if (settings.enable_borders == true && (x != 0 || y != 0 || w != config.WIDTH || h != config.HEIGHT)) {
 			this.ctx.lineWidth = wholeLineWidth;
-			this.ctx.strokeStyle = 'rgb(255, 255, 255)';
-			this.ctx.strokeRect(x - halfLineWidth, y - halfLineWidth, w + wholeLineWidth, h + wholeLineWidth);
-			this.ctx.lineWidth = halfLineWidth;
-			this.ctx.strokeStyle = 'rgb(0, 0, 0)';
-			this.ctx.strokeRect(x - wholeLineWidth, y - wholeLineWidth, w + (wholeLineWidth * 2), h + (wholeLineWidth * 2));
+			this.ctx.strokeStyle = '#3f8ff7';
+			this.ctx.strokeRect(x, y, w, h);
 		}
 
 		//show crop lines
@@ -284,77 +284,33 @@ class Base_selection_class {
 		const hitsRightEdge = isRotated ? false : x + w > config.WIDTH - handle_size;
 		const hitsBottomEdge = isRotated ? false : y + h > config.HEIGHT - handle_size;
 
-		//draw corners
+		//draw corners - square handles with blue outline, white fill
 		var corner = (x, y, dx, dy, drag_type, cursor) => {
-			var angle = 0;
-			if (settings.data.rotate != null && settings.data.rotate != 0) {
-				angle = settings.data.rotate;
-			}
+			this.ctx.strokeStyle = "#3f8ff7";
+			this.ctx.fillStyle = "#ffffff";
+			this.ctx.lineWidth = 1 / config.ZOOM;
 
-			if (settings.enable_controls == false || angle != 0) {
-				this.ctx.strokeStyle = "rgba(0, 0, 0, 0.4)";
-				this.ctx.fillStyle = "rgba(255, 255, 255, 0.8)";
-			}
-			else {
-				this.ctx.strokeStyle = "#000000";
-				this.ctx.fillStyle = "#ffffff";
-			}
-			this.ctx.lineWidth = wholeLineWidth;
+			var center_x = x + dx * block_size;
+			var center_y = y + dy * block_size;
+			var half = block_size / 2;
 
 			//create path
-			const circle = new Path2D();
-			circle.arc(x + dx * block_size, y + dy * block_size, block_size / 2, 0, 2 * Math.PI);
+			const path = new Path2D();
+			path.rect(center_x - half, center_y - half, block_size, block_size);
 
 			//draw
-			this.ctx.fill(circle);
-			this.ctx.stroke(circle);
+			this.ctx.fill(path);
+			this.ctx.stroke(path);
 
 			//register position
 			this.selected_obj_positions[drag_type] = {
 				cursor: cursor,
-				path: circle,
+				path: path,
 			};
 		};
 
-		//draw rotation
-		var draw_rotation = () => {
-			var settings = this.find_settings();
-
-			if (settings.data === null
-				|| settings.data.status == 'draft'
-				|| settings.data.rotate === null
-				|| (settings.data.hide_selection_if_active === true && settings.data.type == config.TOOL.name)) {
-				return;
-			}
-			
-			var r_x = x + this.calcRotateDistanceFromX(w) + corner_offset + wholeLineWidth;
-			var r_y = y - corner_offset - wholeLineWidth;
-			var r_dx =  hitsRightEdge ? -0.5 : 0;
-			var r_dy = hitsTopEdge ? 0.5 : 0;
-
-			this.ctx.strokeStyle = "#000000";
-			this.ctx.fillStyle = "#d0d62a";
-			this.ctx.lineWidth = wholeLineWidth;
-
-			//create path
-			const circle = new Path2D();
-			circle.arc(r_x + r_dx * block_size, r_y + r_dy * block_size, block_size / 2, 0, 2 * Math.PI);
-
-			//draw
-			this.ctx.fill(circle);
-			this.ctx.stroke(circle);
-
-			//register position
-			this.selected_obj_rotate_position = {
-				cursor: "pointer",
-				path: circle,
-			};
-
-		};
-		if (settings.enable_rotation == true) {
-			draw_rotation();
-		}
-
+		//stack (custom) - rotation activated by hovering just outside the layer,
+		//so no dedicated rotation handle is drawn
 		if (settings.enable_controls == true) {
 			corner(x - corner_offset - wholeLineWidth, y - corner_offset - wholeLineWidth, hitsLeftEdge ? 0.5 : 0, hitsTopEdge ? 0.5 : 0, DRAG_TYPE_LEFT | DRAG_TYPE_TOP, 'nwse-resize');
 			corner(x + w + corner_offset + wholeLineWidth, y - corner_offset - wholeLineWidth, hitsRightEdge ? -0.5 : 0, hitsTopEdge ? 0.5 : 0, DRAG_TYPE_RIGHT | DRAG_TYPE_TOP, 'nesw-resize');
@@ -629,6 +585,11 @@ class Base_selection_class {
 			return;
 		}
 
+		//locked layers cannot be moved, scaled or rotated
+		if (data.locked === true) {
+			return;
+		}
+
 		this.ctx.save();
 		if (data.rotate != null && data.rotate != 0) {
 			this.ctx.translate(data.x + data.width / 2, data.y + data.height / 2);
@@ -675,7 +636,7 @@ class Base_selection_class {
 			const allowNegativeDimensions = settings.data.render_function
 				&& ['line', 'arrow', 'gradient'].includes(settings.data.render_function[0]);
 
-			mainWrapper.style.cursor = "pointer";
+			mainWrapper.style.cursor = drag_type == 'rotate' ? ROTATE_CURSOR : "pointer";
 			
 			var is_ctrl = false;
 			if (e.ctrlKey == true || e.metaKey) {
@@ -697,19 +658,25 @@ class Base_selection_class {
 			else if(is_drag_type_left) mainWrapper.style.cursor = "ew-resize";
 
 			if(drag_type == 'rotate'){
-				//rotate
-				var dx = x + this.calcRotateDistanceFromX(w) - (x + w / 2);
-				var dy = h / 2;
-				var original_angle = Math.atan2(dy, dx) / Math.PI * 180; //compensate rotation icon angle
+				//rotate relatively to where the drag started - no jump
+				const start = this.rotate_drag;
+				if (start) {
+					const cx = start.cx;
+					const cy = start.cy;
+					const start_angle = Math.atan2(start.start_y - cy, start.start_x - cx) / Math.PI * 180;
+					const cur_angle = Math.atan2(mouse.y - cy, mouse.x - cx) / Math.PI * 180;
+					//wrap the delta to [-180, 180) so crossing the ±180° boundary is smooth
+					const delta = ((cur_angle - start_angle + 540) % 360) - 180;
 
-				var dx = mouse.x - (x + w / 2);
-				var dy = mouse.y - (y + h / 2);
-				var angle = Math.atan2(dy, dx) / Math.PI * 180 + original_angle;
+					let angle = start.initial_rotate + delta;
+					//snap to 15° increments while holding shift
+					if (e.shiftKey) {
+						angle = Math.round(angle / 15) * 15;
+					}
 
-				//settings.data.rotate = angle;
-				this.current_angle = angle;
-
-				config.need_render = true;
+					this.current_angle = angle;
+					config.need_render = true;
+				}
 			}
 			else if (e.buttons == 1 || typeof e.buttons == "undefined") {
 				// Do transformations
@@ -775,6 +742,7 @@ class Base_selection_class {
 		if (event_type == 'mouseup' && this.mouse_lock == 'selected_object_actions') {
 			//reset
 			this.mouse_lock = null;
+			this.rotate_drag = null;
 		}
 
 		if (!this.mouse_lock) {
@@ -783,10 +751,12 @@ class Base_selection_class {
 				mainWrapper.style.cursor = "move";
 			}
 
+			let handleMatched = false;
 			for (let current_drag_type in this.selected_obj_positions) {
 				const position = this.selected_obj_positions[current_drag_type];
 				if (position.path && this.ctx.isPointInPath(position.path, mouse.x, mouse.y)) {
 					// match
+					handleMatched = true;
 					if (event_type == 'mousedown') {
 						if (e.buttons == 1 || typeof e.buttons == "undefined") {
 							this.mouse_lock = 'selected_object_actions';
@@ -799,18 +769,44 @@ class Base_selection_class {
 				}
 			}
 
-			//rotate?
-			const position = this.selected_obj_rotate_position;
-			if (position.path && this.ctx.isPointInPath(position.path, mouse.x, mouse.y)) {
-				//match
-				if (event_type == 'mousedown') {
-					if (e.buttons == 1 || typeof e.buttons == "undefined") {
-						this.mouse_lock = 'selected_object_actions';
-						this.selected_object_drag_type = "rotate";
+			//rotate? - cursor just outside the layer bounds (ring zone)
+			if (!handleMatched && settings.enable_rotation == true) {
+				const z = rotate_zone / config.ZOOM;
+				const rot_rad = (data.rotate || 0) * Math.PI / 180;
+				const cosA = Math.cos(-rot_rad);
+				const sinA = Math.sin(-rot_rad);
+
+				//project the mouse into the layer's local (unrotated) space -
+				//pure math, independent of any transform on the context
+				const rx = mouse.x - (x + w / 2);
+				const ry = mouse.y - (y + h / 2);
+				const lx = rx * cosA - ry * sinA;
+				const ly = rx * sinA + ry * cosA;
+				const hw = w / 2;
+				const hh = h / 2;
+
+				const inOuter = lx > -hw - z && lx < hw + z && ly > -hh - z && ly < hh + z;
+				const inInner = lx > -hw && lx < hw && ly > -hh && ly < hh;
+
+				if (inOuter && !inInner) {
+					//match
+					if (event_type == 'mousedown') {
+						if (e.buttons == 1 || typeof e.buttons == "undefined") {
+							this.mouse_lock = 'selected_object_actions';
+							this.selected_object_drag_type = "rotate";
+							//remember where the drag started so rotation is relative
+							this.rotate_drag = {
+								cx: x + w / 2,
+								cy: y + h / 2,
+								start_x: mouse.x,
+								start_y: mouse.y,
+								initial_rotate: data.rotate || 0,
+							};
+						}
 					}
-				}
-				if (event_type == 'mousemove') {
-					mainWrapper.style.cursor = position.cursor;
+					if (event_type == 'mousemove') {
+						mainWrapper.style.cursor = ROTATE_CURSOR;
+					}
 				}
 			}
 

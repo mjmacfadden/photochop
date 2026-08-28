@@ -102,7 +102,7 @@ class View_ruler_class {
 		var ctx_left = ruler_left.getContext("2d");
 		var ctx_top = ruler_top.getContext("2d");
 
-		var color = '#111';
+		var color = '#a0a0a0';
 		var size = 15;
 
 		//calc step
@@ -124,6 +124,7 @@ class View_ruler_class {
 
 		//left
 		ctx_left.strokeStyle = color;
+		ctx_left.fillStyle = color;
 		ctx_left.lineWidth = 1;
 		ctx_left.font = "11px Arial";
 
@@ -164,6 +165,7 @@ class View_ruler_class {
 
 		//top
 		ctx_top.strokeStyle = color;
+		ctx_top.fillStyle = color;
 		ctx_top.lineWidth = 1;
 		ctx_top.font = "11px Arial";
 

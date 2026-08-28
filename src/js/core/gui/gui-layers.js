@@ -307,7 +307,7 @@ class GUI_layers_class {
 		});
 
 		document.getElementById('status_delete_layer').addEventListener('click', function () {
-			if (config.layer) {
+			if (config.layer && config.layer.locked !== true) {
 				app.State.do_action(
 					new app.Actions.Delete_layer_action(config.layer.id)
 				);

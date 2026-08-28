@@ -41,9 +41,10 @@ class Select_tool_class extends Base_tools_class {
 
 	on_update(settings) {
 		if (settings.key === 'show_transform_controls') {
-			this.Base_selection.settings.enable_borders = settings.value;
-			this.Base_selection.settings.enable_controls = settings.value;
-			this.Base_selection.settings.enable_rotation = settings.value;
+			const sel = this.Base_selection.find_settings();
+			sel.enable_borders = settings.value;
+			sel.enable_controls = settings.value;
+			sel.enable_rotation = settings.value;
 			config.need_render = true;
 		}
 	}
@@ -97,7 +98,7 @@ class Select_tool_class extends Base_tools_class {
 				this.move(-1, 0, event);
 			}
 			if (k == "Delete") {
-				if (config.TOOL.name == this.name) {
+				if (config.TOOL.name == this.name && config.layer.locked !== true) {
 					app.State.do_action(
 						new app.Actions.Delete_layer_action(config.layer.id)
 					);
@@ -187,6 +188,11 @@ class Select_tool_class extends Base_tools_class {
 		else {
 			this.moving = true;
 			await this.auto_select_object(e);
+			if (config.layer.locked === true) {
+				//locked layers can be selected but not moved or resized
+				this.moving = false;
+				return;
+			}
 			this.Base_selection.find_settings().keep_ratio = config.layer.type === 'image';
 			this.saved = false;
 		}
@@ -540,6 +546,9 @@ class Select_tool_class extends Base_tools_class {
 	}
 
 	move(direction_x, direction_y, event) {
+		if (config.layer.locked === true) {
+			return;
+		}
 		if (!this.keyboard_move_start_position) {
 			this.keyboard_move_start_position = {
 				x: config.layer.x,

@@ -7,6 +7,7 @@
 import app from './../../app.js';
 import config from './../../config.js';
 import Helper_class from './../../libs/helpers.js';
+import View_ruler_class from './../../modules/view/ruler.js';
 
 class GUI_shortcuts_class {
 
@@ -37,6 +38,44 @@ class GUI_shortcuts_class {
 	load() {
 		document.addEventListener('keydown', (event) => {
 			if (this.Helper.is_input(event.target)) return;
+
+			// Ctrl/Cmd + 0 = Fit window
+			if ((event.ctrlKey || event.metaKey) && !event.altKey
+				&& (event.code === 'Digit0' || event.code === 'Numpad0')) {
+				event.preventDefault();
+				event.stopImmediatePropagation();
+				if (app.GUI && app.GUI.GUI_preview) {
+					app.GUI.GUI_preview.zoom_auto();
+				}
+				return;
+			}
+
+			// Ctrl/Cmd + +/- = Zoom in/out
+			if ((event.ctrlKey || event.metaKey) && !event.altKey
+				&& (event.code === 'Equal' || event.code === 'Minus'
+					|| event.code === 'NumpadAdd' || event.code === 'NumpadSubtract')) {
+				event.preventDefault();
+				event.stopImmediatePropagation();
+				if (app.GUI && app.GUI.GUI_preview) {
+					const isIn = event.code === 'Equal' || event.code === 'NumpadAdd';
+					app.GUI.GUI_preview.zoom(isIn ? 1 : -1);
+				}
+				return;
+			}
+
+			// Ctrl/Cmd + R = Toggle rulers
+			if ((event.ctrlKey || event.metaKey) && !event.altKey && !event.shiftKey && event.code === 'KeyR') {
+				event.preventDefault();
+				event.stopImmediatePropagation();
+				try {
+					new View_ruler_class().ruler();
+				}
+				catch (err) {
+					//ruler not initialized yet
+				}
+				return;
+			}
+
 			if (event.ctrlKey || event.metaKey || event.altKey) return;
 
 			const key = event.key.toLowerCase();
