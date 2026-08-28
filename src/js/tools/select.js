@@ -4,6 +4,7 @@ import Base_tools_class from './../core/base-tools.js';
 import Base_layers_class from './../core/base-layers.js';
 import Base_selection_class from './../core/base-selection.js';
 import Helper_class from './../libs/helpers.js';
+import Mask_class from './../modules/mask/mask.js';
 import Dialog_class from './../libs/popup.js';
 
 class Select_tool_class extends Base_tools_class {
@@ -13,6 +14,7 @@ class Select_tool_class extends Base_tools_class {
 		this.Base_layers = new Base_layers_class();
 		this.POP = new Dialog_class();
 		this.Helper = new Helper_class();
+		this.Mask = new Mask_class();
 		this.ctx = ctx;
 		this.name = 'select';
 		this.saved = false;
@@ -107,8 +109,16 @@ class Select_tool_class extends Base_tools_class {
 					let y = config.layer.y;
 					config.layer.x = this.keyboard_move_start_position.x;
 					config.layer.y = this.keyboard_move_start_position.y;
-					app.State.do_action(
+					var keyboard_actions = [
 						new app.Actions.Update_layer_action(config.layer.id, { x, y })
+					];
+					keyboard_actions = keyboard_actions.concat(
+						this.Mask.get_linked_mask_actions(config.layer,
+							{ x: this.keyboard_move_start_position.x, y: this.keyboard_move_start_position.y, width: config.layer.width, height: config.layer.height },
+							{ x, y, width: config.layer.width, height: config.layer.height })
+					);
+					app.State.do_action(
+						new app.Actions.Bundle_action('move_layer', 'Move Layer', keyboard_actions)
 					);
 					this.keyboard_move_start_position = null;
 				}
@@ -231,16 +241,22 @@ class Select_tool_class extends Base_tools_class {
 			config.layer.y = this.mousedown_dimensions.y;
 			config.layer.width = this.mousedown_dimensions.width;
 			config.layer.height = this.mousedown_dimensions.height;
-			if (
-				this.mousedown_dimensions.x !== x || this.mousedown_dimensions.y !== y ||
+			if (this.mousedown_dimensions.x !== x || this.mousedown_dimensions.y !== y ||
 				this.mousedown_dimensions.width !== width || this.mousedown_dimensions.height !== height
 			) {
+				var resize_actions = [
+					new app.Actions.Update_layer_action(config.layer.id, {
+						x, y, width, height
+					})
+				];
+				//keep a linked mask in sync
+				resize_actions = resize_actions.concat(
+					this.Mask.get_linked_mask_actions(config.layer, this.mousedown_dimensions, {
+						x, y, width, height
+					})
+				);
 				app.State.do_action(
-					new app.Actions.Bundle_action('resize_layer', 'Resize Layer', [
-						new app.Actions.Update_layer_action(config.layer.id, {
-							x, y, width, height
-						})
-					])
+					new app.Actions.Bundle_action('resize_layer', 'Resize Layer', resize_actions)
 				);
 			}
 
@@ -277,13 +293,23 @@ class Select_tool_class extends Base_tools_class {
 			}
 
 			if (this.mousedown_dimensions.x !== new_x || this.mousedown_dimensions.y !== new_y) {
+				var move_actions = [
+					new app.Actions.Update_layer_action(config.layer.id, {
+						x: new_x,
+						y: new_y
+					})
+				];
+				//keep a linked mask in sync
+				move_actions = move_actions.concat(
+					this.Mask.get_linked_mask_actions(config.layer, this.mousedown_dimensions, {
+						x: new_x,
+						y: new_y,
+						width: this.mousedown_dimensions.width,
+						height: this.mousedown_dimensions.height
+					})
+				);
 				app.State.do_action(
-					new app.Actions.Bundle_action('move_layer', 'Move Layer', [
-						new app.Actions.Update_layer_action(config.layer.id, {
-							x: new_x,
-							y: new_y
-						})
-					])
+					new app.Actions.Bundle_action('move_layer', 'Move Layer', move_actions)
 				);
 			}
 		}

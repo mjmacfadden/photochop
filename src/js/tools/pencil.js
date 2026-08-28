@@ -2,12 +2,14 @@ import app from './../app.js';
 import config from './../config.js';
 import Base_tools_class from './../core/base-tools.js';
 import Base_layers_class from './../core/base-layers.js';
+import Mask_class from './../modules/mask/mask.js';
 
 class Pencil_class extends Base_tools_class {
 
 	constructor(ctx) {
 		super();
 		this.Base_layers = new Base_layers_class();
+		this.Mask = new Mask_class();
 		this.name = 'pencil';
 		this.layer = {};
 		this.params_hash = false;
@@ -58,6 +60,11 @@ class Pencil_class extends Base_tools_class {
 		var mouse = this.get_mouse_info(e);
 		if (mouse.click_valid == false)
 			return;
+
+		if (config.mask_active === true && config.layer.mask != null) {
+			this.Mask.brush(this, e, 'start');
+			return;
+		}
 
 		var params_hash = this.get_params_hash();
 		var opacity = Math.round(config.ALPHA / 255 * 100);
@@ -110,6 +117,11 @@ class Pencil_class extends Base_tools_class {
 			return;
 		}
 
+		if (config.mask_active === true && config.layer.mask != null) {
+			this.Mask.brush(this, e, 'move');
+			return;
+		}
+
 		//detect line size
 		var size = params.size;
 		var new_size = size;
@@ -128,6 +140,11 @@ class Pencil_class extends Base_tools_class {
 	}
 
 	mouseup(e) {
+		if (config.mask_active === true && config.layer.mask != null) {
+			this.Mask.brush(this, e, 'end');
+			return;
+		}
+
 		var mouse = this.get_mouse_info(e);
 		var params = this.getParams();
 		if (mouse.click_valid == false) {

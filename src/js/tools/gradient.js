@@ -3,6 +3,7 @@ import config from './../config.js';
 import Base_tools_class from './../core/base-tools.js';
 import Base_layers_class from './../core/base-layers.js';
 import Helper_class from './../libs/helpers.js';
+import Mask_class from './../modules/mask/mask.js';
 
 class Gradient_class extends Base_tools_class {
 
@@ -10,6 +11,7 @@ class Gradient_class extends Base_tools_class {
 		super();
 		this.Base_layers = new Base_layers_class();
 		this.Helper = new Helper_class();
+		this.Mask = new Mask_class();
 		this.ctx = ctx;
 		this.name = 'gradient';
 		this.layer = {};
@@ -24,6 +26,11 @@ class Gradient_class extends Base_tools_class {
 		var params = this.getParams();
 		if (mouse.click_valid == false)
 			return;
+
+		if (config.mask_active === true && config.layer.mask != null) {
+			this.Mask.gradient_start(this, e);
+			return;
+		}
 
 		var name = this.name;
 		var is_vector = false;
@@ -65,6 +72,11 @@ class Gradient_class extends Base_tools_class {
 			return;
 		}
 
+		if (config.mask_active === true && config.layer.mask != null) {
+			config.need_render = true;
+			return;
+		}
+
 		var width = mouse.x - this.layer.x;
 		var height = mouse.y - this.layer.y;
 
@@ -87,6 +99,11 @@ class Gradient_class extends Base_tools_class {
 		var params = this.getParams();
 		if (mouse.click_valid == false) {
 			config.layer.status = null;
+			return;
+		}
+
+		if (config.mask_active === true && config.layer.mask != null) {
+			this.Mask.gradient_end(this, e);
 			return;
 		}
 

@@ -7,6 +7,7 @@ import app from './../../app.js';
 import config from './../../config.js';
 import Base_layers_class from './../base-layers.js';
 import Helper_class from './../../libs/helpers.js';
+import Mask_class from './../../modules/mask/mask.js';
 import Layer_rename_class from './../../modules/layer/rename.js';
 import Effects_browser_class from './../../modules/effects/browser.js';
 import Layer_duplicate_class from './../../modules/layer/duplicate.js';
@@ -25,11 +26,14 @@ class GUI_layers_class {
 	constructor(ctx) {
 		this.Base_layers = new Base_layers_class();
 		this.Helper = new Helper_class();
+		this.Mask = new Mask_class();
 		this.Layer_rename = new Layer_rename_class();
 		this.Effects_browser = new Effects_browser_class();
 		this.Layer_duplicate = new Layer_duplicate_class();
 		this.Layer_raster = new Layer_raster_class();
 		this.Tools_translate = new Tools_translate_class();
+		this.mask_context_menu = null;
+		this.mask_context_menu_open = false;
 	}
 
 	render_main_layers() {
@@ -53,8 +57,13 @@ class GUI_layers_class {
 				);
 			}
 			else if (target.id == 'layer_name') {
-				if (target.dataset.id == config.layer.id)
+				if (target.dataset.id == config.layer.id) {
+					if (config.mask_active === true) {
+						//exit mask editing - edit the layer instead
+						_this.Mask.set_active(false);
+					}
 					return;
+				}
 				app.State.do_action(
 					new app.Actions.Select_layer_action(target.dataset.id)
 				);
@@ -75,6 +84,53 @@ class GUI_layers_class {
 					}
 				}
 			}
+			else if (target.closest('.mask_thumb') != null) {
+				var layer_id = parseInt(target.closest('.mask_thumb').dataset.id);
+				var mask_layer = app.Layers.get_layer(layer_id);
+				if (mask_layer != null && mask_layer.mask == null) {
+					//no mask yet - placeholder clicked, add reveal-all mask and start editing
+					app.State.do_action(
+						new app.Actions.Add_layer_mask_action(layer_id, true, false)
+					).then(() => {
+						if (config.layer == null || config.layer.id != layer_id) {
+							return app.State.do_action(
+								new app.Actions.Select_layer_action(layer_id)
+							).then(() => {
+								_this.Mask.set_active(true);
+							});
+						}
+						_this.Mask.set_active(true);
+					});
+				}
+				else if (event.shiftKey === true) {
+					//toggle mask enabled state
+					_this.Mask.toggle_enabled(layer_id);
+				}
+				else if (config.layer && config.layer.id == layer_id) {
+					//always enter mask editing (like Photoshop's mask thumbnail)
+					_this.Mask.set_active(true);
+				}
+				else {
+					//select layer, then enter mask editing
+					app.State.do_action(
+						new app.Actions.Select_layer_action(layer_id)
+					).then(() => {
+						_this.Mask.set_active(true);
+					});
+				}
+			}
+			else if (target.closest('.layer_thumb') != null) {
+				var layer_id = parseInt(target.closest('.layer_thumb').dataset.id);
+				if (config.layer && config.layer.id == layer_id && config.mask_active === true) {
+					//main thumbnail clicked - exit mask editing, edit the layer instead
+					_this.Mask.set_active(false);
+				}
+				else if (config.layer == null || config.layer.id != layer_id) {
+					return app.State.do_action(
+						new app.Actions.Select_layer_action(layer_id)
+					);
+				}
+			}
 		});
 
 		document.getElementById('layers_base').addEventListener('dblclick', function (event) {
@@ -84,6 +140,98 @@ class GUI_layers_class {
 			}
 		});
 
+		//right click - mask context menu
+		document.addEventListener('contextmenu', function (event) {
+			if (_this.mask_context_menu_open !== true)
+				return;
+			var target = event.target;
+			if (target.id == 'mask_context_menu_label' || target.closest('#mask_context_menu')) {
+				return;
+			}
+			if (target.closest('#layers_base') && target.closest('.item')) {
+				// the layers_base handler owns right-clicks on layer items
+				return;
+			}
+			_this.hide_mask_context_menu();
+		});
+
+		document.addEventListener('click', function () {
+			if (_this.mask_context_menu_open === true) {
+				_this.hide_mask_context_menu();
+			}
+		});
+
+		document.getElementById('layers_base').addEventListener('contextmenu', function (event) {
+			var item = event.target.closest('.item');
+			if (!item)
+				return;
+			event.preventDefault();
+			var layer_id = parseInt(item.dataset.id);
+			_this.show_mask_context_menu(event.clientX, event.clientY, layer_id);
+		});
+
+	}
+
+	/**
+	 * shows mask context menu near the given coordinates
+	 */
+	show_mask_context_menu(x, y, layer_id) {
+		if (this.mask_context_menu) {
+			this.mask_context_menu.remove();
+		}
+		var layer = app.Layers.get_layer(layer_id);
+		if (!layer)
+			return;
+
+		var menu = document.createElement('div');
+		menu.id = 'mask_context_menu';
+		menu.className = 'mask_context_menu';
+		menu.style.left = x + 'px';
+		menu.style.top = y + 'px';
+
+		var _this = this;
+		var button = function (label, callback) {
+			var b = document.createElement('button');
+			b.className = 'mask_context_menu_item';
+			b.innerHTML = label;
+			b.addEventListener('click', function () {
+				_this.hide_mask_context_menu();
+				callback();
+			});
+			menu.appendChild(b);
+		};
+
+		if (layer.mask == null) {
+			button('Reveal All', () => { _this.Mask.add_mask(layer_id, true, false); });
+			button('Hide All', () => { _this.Mask.add_mask(layer_id, false, false); });
+			button('Reveal Selection', () => { _this.Mask.add_mask(layer_id, true, true); });
+			button('Hide Selection', () => { _this.Mask.add_mask(layer_id, false, true); });
+		}
+		else {
+			button(layer.mask.enabled === false ? 'Enable Mask' : 'Disable Mask',
+				() => { _this.Mask.toggle_enabled(layer_id); });
+			button('Reveal All', () => { _this.Mask.fill_mask(layer_id, true); });
+			button('Hide All', () => { _this.Mask.fill_mask(layer_id, false); });
+			button('Reveal Selection', () => { _this.Mask.fill_mask_from_selection(layer_id, true); });
+			button('Hide Selection', () => { _this.Mask.fill_mask_from_selection(layer_id, false); });
+			button('Apply Mask', () => { _this.Mask.apply_mask(layer_id); });
+			button('Delete Mask', () => { _this.Mask.delete_mask(layer_id); });
+		}
+
+		document.body.appendChild(menu);
+		this.mask_context_menu = menu;
+		this.mask_context_menu_open = true;
+	}
+
+	/**
+	 * hides the mask context menu
+	 */
+	hide_mask_context_menu() {
+		this.mask_context_menu_open = false;
+		if (this.mask_context_menu) {
+			this.mask_context_menu.remove();
+			this.mask_context_menu = null;
+		}
 	}
 
 	set_status_events() {
@@ -148,13 +296,28 @@ class GUI_layers_class {
 					class_extra += ' active';
 				}
 
-				html += '<div class="item ' + class_extra + '">';
+				html += '<div class="item ' + class_extra + '" data-id="' + value.id + '">';
 				if (value.visible == true)
 					html += '	<button class="visibility visible trn" id="visibility" data-id="' + value.id + '" title="Hide"></button>';
 				else
 					html += '	<button class="visibility trn" id="visibility" data-id="' + value.id + '" title="Show"></button>';
 				
-				html += '	<span class="layer_thumb">' + this.get_layer_thumb(value) + '</span>';
+				html += '	<span class="layer_thumb" data-id="' + value.id + '">' + this.get_layer_thumb(value) + '</span>';
+
+				if (value.mask != null) {
+					var mask_class = 'mask_thumb';
+					if (value.id == config.layer.id && config.mask_active === true) {
+						mask_class += ' active_mask';
+					}
+					if (value.mask.enabled === false) {
+						mask_class += ' disabled_mask';
+					}
+					var mask_thumb = this.Mask.get_mask_thumb(value);
+					html += '	<span class="' + mask_class + '" id="mask_thumb" data-id="' + value.id + '" title="Layer mask" style="background-image: url(\'' + mask_thumb + '\')"></span>';
+				}
+				else {
+					html += '	<span class="mask_thumb empty" id="mask_thumb" data-id="' + value.id + '" title="Add layer mask"></span>';
+				}
 				
 				if(value.composition === 'source-atop'){
 					html += '	<button class="arrow_down" data-id="' + value.id + '" ></button>';

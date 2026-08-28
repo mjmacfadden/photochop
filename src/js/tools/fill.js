@@ -3,6 +3,7 @@ import config from './../config.js';
 import Base_tools_class from './../core/base-tools.js';
 import Base_layers_class from './../core/base-layers.js';
 import Helper_class from './../libs/helpers.js';
+import Mask_class from './../modules/mask/mask.js';
 import alertify from './../../../node_modules/alertifyjs/build/alertify.min.js';
 
 class Fill_class extends Base_tools_class {
@@ -11,6 +12,7 @@ class Fill_class extends Base_tools_class {
 		super();
 		this.Base_layers = new Base_layers_class();
 		this.Helper = new Helper_class();
+		this.Mask = new Mask_class();
 		this.ctx = ctx;
 		this.name = 'fill';
 		this.working = false;
@@ -40,6 +42,10 @@ class Fill_class extends Base_tools_class {
 	mousedown(e) {
 		var mouse = this.get_mouse_info(e);
 		if (mouse.click_valid == false) {
+			return;
+		}
+		if (config.mask_active === true && config.layer.mask != null) {
+			this.Mask.fill(this, e);
 			return;
 		}
 		if (config.layer.rotate || 0 > 0) {

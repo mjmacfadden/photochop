@@ -2,6 +2,7 @@ import app from './../../app.js';
 import config from './../../config.js';
 import Base_layers_class from './../../core/base-layers.js';
 import Helper_class from './../../libs/helpers.js';
+import Mask_class from './../../modules/mask/mask.js';
 
 var instance = null;
 
@@ -16,6 +17,7 @@ class Layer_duplicate_class {
 
 		this.Base_layers = new Base_layers_class();
 		this.Helper = new Helper_class();
+		this.Mask = new Mask_class();
 
 		this.set_events();
 	}
@@ -64,6 +66,21 @@ class Layer_duplicate_class {
 		if (params.type == 'image') {
 			//image
 			params.link = config.layer.link.cloneNode(true);
+		}
+
+		if (config.layer.mask != null) {
+			//rebuild the mask - its canvas can not survive JSON stringify
+			var source = this.Mask.get_mask_source(config.layer);
+			var link_canvas = (source != null) ? this.Mask.copy_mask_canvas(source) : config.layer.mask.link;
+			params.mask = {
+				link: link_canvas,
+				x: config.layer.mask.x,
+				y: config.layer.mask.y,
+				width: config.layer.mask.width,
+				height: config.layer.mask.height,
+				enabled: config.layer.mask.enabled,
+				linked: config.layer.mask.linked,
+			};
 		}
 
 		app.State.do_action(

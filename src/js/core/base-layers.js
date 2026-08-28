@@ -11,6 +11,7 @@ import Image_trim_class from "./../modules/image/trim.js";
 import View_ruler_class from "./../modules/view/ruler.js";
 import zoomView from "./../libs/zoomView.js";
 import Helper_class from "./../libs/helpers.js";
+import Mask_class from "./../modules/mask/mask.js";
 import alertify from "./../../../node_modules/alertifyjs/build/alertify.min.js";
 
 var instance = null;
@@ -372,38 +373,112 @@ class Base_layers_class {
 
 		this.pre_render_object(ctx, object);
 
-		//example with canvas object - other types should overwrite this method
-		if (object.type == "image") {
-			//image - default behavior
-			ctx.save();
+		var masked = object.mask != null && object.mask.enabled !== false;
 
-			ctx.translate(object.x + object.width / 2, object.y + object.height / 2);
-			ctx.rotate((object.rotate * Math.PI) / 180);
-			// TODO - Not sure why the check should be with null,
-			// if nothing will break, then better to check if it's just truthy
-			ctx.drawImage(
-				object.link_canvas != null ? object.link_canvas : object.link,
-				-object.width / 2,
-				-object.height / 2,
-				object.width,
-				object.height
+		if (masked === true) {
+			// Render into an offscreen buffer, multiply alpha by the mask,
+			// then composite the result - so filters/opacity/composition on ctx
+			// apply to the masked pixels only.
+			if (!this.Mask) {
+				this.Mask = new Mask_class();
+			}
+			var canvas = this.create_new_canvas(ctx);
+			var bctx = canvas.getContext("2d");
+
+			//mirror the current ctx transform and filter onto the buffer
+			var t = null;
+			if (typeof ctx.getTransform == "function")
+				t = ctx.getTransform();
+			bctx.setTransform(
+				t ? t.a : 1,
+				t ? t.b : 0,
+				t ? t.c : 0,
+				t ? t.d : 1,
+				t ? t.e : 0,
+				t ? t.f : 0
 			);
+			bctx.filter = ctx.filter;
 
-			ctx.restore();
-		} else {
-			//call render function from other module
-			var render_class = object.render_function[0];
-			var render_function = object.render_function[1];
-			if (
-				typeof this.Base_gui.GUI_tools.tools_modules[render_class] !=
-				"undefined"
-			) {
-				this.Base_gui.GUI_tools.tools_modules[render_class].object[
-					render_function
-				](ctx, object, is_preview);
+			//draw the object into the buffer
+			if (object.type == "image") {
+				bctx.save();
+				bctx.translate(
+					object.x + object.width / 2,
+					object.y + object.height / 2
+				);
+				bctx.rotate((object.rotate * Math.PI) / 180);
+				bctx.drawImage(
+					object.link_canvas != null ? object.link_canvas : object.link,
+					-object.width / 2,
+					-object.height / 2,
+					object.width,
+					object.height
+				);
+				bctx.restore();
 			} else {
-				this.render_success = false;
-				console.log("Error: unknown layer type: " + object.type);
+				//call render function from other module
+				var render_class = object.render_function[0];
+				var render_function = object.render_function[1];
+				if (
+					typeof this.Base_gui.GUI_tools.tools_modules[render_class] !=
+					"undefined"
+				) {
+					this.Base_gui.GUI_tools.tools_modules[render_class].object[
+						render_function
+					](bctx, object, is_preview);
+				} else {
+					this.render_success = false;
+					console.log("Error: unknown layer type: " + object.type);
+				}
+			}
+
+			//apply the mask (alpha multiply) on the buffer content
+			bctx.filter = "none";
+			this.Mask.multiply_alpha_by_mask_world(bctx, object);
+
+			//composite the screen-space buffer onto ctx without applying
+			//the zoom transform or the filter a second time
+			ctx.save();
+			ctx.setTransform(1, 0, 0, 1, 0, 0);
+			ctx.filter = "none";
+			ctx.drawImage(canvas, 0, 0);
+			ctx.restore();
+			canvas.width = 1;
+			canvas.height = 1;
+		} else {
+			//example with canvas object - other types should overwrite this method
+			if (object.type == "image") {
+				//image - default behavior
+				ctx.save();
+
+				ctx.translate(object.x + object.width / 2, object.y + object.height / 2);
+				ctx.rotate((object.rotate * Math.PI) / 180);
+				// TODO - Not sure why the check should be with null,
+				// if nothing will break, then better to check if it's just truthy
+				ctx.drawImage(
+					object.link_canvas != null ? object.link_canvas : object.link,
+					-object.width / 2,
+					-object.height / 2,
+					object.width,
+					object.height
+				);
+
+				ctx.restore();
+			} else {
+				//call render function from other module
+				var render_class = object.render_function[0];
+				var render_function = object.render_function[1];
+				if (
+					typeof this.Base_gui.GUI_tools.tools_modules[render_class] !=
+					"undefined"
+				) {
+					this.Base_gui.GUI_tools.tools_modules[render_class].object[
+						render_function
+					](ctx, object, is_preview);
+				} else {
+					this.render_success = false;
+					console.log("Error: unknown layer type: " + object.type);
+				}
 			}
 		}
 

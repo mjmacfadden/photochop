@@ -4,6 +4,7 @@ import Base_layers_class from './../../core/base-layers.js';
 import Base_gui_class from './../../core/base-gui.js';
 import Dialog_class from './../../libs/popup.js';
 import Helper_class from './../../libs/helpers.js';
+import Mask_class from './../../modules/mask/mask.js';
 import Clipboard_class from './../../libs/clipboard.js';
 import alertify from './../../../../node_modules/alertifyjs/build/alertify.min.js';
 import EXIF from './../../../../node_modules/exif-js/exif.js';
@@ -646,6 +647,12 @@ class File_open_class {
 					}
 				}
 			}
+
+			//restore the layer mask (data url -> canvas)
+			if (value.mask != null && typeof value.mask == 'object') {
+				value.mask = await new Mask_class().restore(value, value.mask);
+			}
+
 			actions.push(
 				new app.Actions.Insert_layer_action(value, false)
 			);

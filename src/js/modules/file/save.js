@@ -2,6 +2,7 @@ import app from './../../app.js';
 import config from './../../config.js';
 import Base_layers_class from './../../core/base-layers.js';
 import Helper_class from './../../libs/helpers.js';
+import Mask_class from './../../modules/mask/mask.js';
 import Dialog_class from './../../libs/popup.js';
 import alertify from './../../../../node_modules/alertifyjs/build/alertify.min.js';
 import canvasToBlob from './../../../../node_modules/blueimp-canvas-to-blob/js/canvas-to-blob.min.js';
@@ -683,6 +684,11 @@ class File_save_class {
 			for (var j in config.layers[i]) {
 				if (j[0] == '_' || j == 'link_canvas') {
 					//private data
+					continue;
+				}
+				if (j == 'mask' && config.layers[i].mask != null) {
+					//serialize the mask (canvas -> data url)
+					layer[j] = new Mask_class().serialize(config.layers[i]);
 					continue;
 				}
 

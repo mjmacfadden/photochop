@@ -2,12 +2,14 @@ import app from './../app.js';
 import config from './../config.js';
 import Base_tools_class from './../core/base-tools.js';
 import Base_layers_class from './../core/base-layers.js';
+import Mask_class from './../modules/mask/mask.js';
 
 class Brush_class extends Base_tools_class {
 
 	constructor(ctx) {
 		super();
 		this.Base_layers = new Base_layers_class();
+		this.Mask = new Mask_class();
 		this.name = 'brush';
 		this.layer = {};
 		this.params_hash = false;
@@ -199,6 +201,11 @@ class Brush_class extends Base_tools_class {
 		if (mouse.click_valid == false)
 			return;
 
+		if (config.mask_active === true && config.layer.mask != null) {
+			this.Mask.brush(this, e, 'start');
+			return;
+		}
+
 		var params_hash = this.get_params_hash();
 
 		if (config.layer.type != this.name || params_hash != this.params_hash) {
@@ -288,6 +295,11 @@ class Brush_class extends Base_tools_class {
 			return;
 		}
 
+		if (config.mask_active === true && config.layer.mask != null) {
+			this.Mask.brush(this, e, 'move');
+			return;
+		}
+
 		//in case of undo, recalculate index
 		for(var i = index; i >= 0; i++){
 			if(typeof config.layer.data[index] != "undefined"){
@@ -324,6 +336,11 @@ class Brush_class extends Base_tools_class {
 	}
 
 	mouseup_action(e, index) {
+		if (config.mask_active === true && config.layer.mask != null) {
+			this.Mask.brush(this, e, 'end');
+			return;
+		}
+
 		var mouse = this.get_mouse_info(e);
 		if (mouse.click_valid == false) {
 			config.layer.status = null;

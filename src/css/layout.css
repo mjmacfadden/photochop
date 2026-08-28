@@ -540,7 +540,7 @@ IMPORTANT: any new icon should also must be added on /service-worker.js + its ve
 	display:block;
 	padding: 2px 5px;
 	height: 20px;
-	width: calc(100% - 64px);
+	width: calc(100% - 88px);
 	text-align: left;
 	overflow:hidden;
 	background-color: transparent;
@@ -552,7 +552,7 @@ IMPORTANT: any new icon should also must be added on /service-worker.js + its ve
 	white-space: nowrap;
 }
 .layers_list .item.shorter .layer_name{
-	width: calc(100% - 80px);
+	width: calc(100% - 104px);
 }
 .layers_list .item.active .layer_name{
 	background-color: transparent;
@@ -639,6 +639,66 @@ IMPORTANT: any new icon should also must be added on /service-worker.js + its ve
 .layers_list .item.active .thumb_gradient,
 .layers_list .item.active .thumb_shape{
 	color: #cccccc;
+}
+.layers_list .mask_thumb{
+	display: inline-block;
+	float: left;
+	width: 14px;
+	height: 18px;
+	margin-right: 4px;
+	background-size: contain;
+	background-repeat: no-repeat;
+	background-position: center center;
+	background-color: #333333;
+	border: 1px solid #666666;
+	border-radius: 2px;
+	opacity: 0.8;
+	cursor: pointer;
+}
+.layers_list .mask_thumb.active_mask{
+	border-color: #ffffff;
+	opacity: 1;
+	box-shadow: 0 0 0 1px #ffffff;
+}
+.layers_list .mask_thumb.disabled_mask{
+	opacity: 0.35;
+	border-style: dashed;
+}
+.layers_list .mask_thumb.empty{
+	background-color: #262626;
+	border-style: dashed;
+	border-color: #555555;
+	opacity: 0.6;
+}
+.layers_list .mask_thumb.empty:hover{
+	opacity: 1;
+	border-color: #888888;
+}
+.mask_context_menu{
+	position: fixed;
+	z-index: 1000;
+	min-width: 160px;
+	padding: 4px 0;
+	background: #3c3c3c;
+	border: 1px solid #505050;
+	border-radius: 3px;
+	box-shadow: 2px 2px 8px rgba(0, 0, 0, 0.5);
+	font-size: 12px;
+}
+.mask_context_menu_item{
+	display: block;
+	width: 100%;
+	text-align: left;
+	padding: 5px 12px;
+	background: transparent;
+	border: none;
+	color: #cccccc;
+	cursor: pointer;
+	font-size: 12px;
+}
+.mask_context_menu_item:hover{
+	background: #4a4a4a;
+	color: #ffffff;
 }
 .layers_list .delete{
 	float:right;
