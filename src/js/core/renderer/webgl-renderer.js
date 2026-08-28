@@ -476,9 +476,12 @@ class WebGL_renderer_class {
 				(layer.width || 0) + pad * 2, (layer.height || 0) + pad * 2
 			);
 
-			// Set rotation (convert degrees to radians, negate for WebGL Y-flip)
+			// Set rotation (convert degrees to radians).
+			// Rotation is applied in Y-down document space (same convention as
+			// Canvas 2D ctx.rotate), so no negation is needed even though the
+			// vertex shader flips Y for clip space.
 			gl.uniform1f(this.uniforms.u_rotation,
-				-((layer.rotate || 0) * Math.PI / 180)
+				(layer.rotate || 0) * Math.PI / 180
 			);
 
 			// Set blend mode
