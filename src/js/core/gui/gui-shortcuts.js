@@ -105,16 +105,9 @@ class GUI_shortcuts_class {
 			if (key === 'x') {
 				event.preventDefault();
 				event.stopImmediatePropagation();
-				var tmpColor = config.COLOR;
-				var tmpAlpha = config.ALPHA;
-				config.COLOR = config.COLOR_BG;
-				config.ALPHA = config.ALPHA_BG;
-				config.COLOR_BG = tmpColor;
-				config.ALPHA_BG = tmpAlpha;
-				this.Helper.setCookie('color', config.COLOR);
-				this.Helper.setCookie('color_bg', config.COLOR_BG);
-				app.GUI.GUI_colors.render_selected_color();
-				app.GUI.GUI_tools.update_toolbar_swatches();
+				if (app.GUI && app.GUI.GUI_tools) {
+					app.GUI.GUI_tools.swap_colors();
+				}
 				return;
 			}
 
@@ -122,14 +115,9 @@ class GUI_shortcuts_class {
 			if (key === 'd') {
 				event.preventDefault();
 				event.stopImmediatePropagation();
-				config.COLOR = '#000000';
-				config.ALPHA = 255;
-				config.COLOR_BG = '#ffffff';
-				config.ALPHA_BG = 255;
-				this.Helper.setCookie('color', config.COLOR);
-				this.Helper.setCookie('color_bg', config.COLOR_BG);
-				app.GUI.GUI_colors.render_selected_color();
-				app.GUI.GUI_tools.update_toolbar_swatches();
+				if (app.GUI && app.GUI.GUI_tools) {
+					app.GUI.GUI_tools.default_colors();
+				}
 				return;
 			}
 

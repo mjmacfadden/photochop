@@ -544,7 +544,6 @@ body.tool-pan.pan-dragging #canvas_minipaint{
 	display: flex;
 	flex-direction: column;
 	align-items: center;
-	gap: 3px;
 	padding: 4px 0;
 	margin-top: 4px;
 	border-top: 1px solid #555;
@@ -552,14 +551,14 @@ body.tool-pan.pan-dragging #canvas_minipaint{
 }
 .toolbar-color-swatches-inner {
 	position: relative;
-	width: 24px;
-	height: 24px;
+	width: 26px;
+	height: 26px;
 	flex-shrink: 0;
 }
 .toolbar-swatch {
 	position: absolute;
-	width: 16px;
-	height: 16px;
+	width: 15px;
+	height: 15px;
 	border: 1px solid #888;
 	cursor: pointer;
 	box-shadow: 0 0 0 1px #333;
@@ -568,7 +567,7 @@ body.tool-pan.pan-dragging #canvas_minipaint{
 	border-color: #ccc;
 }
 .toolbar-swatch-fg {
-	top: 0;
+	top: 5px;
 	left: 0;
 	z-index: 2;
 }
@@ -577,26 +576,25 @@ body.tool-pan.pan-dragging #canvas_minipaint{
 	right: 0;
 	z-index: 1;
 }
-.toolbar-color-buttons {
-	display: flex;
-	flex-direction: row;
-	gap: 2px;
-}
-.toolbar-color-btn {
+.toolbar-swap-btn {
+	position: absolute;
+	top: -5px;
+	right: -5px;
+	z-index: 3;
 	background: none;
-	border: 1px solid transparent;
+	border: none;
 	color: #999;
 	cursor: pointer;
-	padding: 1px;
+	padding: 0;
 	display: flex;
 	align-items: center;
 	justify-content: center;
 	width: 12px;
 	height: 12px;
+	line-height: 1;
 }
-.toolbar-color-btn:hover {
+.toolbar-swap-btn:hover {
 	color: #fff;
-	border-color: #666;
 }
 
 /* layers */
