@@ -41,6 +41,7 @@ export class Add_layer_mask_action extends Base_action {
 			this.reference_layer.mask = Mask.create_mask(this.reference_layer, this.reveal);
 		}
 		config.mask_active = true;
+		Mask.default_mask_colors();
 
 		app.GUI.GUI_layers.render_layers();
 		config.need_render = true;

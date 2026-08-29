@@ -71,6 +71,10 @@ class Pencil_class extends Base_tools_class {
 		
 		if (config.layer.type != this.name || params_hash != this.params_hash) {
 			//register new object - current layer is not ours or params changed
+			var clip_mask = null;
+			if (this.Base_layers.Base_selection != null) {
+				clip_mask = this.Base_layers.Base_selection.get_selection_clip_mask();
+			}
 			this.layer = {
 				type: this.name,
 				data: [],
@@ -82,6 +86,7 @@ class Pencil_class extends Base_tools_class {
 				y: 0,
 				width: config.WIDTH,
 				height: config.HEIGHT,
+				mask: clip_mask,
 				hide_selection_if_active: true,
 				rotate: null,
 				is_vector: true,

@@ -88,6 +88,15 @@ class GUI_shortcuts_class {
 				return;
 			}
 
+			// Ctrl/Cmd + Shift + [ / ] = Decrease/Increase brush hardness
+			if ((event.ctrlKey || event.metaKey) && event.shiftKey && !event.altKey
+				&& (event.code === 'BracketLeft' || event.code === 'BracketRight')) {
+				event.preventDefault();
+				event.stopImmediatePropagation();
+				this.adjust_brush_hardness(event.code === 'BracketRight' ? 1 : -1);
+				return;
+			}
+
 			if (event.ctrlKey || event.metaKey || event.altKey) return;
 
 			const key = event.key.toLowerCase();
@@ -187,6 +196,38 @@ class GUI_shortcuts_class {
 			mouseEl.style.height = zoomedSize + 'px';
 			mouseEl.style.left = (left + (curW - zoomedSize) / 2) + 'px';
 			mouseEl.style.top = (top + (curW - zoomedSize) / 2) + 'px';
+		}
+	}
+
+	adjust_brush_hardness(delta) {
+		if (!config.TOOL || !config.TOOL.attributes) return;
+		if (config.TOOL.attributes.hardness == null) return;
+
+		const attr = config.TOOL.attributes.hardness;
+		const oldValue = (typeof attr === 'object' && attr.value != null) ? attr.value : attr;
+		if (oldValue == null) return;
+
+		const newValue = Math.max(0, Math.min(100, oldValue + delta));
+		if (newValue === oldValue) return;
+
+		if (typeof attr === 'object') {
+			attr.value = newValue;
+		} else {
+			config.TOOL.attributes.hardness = newValue;
+		}
+
+		// Update the slider and value label if present
+		const hardnessItem = document.querySelector('.attributes .item.hardness');
+		if (hardnessItem) {
+			const slider = hardnessItem.querySelector('.ui_range');
+			if (slider) {
+				$(slider).uiRange('set_value', newValue);
+			}
+const valueLabel = hardnessItem.querySelector('.slider_value');
+		if (valueLabel) {
+			valueLabel.value = String(newValue);
+			valueLabel.innerHTML = String(newValue);
+		}
 		}
 	}
 

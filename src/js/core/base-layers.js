@@ -190,8 +190,13 @@ class Base_layers_class {
 			var layers_sorted = this.get_sorted_layers();
 
 			// Check if active renderer supports direct layer compositing (WebGL)
+			// and can faithfully render every layer; otherwise use the exact
+			// Canvas 2D pipeline for that frame (filters, non-source-over
+			// composition modes, etc.)
 			var renderer = get_renderer();
-			if (renderer && renderer.type === 'webgl' && renderer.available) {
+			var webgl_usable = renderer && renderer.type === 'webgl' && renderer.available
+				&& (!renderer.can_render_layers || renderer.can_render_layers(layers_sorted, this.disabled_filter_id));
+			if (webgl_usable) {
 				// ---- WebGL rendering path ----
 				// Renders layers to offscreen WebGL canvas, then composites
 				// onto main canvas. Overlays remain Canvas 2D.
@@ -222,8 +227,10 @@ class Base_layers_class {
 				if (glCanvas) {
 					this.ctx.save();
 					zoomView.apply();
+					this.ctx.filter = "none";
 					this.ctx.imageSmoothingEnabled = (config.ZOOM < 1);
 					this.ctx.drawImage(glCanvas, 0, 0, config.WIDTH, config.HEIGHT);
+
 					this.ctx.restore();
 					zoomView.apply();
 				}
@@ -451,12 +458,7 @@ class Base_layers_class {
 
 		var masked = object.mask != null && object.mask.enabled !== false;
 
-		//when a persistent marching-ants selection exists, pixels outside it
-		//are hidden - rendered into a buffer and clipped before compositing
-		if (this.Base_selection.get_committed_selection_data() != null) {
-			this.render_object_constrained(ctx, object, is_preview, masked);
-		}
-		else if (masked === true) {
+		if (masked === true) {
 			// Render into an offscreen buffer, multiply alpha by the mask,
 			// then composite the result - so filters/opacity/composition on ctx
 			// apply to the masked pixels only.
@@ -564,94 +566,6 @@ class Base_layers_class {
 		}
 
 		this.after_render_object(ctx, object);
-	}
-
-	/**
-	 * Renders an object into a screen-space buffer, clips the result to the
-	 * committed marching-ants selection and composites it onto ctx - so only
-	 * pixels that fall inside the selection are visible.
-	 *
-	 * @param {canvas.context} ctx
-	 * @param {object} object
-	 * @param {boolean} is_preview
-	 * @param {boolean} masked - also multiply the layer mask alpha
-	 */
-	render_object_constrained(ctx, object, is_preview, masked) {
-		if (!this.Mask) {
-			this.Mask = new Mask_class();
-		}
-		var canvas = this.create_new_canvas(ctx);
-		var bctx = canvas.getContext("2d");
-
-		//mirror the current ctx transform and filter onto the buffer
-		var t = null;
-		if (typeof ctx.getTransform == "function")
-			t = ctx.getTransform();
-		bctx.setTransform(
-			t ? t.a : 1,
-			t ? t.b : 0,
-			t ? t.c : 0,
-			t ? t.d : 1,
-			t ? t.e : 0,
-			t ? t.f : 0
-		);
-		bctx.filter = ctx.filter;
-
-		//draw the object into the buffer
-		if (object.type == "image") {
-			bctx.save();
-			bctx.translate(
-				object.x + object.width / 2,
-				object.y + object.height / 2
-			);
-			bctx.rotate((object.rotate * Math.PI) / 180);
-			bctx.drawImage(
-				object.link_canvas != null ? object.link_canvas : object.link,
-				-object.width / 2,
-				-object.height / 2,
-				object.width,
-				object.height
-			);
-			bctx.restore();
-		} else {
-			//call render function from other module
-			var render_class = object.render_function[0];
-			var render_function = object.render_function[1];
-			if (
-				typeof this.Base_gui.GUI_tools.tools_modules[render_class] !=
-				"undefined"
-			) {
-				this.Base_gui.GUI_tools.tools_modules[render_class].object[
-					render_function
-				](bctx, object, is_preview);
-			} else {
-				this.render_success = false;
-				console.log("Error: unknown layer type: " + object.type);
-			}
-		}
-
-		//apply the layer mask (alpha multiply) on the buffer content
-		if (masked === true) {
-			bctx.filter = "none";
-			this.Mask.multiply_alpha_by_mask_world(bctx, object);
-		}
-
-		//clip the buffer content to the committed marquee selection
-		bctx.filter = "none";
-		var selection_data = this.Base_selection.get_committed_selection_data();
-		if (selection_data != null) {
-			this.Base_selection.apply_selection_constraint(bctx, selection_data);
-		}
-
-		//composite the screen-space buffer onto ctx without applying the zoom
-		//transform or the filter a second time
-		ctx.save();
-		ctx.setTransform(1, 0, 0, 1, 0, 0);
-		ctx.filter = "none";
-		ctx.drawImage(canvas, 0, 0);
-		ctx.restore();
-		canvas.width = 1;
-		canvas.height = 1;
 	}
 
 	/**

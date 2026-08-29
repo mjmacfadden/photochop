@@ -23,8 +23,10 @@ export class Activate_tool_action extends Base_action {
 
 		if (this.key !== this.old_key || this.ignore_same_tool) {
 
+			var oldOwner = app.GUI.GUI_tools.get_button_id_for_tool(this.old_key);
+
 			//reset last
-			document.querySelector('#tools_container .' + this.old_key).classList.remove("active");
+			document.querySelector('#tools_container .' + oldOwner).classList.remove("active");
 
 			//send exit event to old previous tool
 			if (config.TOOL.on_leave != undefined) {
@@ -40,13 +42,16 @@ export class Activate_tool_action extends Base_action {
 
 			//change active
 			app.GUI.GUI_tools.active_tool = key;
-			document.querySelector('#tools_container .' + app.GUI.GUI_tools.active_tool)
+			var newOwner = app.GUI.GUI_tools.get_button_id_for_tool(key);
+			document.querySelector('#tools_container .' + newOwner)
 				.classList.add("active");
 			for (let i in config.TOOLS) {
 				if (config.TOOLS[i].name == app.GUI.GUI_tools.active_tool) {
 					config.TOOL = config.TOOLS[i];
 				}
 			}
+			//sync the toolbar group button when a member tool (e.g. pencil) activates
+			app.GUI.GUI_tools.sync_group_button_for_tool(key);
 
 			//check module
 			if (app.GUI.GUI_tools.tools_modules[key] == undefined) {
@@ -111,18 +116,22 @@ export class Activate_tool_action extends Base_action {
 		}
 
 		//reset last
-		document.querySelector('#tools_container .' + this.key)
+		var oldOwner = app.GUI.GUI_tools.get_button_id_for_tool(this.key);
+		document.querySelector('#tools_container .' + oldOwner)
 			.classList.remove("active");
 
 		//change active
 		app.GUI.GUI_tools.active_tool = this.old_key;
-		document.querySelector('#tools_container .' + app.GUI.GUI_tools.active_tool)
+		var newOwner = app.GUI.GUI_tools.get_button_id_for_tool(app.GUI.GUI_tools.active_tool);
+		document.querySelector('#tools_container .' + newOwner)
 			.classList.add("active");
 		for (let i in config.TOOLS) {
 			if (config.TOOLS[i].name == app.GUI.GUI_tools.active_tool) {
 				config.TOOL = config.TOOLS[i];
 			}
 		}
+		//sync the toolbar group button when returning to a member tool
+		app.GUI.GUI_tools.sync_group_button_for_tool(app.GUI.GUI_tools.active_tool);
 
 		app.GUI.GUI_tools.show_action_attributes();
 		app.GUI.GUI_tools.Helper.setCookie('active_tool', app.GUI.GUI_tools.active_tool);

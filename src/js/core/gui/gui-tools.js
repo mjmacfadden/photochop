@@ -101,9 +101,9 @@ class GUI_tools_class {
 		for (var i in config.TOOLS) {
 			var item = config.TOOLS[i];
 
-			//apply saved marquee shape to the selection tool group
+			//apply saved shape to any tool group
 			if (item.tool_group) {
-				var saved_shape = this.Helper.getCookie('selection_shape');
+				var saved_shape = this.Helper.getCookie(this.group_cookie_key(item.name));
 				if (saved_shape != null) {
 					for (var j in item.tool_group.items) {
 						if (item.tool_group.items[j].shape == saved_shape) {
@@ -128,21 +128,16 @@ class GUI_tools_class {
 			itemDom.title = title;
 			itemDom._toolGroupBaseTitle = title;
 
-			//marquee group - show the active shape on the button
-			if (item.tool_group && config.TOOLS[i].tool_group.active_shape) {
-				var active_shape = config.TOOLS[i].tool_group.active_shape;
-				for (var k in item.tool_group.items) {
-					if (item.tool_group.items[k].shape == active_shape) {
-						itemDom.title = item.tool_group.items[k].title
-							+ (this.tool_shortcuts && this.tool_shortcuts[item.name] ? ' [' + this.tool_shortcuts[item.name] + ']' : '');
-						itemDom._toolGroupBaseTitle = itemDom.title;
-						break;
-					}
-				}
+			//tool groups - show the active shape on the button
+			if (item.tool_group && item.tool_group.items.length) {
+				var active_shape = item.tool_group.active_shape || item.tool_group.items[0].shape;
+				itemDom.title = this.tool_group_title(item, active_shape);
+				itemDom._toolGroupBaseTitle = itemDom.title;
 				itemDom.classList.add('marquee_' + active_shape);
 			}
 
-			if (item.name == this.active_tool) {
+			var activeToolKey = this.get_button_id_for_tool(this.active_tool);
+			if (item.name == activeToolKey) {
 				itemDom.classList.add('item', 'trn', 'active', item.name);
 			}
 			else {
@@ -173,6 +168,7 @@ class GUI_tools_class {
 				var triangle = document.createElement('span');
 				triangle.className = 'corner_triangle';
 				itemDom.appendChild(triangle);
+				itemDom.classList.add('has_group');
 			}
 
 			//register
@@ -205,8 +201,8 @@ class GUI_tools_class {
 		pop.dataset.toolName = name;
 
 		var current_shape = (itemDef.tool_group.active_shape)
-			|| this.Helper.getCookie('selection_shape')
-			|| 'rect';
+			|| this.Helper.getCookie(this.group_cookie_key(itemDef.name))
+			|| (itemDef.tool_group.items.length > 0 ? itemDef.tool_group.items[0].shape : 'rect');
 		for (var j in itemDef.tool_group.items) {
 			var it = itemDef.tool_group.items[j];
 			var row = document.createElement('div');
@@ -217,7 +213,7 @@ class GUI_tools_class {
 				row.addEventListener('click', function (event) {
 					event.stopPropagation();
 					_this.hide_tool_group();
-					_this.update_marquee_shape(shape);
+					_this.update_tool_shape(itemDef.name, shape);
 				});
 			})(it.shape);
 			pop.appendChild(row);
@@ -263,37 +259,136 @@ class GUI_tools_class {
 		}
 	}
 
-	update_marquee_shape(shape) {
-		this.Helper.setCookie('selection_shape', shape);
+	/**
+	 * cookie key persisted for a tool group's active shape. Keeps the legacy
+	 * 'selection_shape' key for the marquee group, others use '<name>_shape'.
+	 */
+	group_cookie_key(name) {
+		return name === 'selection' ? 'selection_shape' : name + '_shape';
+	}
+
+	/**
+	 * returns the TOOLS entry name whose toolbar button represents the given
+	 * tool key. Tools nested inside a tool_group are represented by the group's
+	 * owner button (e.g. 'pencil' is shown/highlighted via the 'brush' button).
+	 */
+	get_button_id_for_tool(name) {
 		for (var i in config.TOOLS) {
-			if (config.TOOLS[i].name == 'selection' && config.TOOLS[i].tool_group != null) {
-				config.TOOLS[i].tool_group.active_shape = shape;
-				break;
+			var item = config.TOOLS[i];
+			if (item.name == name)
+				return item.name;
+			if (item.tool_group) {
+				for (var j in item.tool_group.items) {
+					if ((item.tool_group.items[j].tool || item.name) == name)
+						return item.name;
+				}
 			}
 		}
+		return name;
+	}
 
-		//refresh the toolbar button look (icon + title)
-		var btn = document.getElementById('selection');
+	/**
+	 * display title for a group button reflecting the currently active shape,
+	 * with the shortcut key of the tool that shape maps to.
+	 */
+	tool_group_title(itemDef, shape) {
+		for (var i in itemDef.tool_group.items) {
+			if (itemDef.tool_group.items[i].shape == shape) {
+				var title = itemDef.tool_group.items[i].title;
+				var toolKey = itemDef.tool_group.items[i].tool || itemDef.name;
+				if (this.tool_shortcuts && this.tool_shortcuts[toolKey]) {
+					title += ' [' + this.tool_shortcuts[toolKey] + ']';
+				}
+				return title;
+			}
+		}
+		return itemDef.title;
+	}
+
+	/**
+	 * when the given tool key is a member of a tool group, sync the group's
+	 * active shape, cookie, button icon and title to it (e.g. activating the
+	 * pencil tool makes the brush button show the pencil icon).
+	 */
+	sync_group_button_for_tool(key) {
+		var owner = this.get_button_id_for_tool(key);
+		if (owner == key)
+			return;
 		var itemDef = null;
 		for (var j in config.TOOLS) {
-			if (config.TOOLS[j].name == 'selection' && config.TOOLS[j].tool_group != null) {
+			if (config.TOOLS[j].name == owner) {
 				itemDef = config.TOOLS[j];
 				break;
 			}
 		}
-		if (btn != null && itemDef != null) {
-			btn.classList.remove('marquee_rect', 'marquee_ellipse', 'marquee_lasso');
-			btn.classList.add('marquee_' + shape);
-			for (var k in itemDef.tool_group.items) {
-				if (itemDef.tool_group.items[k].shape == shape) {
-					btn.title = itemDef.tool_group.items[k].title
-						+ (this.tool_shortcuts && this.tool_shortcuts['selection'] ? ' [' + this.tool_shortcuts['selection'] + ']' : '');
-					break;
-				}
+		if (itemDef == null || itemDef.tool_group == null)
+			return;
+		var shape = null;
+		for (var k in itemDef.tool_group.items) {
+			if ((itemDef.tool_group.items[k].tool || itemDef.name) == key) {
+				shape = itemDef.tool_group.items[k].shape;
+				break;
 			}
 		}
+		if (shape == null)
+			return;
+		itemDef.tool_group.active_shape = shape;
+		this.Helper.setCookie(this.group_cookie_key(owner), shape);
+		var btn = document.getElementById(owner);
+		if (btn != null) {
+			for (var m in itemDef.tool_group.items) {
+				btn.classList.remove('marquee_' + itemDef.tool_group.items[m].shape);
+			}
+			btn.classList.add('marquee_' + shape);
+			btn.title = this.tool_group_title(itemDef, shape);
+			btn._toolGroupBaseTitle = btn.title;
+		}
+	}
 
-		this.activate_tool('selection');
+	/**
+	 * updates a tool group's active shape: persists it, refreshes the owner
+	 * button's icon/title and activates the tool mapped to that shape.
+	 */
+	update_tool_shape(name, shape) {
+		this.Helper.setCookie(this.group_cookie_key(name), shape);
+		var itemDef = null;
+		for (var i in config.TOOLS) {
+			if (config.TOOLS[i].name == name) {
+				itemDef = config.TOOLS[i];
+				break;
+			}
+		}
+		if (itemDef == null || itemDef.tool_group == null)
+			return;
+		itemDef.tool_group.active_shape = shape;
+
+		//refresh the toolbar button look (icon + title)
+		var btn = document.getElementById(name);
+		if (btn != null) {
+			for (var j in itemDef.tool_group.items) {
+				btn.classList.remove('marquee_' + itemDef.tool_group.items[j].shape);
+			}
+			btn.classList.add('marquee_' + shape);
+			btn.title = this.tool_group_title(itemDef, shape);
+			btn._toolGroupBaseTitle = btn.title;
+		}
+
+		//activate the tool mapped to this shape
+		var toolKey = name;
+		for (var k in itemDef.tool_group.items) {
+			if (itemDef.tool_group.items[k].shape == shape) {
+				toolKey = itemDef.tool_group.items[k].tool || name;
+				break;
+			}
+		}
+		this.activate_tool(toolKey);
+	}
+
+	/**
+	 * legacy alias for the marquee group.
+	 */
+	update_marquee_shape(shape) {
+		this.update_tool_shape('selection', shape);
 	}
 
 	async activate_tool(key) {
@@ -413,6 +508,7 @@ class GUI_tools_class {
 				let max = k === 'power' ? 100 : 999;
 				let value = item;
 				let step = null;
+				let is_slider = false;
 				if (typeof item == 'object') {
 					value = item.value;
 					if (item.min != null) {
@@ -424,12 +520,110 @@ class GUI_tools_class {
 					if (item.step != null) {
 						step = item.step;
 					}
+					is_slider = item.slider === true;
 				}
 
 				var elementTitle = document.createElement('label');
 				elementTitle.innerHTML = title + ':';
 				elementTitle.id = 'attribute_label_' + k;
 				elementTitle.className = 'trn';
+
+				if (is_slider) {
+					//range slider with a precise line-track + editable numeric value
+					const attribute_key = k;
+
+					const applyValue = (new_value) => {
+						new_value = parseFloat(new_value);
+						if (Number.isNaN(new_value)) return null;
+						new_value = Math.max(min, Math.min(max, new_value));
+						if (step) {
+							new_value = step * Math.round(new_value / step);
+						}
+						const actionData = this.action_data();
+						const attributes = actionData.attributes;
+						if (typeof attributes[attribute_key] === 'object') {
+							attributes[attribute_key].value = new_value;
+						} else {
+							attributes[attribute_key] = new_value;
+						}
+						if (actionData.on_update != undefined) {
+							//send event
+							var moduleKey = actionData.name;
+							var functionName = actionData.on_update;
+							this.tools_modules[moduleKey].object[functionName]({ key: attribute_key, value: new_value });
+						}
+						return new_value;
+					};
+
+					const elementValue = document.createElement('input');
+					elementValue.type = 'number';
+					elementValue.min = String(min);
+					elementValue.max = String(max);
+					elementValue.step = String(step || 1);
+					elementValue.value = String(value);
+					elementValue.id = 'attribute_value_' + attribute_key;
+					elementValue.className = 'attribute_value slider_value';
+					elementValue.setAttribute('aria-labelledby', 'attribute_label_' + attribute_key);
+					elementValue.title = title;
+
+					const elementInput = document.createElement('input');
+					elementInput.type = 'range';
+					elementInput.min = min;
+					elementInput.max = max;
+					elementInput.step = step || 1;
+					elementInput.className = 'precise';
+					itemDom.appendChild(elementInput);
+					const $range = $(elementInput)
+						.uiRange({
+							id: attribute_key,
+							min,
+							max,
+							step: step || 1,
+							value,
+						})
+						.on('input', () => {
+							const new_value = $range.uiRange('get_value');
+							const snapped = applyValue(new_value);
+							if (snapped != null) {
+								elementValue.value = String(snapped);
+							}
+						});
+
+					if (attribute_key === 'hardness') {
+						//soft (transparent) on the left, hard (opaque) on the right
+						$range.uiRange('set_background', 'linear-gradient(to right, rgba(255,255,255,0.10) 0%, rgba(255,255,255,0.15) 35%, rgba(255,255,255,0.55) 70%, rgba(255,255,255,0.9) 100%)');
+					}
+
+					//live typing previews the value; committed (snapped) on blur / Enter
+					elementValue.addEventListener('input', () => {
+						const parsed = parseFloat(elementValue.value);
+						if (Number.isNaN(parsed)) return;
+						const clamped = Math.max(min, Math.min(max, parsed));
+						const snapped = applyValue(clamped);
+						if (snapped != null) {
+							$range.uiRange('set_value', snapped);
+						}
+					});
+					elementValue.addEventListener('change', () => {
+						const parsed = parseFloat(elementValue.value);
+						if (Number.isNaN(parsed)) {
+							const current = $range.uiRange('get_value');
+							elementValue.value = String(current);
+							return;
+						}
+						const snapped = applyValue(parsed);
+						if (snapped != null) {
+							elementValue.value = String(snapped);
+							$range.uiRange('set_value', snapped);
+						}
+					});
+
+					itemDom.appendChild(elementTitle);
+					itemDom.appendChild($range[0]);
+					itemDom.appendChild(elementValue);
+					itemDom.classList.add('has_slider');
+				}
+				else {
 
 				const elementInput = document.createElement('input');
 				elementInput.type = 'number';
@@ -464,6 +658,7 @@ class GUI_tools_class {
 
 				itemDom.appendChild(elementTitle);
 				itemDom.appendChild($numberInput[0]);
+				}
 			}
 			else if (typeof item == 'object') {
 				//select

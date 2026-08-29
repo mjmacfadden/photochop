@@ -455,7 +455,9 @@ class Selection_class extends Base_tools_class {
 			this.selection.regions = committed;
 		}
 		else {
-			//fresh selection - replaces anything before it
+			//fresh selection replaces anything before it - bake any pending
+			//selection-clip masks so the old constraint becomes permanent
+			this.Base_selection.bake_selection_clips();
 			this.selection.regions = null;
 		}
 
@@ -609,6 +611,9 @@ class Selection_class extends Base_tools_class {
 	select_all() {
 		let actions = [];
 
+		//select-all replaces the current marquee - bake pending clips first
+		this.Base_selection.bake_selection_clips();
+
 		if (config.TOOL.name != this.name) {
 			actions.push(
 				new app.Actions.Activate_tool_action(this.name)
@@ -678,6 +683,9 @@ class Selection_class extends Base_tools_class {
 
 	delete_selection() {
 		var layer = config.layer;
+
+		//the delete clears the selection afterwards - bake clips first
+		this.Base_selection.bake_selection_clips();
 
 		if (config.layer.type != 'image') {
 			alertify.error('This layer must contain an image. Please convert it to raster to apply this tool.');
@@ -767,6 +775,7 @@ class Selection_class extends Base_tools_class {
 	}
 
 	clear_selection_actions() {
+		this.Base_selection.bake_selection_clips();
 		return [new app.Actions.Reset_selection_action(this.selection)];
 	}
 

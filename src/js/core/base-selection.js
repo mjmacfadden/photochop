@@ -5,6 +5,8 @@
 
 import config from './../config.js';
 import zoomView from './../libs/zoomView.js';
+import app from './../app.js';
+import Mask_class from './../modules/mask/mask.js';
 
 var instance = null;
 var settings_all = [];
@@ -66,6 +68,8 @@ class Base_selection_class {
 		// marching ants animation state
 		this.ant_offset = 0;
 		this.ant_keep_rendering = false;
+		// cached union-silhouette contours for the current selection
+		this._ant_cache = { key: null, contours: null };
 
 		this.events();
 	}
@@ -503,15 +507,16 @@ class Base_selection_class {
 
 	/**
 	 * draws Photoshop-style animated marching ants selection border.
-	 * Every committed region is outlined in its own color: 'add' uses the
-	 * classic black/white ants, 'subtract' red, 'intersect' blue.
+	 * The ants outline the total perimeter of the composed selection (the
+	 * union silhouette), not each individual region. Subtract regions render
+	 * as their own interior contours.
 	 */
 	draw_marching_ants(data) {
 		var ctx = this.ctx;
 		var Z = config.ZOOM || 1;
 
-		var regions = this.get_selection_regions(data, true);
-		if (!regions.length)
+		var contours = this.get_union_contours(data);
+		if (!contours.length)
 			return;
 
 		//animate - one dash step every ~50 ms
@@ -522,36 +527,363 @@ class Base_selection_class {
 		var gap = 4 / Z;
 
 		ctx.save();
-		for (var i = 0; i < regions.length; i++) {
-			var region = regions[i];
-			if (region == null || region.x == null || region.width == null || region.height == null)
+		ctx.lineJoin = 'round';
+		ctx.lineCap = 'round';
+		for (var c = 0; c < contours.length; c++) {
+			var pts = contours[c];
+			if (pts.length < 2)
 				continue;
 
-			var mode = region.mode || 'add';
-			var color = '#000000';
-			if (mode == 'subtract')
-				color = '#ff2d2d';
-			else if (mode == 'intersect')
-				color = '#1285ff';
-
-			this.build_selection_path(ctx, region);
+			ctx.beginPath();
+			ctx.moveTo(pts[0][0], pts[0][1]);
+			for (var i = 1; i < pts.length; i++) {
+				ctx.lineTo(pts[i][0], pts[i][1]);
+			}
+			ctx.closePath();
 
 			//white underlay - always visible
 			ctx.strokeStyle = '#ffffff';
 			ctx.lineWidth = 2.5 / Z;
-			ctx.lineJoin = 'round';
 			ctx.stroke();
 
-			//animated dashes in the mode color
-			ctx.strokeStyle = color;
+			//animated black dashes
+			ctx.strokeStyle = '#000000';
 			ctx.lineWidth = 1.5 / Z;
-			ctx.lineJoin = 'round';
 			ctx.setLineDash([dash, gap]);
 			ctx.lineDashOffset = this.ant_offset;
 			ctx.stroke();
 			ctx.setLineDash([]);
 		}
 		ctx.restore();
+	}
+
+	/**
+	 * returns the union-silhouette contours (array of closed polylines in
+	 * world coordinates) for the given marching-ants selection. The composed
+	 * selection interior is rasterized into a mask and its boundary is traced
+	 * with marching squares (linear interpolation), giving one smooth outline
+	 * around the whole union - subtract regions contribute their own holes.
+	 * Contours are cached per selection geometry.
+	 */
+	get_union_contours(data) {
+		var regions = this.get_selection_regions(data, true);
+		var key = JSON.stringify(regions);
+		if (this._ant_cache.key === key) {
+			return this._ant_cache.contours;
+		}
+
+		var contours = [];
+		var canvas = document.createElement('canvas');
+		canvas.width = Math.max(1, config.WIDTH);
+		canvas.height = Math.max(1, config.HEIGHT);
+		var ctx = canvas.getContext('2d');
+
+		//black outside, white union of add/intersect, subtract carved back
+		//to black - same interior model as create_selection_clip_canvas().
+		ctx.fillStyle = '#000000';
+		ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+		ctx.beginPath();
+		var has_add = false;
+		for (var i = 0; i < regions.length; i++) {
+			if (regions[i].mode == 'subtract')
+				continue;
+			this._build_shape_path(ctx, regions[i]);
+			has_add = true;
+		}
+		if (has_add) {
+			ctx.fillStyle = '#ffffff';
+			ctx.fill();
+		}
+		for (var i = 0; i < regions.length; i++) {
+			if (regions[i].mode != 'subtract')
+				continue;
+			ctx.beginPath();
+			this._build_shape_path(ctx, regions[i]);
+			ctx.fillStyle = '#000000';
+			ctx.fill();
+		}
+
+		contours = this._trace_mask_contours(canvas);
+
+		this._ant_cache.key = key;
+		this._ant_cache.contours = contours;
+		return contours;
+	}
+
+	/**
+	 * traces the white/black boundary of the given raster canvas into closed
+	 * contours with marching squares (linear interpolation on the isovalue).
+	 */
+	_trace_mask_contours(canvas) {
+		var W = canvas.width;
+		var H = canvas.height;
+		var img = canvas.getContext('2d').getImageData(0, 0, W, H);
+		var d = img.data;
+		var iso = 128;
+
+		var corner = function (i, j) {
+			if (i < 0 || j < 0 || i >= W || j >= H)
+				return 0;
+			return d[(j * W + i) * 4] >= iso ? 255 : 0;
+		};
+		var interp = function (a, b) {
+			if (a === b)
+				return 0.5;
+			var t = (iso - a) / (b - a);
+			if (t < 0)
+				return 0;
+			if (t > 1)
+				return 1;
+			return t;
+		};
+
+		//edges per marching-squares case (top, right, bottom, left). Cases 5
+		//and 10 are ambiguous and get two segments.
+		var table = [
+			[],        [0, 3], [0, 1], [1, 3],
+			[1, 2],    [0, 1, 2, 3], [0, 2], [2, 3],
+			[2, 3],    [0, 2], [0, 3, 1, 2], [1, 2],
+			[0, 1],    [0, 1], [0, 3], []
+		];
+
+		var segments = [];
+		for (var j = 0; j < H; j++) {
+			for (var i = 0; i < W; i++) {
+				var v00 = corner(i, j);
+				var v10 = corner(i + 1, j);
+				var v11 = corner(i + 1, j + 1);
+				var v01 = corner(i, j + 1);
+
+				var idx = (v00 ? 1 : 0) | (v10 ? 2 : 0) | (v11 ? 4 : 0) | (v01 ? 8 : 0);
+				var edges = table[idx];
+				if (!edges.length)
+					continue;
+
+				//edge intersection points (linear interpolation)
+				var e0 = [i + interp(v00, v10), j];
+				var e1 = [i + 1, j + interp(v10, v11)];
+				var e2 = [i + 1 - interp(v11, v01), j + 1];
+				var e3 = [i, j + 1 - interp(v01, v00)];
+				var edge_pts = [e0, e1, e2, e3];
+
+				if (edges.length === 2) {
+					segments.push([edge_pts[edges[0]], edge_pts[edges[1]]]);
+				}
+				else {
+					segments.push([edge_pts[edges[0]], edge_pts[edges[1]]]);
+					segments.push([edge_pts[edges[2]], edge_pts[edges[3]]]);
+				}
+			}
+		}
+		if (!segments.length)
+			return [];
+
+		//chain the segments into point lists (each point key is exact since
+		//shared edges are interpolated identically)
+		var points = [];
+		var point_index = {};
+		var adjacency = [];
+		var get_idx = function (p) {
+			var key = Math.round(p[0] * 1e6) + ',' + Math.round(p[1] * 1e6);
+			if (key in point_index)
+				return point_index[key];
+			var idx = points.length;
+			point_index[key] = idx;
+			points.push(p);
+			adjacency.push([]);
+			return idx;
+		};
+
+		for (var s = 0; s < segments.length; s++) {
+			var a = get_idx(segments[s][0]);
+			var b = get_idx(segments[s][1]);
+			if (a === b)
+				continue;
+			adjacency[a].push(b);
+			adjacency[b].push(a);
+		}
+
+		var used = new Array(points.length).fill(false);
+		var contours = [];
+		for (var start = 0; start < points.length; start++) {
+			if (used[start] || adjacency[start].length === 0)
+				continue;
+			used[start] = true;
+
+			var contour = [points[start]];
+			var prev = start;
+			var cur = adjacency[start][0];
+			var guard = 0;
+			while (cur !== start) {
+				if (cur < 0 || cur >= points.length || used[cur])
+					break;
+				contour.push(points[cur]);
+				used[cur] = true;
+				if (++guard > points.length)
+					break;
+
+				var nxt = -1;
+				for (var k = 0; k < adjacency[cur].length; k++) {
+					if (adjacency[cur][k] !== prev && !used[adjacency[cur][k]]) {
+						nxt = adjacency[cur][k];
+						break;
+					}
+				}
+				if (nxt === -1)
+					break;
+				prev = cur;
+				cur = nxt;
+			}
+
+			if (guard > 0 || contour.length > 1) {
+				contours.push(contour);
+			}
+		}
+
+		return contours;
+	}
+
+	/**
+	 * returns a full-document grayscale canvas representing the committed
+	 * selection interior: white inside (union of add/intersect regions),
+	 * black outside, with subtract regions carved out as black holes.
+	 */
+	create_selection_clip_canvas() {
+		var canvas = document.createElement('canvas');
+		canvas.width = Math.max(1, config.WIDTH);
+		canvas.height = Math.max(1, config.HEIGHT);
+		var ctx = canvas.getContext('2d');
+
+		ctx.fillStyle = '#000000';
+		ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+		var data = this.get_committed_selection_data();
+		if (data == null)
+			return canvas;
+		var regions = this.get_selection_regions(data, false);
+		if (!regions.length)
+			return canvas;
+
+		ctx.beginPath();
+		var has_add = false;
+		for (var i = 0; i < regions.length; i++) {
+			if (regions[i].mode == 'subtract')
+				continue;
+			this._build_shape_path(ctx, regions[i]);
+			has_add = true;
+		}
+		if (has_add) {
+			ctx.fillStyle = '#ffffff';
+			ctx.fill();
+		}
+		for (var i = 0; i < regions.length; i++) {
+			if (regions[i].mode != 'subtract')
+				continue;
+			ctx.beginPath();
+			this._build_shape_path(ctx, regions[i]);
+			ctx.fillStyle = '#000000';
+			ctx.fill();
+		}
+
+		return canvas;
+	}
+
+	/**
+	 * returns a layer-mask object anchored over the whole document that reveals
+	 * only the committed selection (white inside, black outside), tagged as a
+	 * selection clip so bake_selection_clips() can bake it away later. Returns
+	 * null when no persistent selection exists.
+	 */
+	get_selection_clip_mask() {
+		var data = this.get_committed_selection_data();
+		if (data == null || data.width == null || data.height == null
+			|| data.width <= 0 || data.height <= 0)
+			return null;
+
+		var canvas = this.create_selection_clip_canvas();
+		return {
+			link: canvas,
+			x: 0,
+			y: 0,
+			width: canvas.width,
+			height: canvas.height,
+			enabled: true,
+			linked: true,
+			_selection_clip: true,
+		};
+	}
+
+	/**
+	 * permanently bakes every transient selection-clip mask (_selection_clip)
+	 * into its layer's pixels and drops the mask. Called whenever the committed
+	 * selection is cleared or replaced, so the constraint survives the
+	 * disappearing selection - the outside pixels were never painted, the
+	 * painted ones stay (Photoshop behavior).
+	 */
+	bake_selection_clips() {
+		var layers = config.layers;
+		if (layers == null || layers.length === 0)
+			return;
+
+		var baked = false;
+		for (var i = 0; i < layers.length; i++) {
+			var layer = layers[i];
+			if (layer == null || layer.mask == null)
+				continue;
+			if (layer.mask._selection_clip !== true || layer.mask.enabled === false)
+				continue;
+			this._bake_selection_clip_layer(layer);
+			baked = true;
+		}
+		if (baked)
+			config.need_render = true;
+	}
+
+	/**
+	 * bakes a single selection-clip masked layer in place (not undoable).
+	 */
+	_bake_selection_clip_layer(layer) {
+		if (this.Mask == null) {
+			this.Mask = new Mask_class();
+		}
+
+		if (layer.type != 'image') {
+			//render-function layers (brush/pencil/gradient) - rasterize the
+			//masked render (the mask is applied by render_object) and swap the
+			//layer content in place
+			if (app.Layers == null || app.Layers.convert_layer_to_canvas == null)
+				return;
+			var canvas = app.Layers.convert_layer_to_canvas(layer.id, false, false);
+			layer.type = 'image';
+			layer.link = canvas;
+			delete layer.link_canvas;
+			layer.x = parseInt(canvas.dataset.x) || 0;
+			layer.y = parseInt(canvas.dataset.y) || 0;
+			layer.width = canvas.width;
+			layer.height = canvas.height;
+			layer.width_original = canvas.width;
+			layer.height_original = canvas.height;
+			delete layer.render_function;
+			delete layer.data;
+		}
+		else {
+			//image layers - bake the mask into the local frame
+			if (layer.link == null)
+				return;
+			var c = document.createElement('canvas');
+			c.width = Math.max(1, Math.round(layer.width || 1));
+			c.height = Math.max(1, Math.round(layer.height || 1));
+			var nctx = c.getContext('2d');
+			nctx.drawImage(layer.link, 0, 0, c.width, c.height);
+			this.Mask.multiply_alpha_by_mask_local(nctx, layer);
+			layer.link = c;
+			delete layer.link_canvas;
+		}
+		layer.mask = null;
+		if (app.Layers != null && app.Layers.notify_mask_changed != null) {
+			app.Layers.notify_mask_changed(layer.id);
+		}
 	}
 
 	/**

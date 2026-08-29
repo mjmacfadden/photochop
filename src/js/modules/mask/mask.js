@@ -50,10 +50,35 @@ class Mask_class {
 		}
 		else {
 			config.mask_active = value === true;
+			if (config.mask_active === true) {
+				//default to black foreground / white background while painting a mask
+				this.default_mask_colors();
+			}
 		}
 		app.Layers.render();
 		app.GUI.GUI_layers.render_layers();
 		return config.mask_active;
+	}
+
+	/**
+	 * resets the painting colors to black foreground / white background,
+	 * which is the sensible default while editing a mask.
+	 */
+	default_mask_colors() {
+		config.COLOR = '#000000';
+		config.ALPHA = 255;
+		config.COLOR_BG = '#ffffff';
+		config.ALPHA_BG = 255;
+		this.Helper.setCookie('color', config.COLOR);
+		this.Helper.setCookie('color_bg', config.COLOR_BG);
+		if (typeof app.GUI != 'undefined') {
+			if (app.GUI.GUI_colors && typeof app.GUI.GUI_colors.render_selected_color == 'function') {
+				app.GUI.GUI_colors.render_selected_color();
+			}
+			if (app.GUI.GUI_tools && typeof app.GUI.GUI_tools.update_toolbar_swatches == 'function') {
+				app.GUI.GUI_tools.update_toolbar_swatches();
+			}
+		}
 	}
 
 	/**
@@ -416,15 +441,41 @@ class Mask_class {
 			return actions;
 
 		var mask = layer.mask;
-		if (new_props.x !== old_props.x || new_props.y !== old_props.y
-			|| new_props.width !== old_props.width || new_props.height !== old_props.height) {
+		var x_changed = new_props.x !== old_props.x || new_props.y !== old_props.y;
+		var size_changed = new_props.width !== old_props.width || new_props.height !== old_props.height;
+		if (x_changed || size_changed) {
+			var xr = (old_props.width > 0 && new_props.width > 0) ? new_props.width / old_props.width : 1;
+			var yr = (old_props.height > 0 && new_props.height > 0) ? new_props.height / old_props.height : 1;
+
 			//move or resize - keep the mask anchored to the layer bounds
-			actions.push(new app.Actions.Update_layer_mask_action(layer.id, {
-				x: Math.round(new_props.x),
-				y: Math.round(new_props.y),
-				width: Math.round(new_props.width),
-				height: Math.round(new_props.height),
-			}));
+			var new_settings = {
+				x: Math.round(new_props.x + (mask.x - old_props.x) * xr),
+				y: Math.round(new_props.y + (mask.y - old_props.y) * yr),
+				width: Math.max(1, Math.round(mask.width * xr)),
+				height: Math.max(1, Math.round(mask.height * yr)),
+			};
+			//when only moving keep the exact mask size
+			if (!size_changed) {
+				new_settings.width = mask.width;
+				new_settings.height = mask.height;
+			}
+			actions.push(new app.Actions.Update_layer_mask_action(layer.id, new_settings));
+		}
+
+		if (size_changed) {
+			//resample the mask bitmap so it keeps matching the new placement size
+			var source = this.get_mask_source(layer);
+			if (source != null && typeof source.getContext == 'function') {
+				var xr = (old_props.width > 0 && new_props.width > 0) ? new_props.width / old_props.width : 1;
+				var yr = (old_props.height > 0 && new_props.height > 0) ? new_props.height / old_props.height : 1;
+				var nw = Math.max(1, Math.round(mask.width * xr));
+				var nh = Math.max(1, Math.round(mask.height * yr));
+				var canvas = document.createElement('canvas');
+				canvas.width = nw;
+				canvas.height = nh;
+				canvas.getContext('2d').drawImage(source, 0, 0, nw, nh);
+				actions.push(new app.Actions.Update_layer_mask_image_action(canvas, layer.id));
+			}
 		}
 
 		return actions;
@@ -688,6 +739,7 @@ class Mask_class {
 			size: size,
 			circle: circle,
 			strict: options.strict === true,
+			hardness: (options.hardness != null) ? options.hardness : 100,
 			last_x: null,
 			last_y: null,
 			painted: false,
@@ -717,7 +769,25 @@ class Mask_class {
 
 		this.stroke.ctx.save();
 
-		if (this.stroke.circle === true) {
+		if (this.stroke.circle === true && this.stroke.hardness < 100) {
+			//soft (feathered) mask brush - stamp overlapping soft circles
+			if (last) {
+				this.paint_mask_line(
+					this.stroke.ctx,
+					this.stroke.last_x, this.stroke.last_y,
+					point.x, point.y,
+					this.stroke.size, this.stroke.hardness, this.stroke.color, this.stroke.alpha
+				);
+			}
+			else {
+				this.paint_mask_dot(
+					this.stroke.ctx,
+					point.x, point.y,
+					this.stroke.size, this.stroke.hardness, this.stroke.color, this.stroke.alpha, true
+				);
+			}
+		}
+		else if (this.stroke.circle === true) {
 			//circle brush
 			var size_half = Math.floor(this.stroke.size / 2);
 			this.stroke.ctx.beginPath();
@@ -733,7 +803,7 @@ class Mask_class {
 			this.stroke.ctx.fillRect(point.x - size_half, point.y - size_half, size, size);
 		}
 
-		if (last) {
+		if (last && !(this.stroke.circle === true && this.stroke.hardness < 100)) {
 			//draw connecting line to prevent gaps
 			this.stroke.ctx.globalCompositeOperation = 'source-over';
 			this.stroke.ctx.beginPath();
@@ -759,7 +829,15 @@ class Mask_class {
 		var point = this.world_to_mask(layer, mouse.x, mouse.y);
 
 		this.stroke.ctx.save();
-		if (this.stroke.circle === true) {
+		if (this.stroke.circle === true && this.stroke.hardness < 100) {
+			//soft (feathered) mask brush - full-amplitude kernel for a dotted stroke
+			this.paint_mask_dot(
+				this.stroke.ctx,
+				point.x, point.y,
+				this.stroke.size, this.stroke.hardness, this.stroke.color, this.stroke.alpha, true
+			);
+		}
+		else if (this.stroke.circle === true) {
 			this.stroke.ctx.beginPath();
 			this.stroke.ctx.arc(point.x, point.y, Math.floor(this.stroke.size / 2), 0, Math.PI * 2, true);
 			this.stroke.ctx.fillStyle = 'rgba(' + this.stroke.color + ', ' + this.stroke.alpha / 255 + ')';
@@ -777,6 +855,100 @@ class Mask_class {
 		this.stroke.last_y = point.y;
 		this.stroke.painted = true;
 		config.need_render = true;
+	}
+
+	/**
+	 * builds a radial-gradient stamp used to paint soft mask edges.
+	 * A straight stroke is sampled every `step` px; amplitudes are
+	 * normalized so the overlap reproduces the stamped kernel.
+	 */
+	build_soft_stamp(size, hardness, gray) {
+		size = Math.max(1, Math.round(size));
+		var r_outer = size / 2;
+		var r_inner = r_outer * Math.max(0, Math.min(100, hardness)) / 100;
+		var side = size + 2;
+		var center = side / 2;
+
+		var canvas = document.createElement('canvas');
+		canvas.width = side;
+		canvas.height = side;
+		var ctx = canvas.getContext('2d');
+
+		var gradient = ctx.createRadialGradient(center, center, r_inner, center, center, r_outer);
+		gradient.addColorStop(0, 'rgba(' + gray + ', 1)');
+		gradient.addColorStop(1, 'rgba(' + gray + ', 0)');
+		ctx.fillStyle = gradient;
+		ctx.fillRect(0, 0, side, side);
+
+		var step = Math.max(1, Math.floor(r_outer / 3));
+		var integral = r_outer + r_inner;
+		var amp = Math.min(1, step / Math.max(integral, 0.001));
+
+		return {
+			canvas: canvas,
+			center: center,
+			step: step,
+			amp: amp,
+		};
+	}
+
+	get_soft_stamp(size, hardness, gray) {
+		size = Math.max(1, Math.round(size));
+		hardness = Math.round(hardness);
+		var key = size + '_' + hardness + '_' + gray;
+		if (this.soft_stamp_cache == null) {
+			this.soft_stamp_cache = {};
+		}
+		if (this.soft_stamp_cache[key] == null) {
+			this.soft_stamp_cache[key] = this.build_soft_stamp(size, hardness, gray);
+		}
+		return this.soft_stamp_cache[key];
+	}
+
+	/**
+	 * paints a soft dot on the mask.
+	 *
+	 * @param {object} ctx mask context
+	 * @param {int} x
+	 * @param {int} y
+	 * @param {int} size brush size
+	 * @param {int} hardness 0-100
+	 * @param {string} gray "r, g, b"
+	 * @param {int} alpha 0-255
+	 * @param {bool} isolated true for a single dot/start of stroke (full kernel)
+	 */
+	paint_mask_dot(ctx, x, y, size, hardness, gray, alpha, isolated) {
+		var stamp = this.get_soft_stamp(size, hardness, gray);
+		var amp = isolated === true ? 1 : stamp.amp;
+		ctx.globalAlpha = amp * (alpha / 255);
+		ctx.drawImage(stamp.canvas, Math.round(x - stamp.center), Math.round(y - stamp.center));
+		ctx.globalAlpha = 1;
+	}
+
+	/**
+	 * stamps a soft line segment on the mask between two points.
+	 */
+	paint_mask_line(ctx, x0, y0, x1, y1, size, hardness, gray, alpha) {
+		var dx = x1 - x0;
+		var dy = y1 - y0;
+		var dist = Math.sqrt(dx * dx + dy * dy);
+		var stamp = this.get_soft_stamp(size, hardness, gray);
+		var step = Math.max(1, stamp.step);
+		var count = Math.max(1, Math.ceil(dist / step));
+
+		for (var i = 0; i <= count; i++) {
+			var t = i / count;
+			this.paint_mask_dot(
+				ctx,
+				x0 + dx * t,
+				y0 + dy * t,
+				size,
+				hardness,
+				gray,
+				alpha,
+				false
+			);
+		}
 	}
 
 	/**
@@ -824,6 +996,7 @@ class Mask_class {
 			circle: params.circle !== false,
 			strict: params.strict === true,
 			alpha: config.ALPHA,
+			hardness: (params.hardness != null) ? params.hardness : 100,
 		};
 
 		if (type == 'start')

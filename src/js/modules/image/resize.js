@@ -9,6 +9,7 @@ import alertify from './../../../../node_modules/alertifyjs/build/alertify.min.j
 import Pica from './../../../../node_modules/pica/dist/pica.js';
 import Helper_class from './../../libs/helpers.js';
 import Tools_settings_class from './../tools/settings.js';
+import Mask_class from './../mask/mask.js';
 import { metaDefaults as textMetaDefaults } from '../../tools/text.js';
 
 var instance = null;
@@ -30,6 +31,7 @@ class Image_resize_class {
 		this.Tools_settings = new Tools_settings_class();
 		this.pica = Pica();
 		this.Helper = new Helper_class();
+		this.Mask = new Mask_class();
 
 		this.set_events();
 	}
@@ -181,7 +183,7 @@ class Image_resize_class {
 			}
 
 			// Return actions
-			return [
+			let actions = [
 				new app.Actions.Update_layer_action(layer.id, {
 					x: new_x, 
 					y: new_y,
@@ -190,12 +192,19 @@ class Image_resize_class {
 					height: layer.height * yratio
 				})
 			];
+			//keep a linked mask in sync
+			if (layer.mask != null && layer.mask.linked === true) {
+				actions = actions.concat(this.Mask.get_linked_mask_actions(layer,
+					{ x: layer.x, y: layer.y, width: layer.width, height: layer.height },
+					{ x: new_x, y: new_y, width: layer.width * xratio, height: layer.height * yratio }));
+			}
+			return actions;
 		}
 		
 		//is vector
 		else if (layer.is_vector == true && layer.width != null && layer.height != null) {
 			// Return actions
-			return [
+			let actions = [
 				new app.Actions.Update_layer_action(layer.id, {
 					x: new_x, 
 					y: new_y,
@@ -203,6 +212,13 @@ class Image_resize_class {
 					height: layer.height * yratio
 				})
 			];
+			//keep a linked mask in sync
+			if (layer.mask != null && layer.mask.linked === true) {
+				actions = actions.concat(this.Mask.get_linked_mask_actions(layer,
+					{ x: layer.x, y: layer.y, width: layer.width, height: layer.height },
+					{ x: new_x, y: new_y, width: layer.width * xratio, height: layer.height * yratio }));
+			}
+			return actions;
 		}
 		
 		//only images supported at this point
@@ -265,7 +281,7 @@ class Image_resize_class {
 		}
 
 		// Return actions
-		return [
+		let actions = [
 			new app.Actions.Update_layer_image_action(canvas, layer.id),
 			new app.Actions.Update_layer_action(layer.id, {
 				x: new_x, 
@@ -276,6 +292,13 @@ class Image_resize_class {
 				height_original: canvas.height
 			})
 		];
+		//keep a linked mask in sync
+		if (layer.mask != null && layer.mask.linked === true) {
+			actions = actions.concat(this.Mask.get_linked_mask_actions(layer,
+				{ x: layer.x, y: layer.y, width: layer.width, height: layer.height },
+				{ x: new_x, y: new_y, width: canvas.width, height: canvas.height }));
+		}
+		return actions;
 	}
 	
 	resize_gui(params) {

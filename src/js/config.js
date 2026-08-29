@@ -131,11 +131,36 @@ config.TOOLS = [
 		name: 'brush',
 		attributes: {
 			size: 13,
+			hardness: {
+				value: 100,
+				min: 0,
+				max: 100,
+				step: 1,
+				slider: true,
+			},
 			pressure: false,
+		},
+		tool_group: {
+			label: 'Brush Tools',
+			hidden: false,
+			items: [
+				{
+					shape: 'brush',
+					title: 'Brush Tool',
+					icon: 'brush',
+				},
+				{
+					shape: 'pencil',
+					title: 'Pencil Tool',
+					icon: 'pencil',
+					tool: 'pencil',
+				},
+			],
 		},
 	},
 	{
 		name: 'pencil',
+		visible: false,
 		attributes: {
 			size: 1,
 			pressure: false,

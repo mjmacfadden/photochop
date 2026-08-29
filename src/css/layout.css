@@ -296,6 +296,25 @@ body .sp-preview{
 	width: 60px;
 	margin-right: 5px;
 }
+.attributes input.slider_value {
+	width: 42px;
+	padding: 2px 4px;
+	margin-left: 6px;
+	text-align: right;
+	appearance: textfield;
+	-moz-appearance: textfield;
+}
+.attributes input.slider_value::-webkit-inner-spin-button,
+.attributes input.slider_value::-webkit-outer-spin-button {
+	-webkit-appearance: none;
+	appearance: none;
+	margin: 0;
+}
+.attributes .item.has_slider {
+	flex: 0 1 auto;
+	min-width: 300px;
+	max-width: 360px;
+}
 .attributes input[type="color"] {
 	cursor: pointer;
 	padding: 0;
@@ -314,14 +333,17 @@ body .sp-preview{
 	-ms-grid-column: 1;
 	grid-area: sidebar_left;
 	display: flex;
-	flex-direction: row;
-	flex-wrap: wrap;
+	flex-direction: column;
+	flex-wrap: nowrap;
+	align-items: center;
 	background-color: #3c3c3c;
 	padding: 4px 4px 4px 4px;
 	margin-right: 4px;
 	overflow: hidden;
 	align-self: start;
 	width: 36px;
+	min-width: 36px;
+	max-width: 36px;
 	overflow-y: auto;
 	max-height: 100%;
 	border-right: 1px solid #2a2a2a;
@@ -396,12 +418,13 @@ body.tool-pan.pan-dragging #canvas_minipaint{
 	cursor: grabbing !important;
 }
 
-/* marquee tool group - button shows the active shape icon */
-.sidebar_left .item.selection{ overflow: visible; width: 20px; height: 20px; }
-.sidebar_left .item.selection:after{ background-size: 16px 16px; }
+/* tool group - button shows the active sub-tool icon */
+.sidebar_left .item.has_group{ overflow: visible; width: 20px; height: 20px; }
+.sidebar_left .item.has_group:after{ background-size: 16px 16px; }
 .sidebar_left .item.selection.marquee_ellipse:after{ background-image: url('images/icons/selection_ellipse.svg'); }
 .sidebar_left .item.selection.marquee_lasso:after{ background-image: url('images/icons/lasso.svg'); }
-.sidebar_left .item.selection .corner_triangle{
+.sidebar_left .item.brush.marquee_pencil:after{ background-image: url('images/icons/pencil.svg'); }
+.sidebar_left .item .corner_triangle{
 	position: absolute;
 	right: 0;
 	bottom: 0;
@@ -412,7 +435,7 @@ body.tool-pan.pan-dragging #canvas_minipaint{
 	border-color: transparent transparent #999 transparent;
 	pointer-events: none;
 }
-.sidebar_left .item.selection.active .corner_triangle{
+.sidebar_left .item.active .corner_triangle{
 	border-color: transparent transparent #fff transparent;
 }
 
@@ -451,6 +474,8 @@ body.tool-pan.pan-dragging #canvas_minipaint{
 .tg_icon.selection{ background-image: url('images/icons/selection.svg'); }
 .tg_icon.selection_ellipse{ background-image: url('images/icons/selection_ellipse.svg'); }
 .tg_icon.lasso{ background-image: url('images/icons/lasso.svg'); }
+.tg_icon.brush{ background-image: url('images/icons/brush.svg'); }
+.tg_icon.pencil{ background-image: url('images/icons/pencil.svg'); }
 
 @media screen and (max-width:550px){
 	#sidebar_left{
@@ -517,11 +542,13 @@ body.tool-pan.pan-dragging #canvas_minipaint{
 /* toolbar color swatches (left sidebar) */
 .toolbar-color-swatches {
 	display: flex;
-	align-items: flex-end;
-	gap: 2px;
-	padding: 2px;
+	flex-direction: column;
+	align-items: center;
+	gap: 3px;
+	padding: 4px 0;
 	margin-top: 4px;
 	border-top: 1px solid #555;
+	width: 100%;
 }
 .toolbar-color-swatches-inner {
 	position: relative;
@@ -552,8 +579,8 @@ body.tool-pan.pan-dragging #canvas_minipaint{
 }
 .toolbar-color-buttons {
 	display: flex;
-	flex-direction: column;
-	gap: 1px;
+	flex-direction: row;
+	gap: 2px;
 }
 .toolbar-color-btn {
 	background: none;
@@ -564,8 +591,8 @@ body.tool-pan.pan-dragging #canvas_minipaint{
 	display: flex;
 	align-items: center;
 	justify-content: center;
-	width: 14px;
-	height: 14px;
+	width: 12px;
+	height: 12px;
 }
 .toolbar-color-btn:hover {
 	color: #fff;

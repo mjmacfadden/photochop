@@ -3,7 +3,7 @@
  *
  * GPU-accelerated layer compositing using WebGL2 (with WebGL1 fallback).
  * Renders layers as textured quads with opacity, visibility, and normal
- * blend mode. Supports layer masks as secondary GPU textures.
+ * blend mode.
  *
  * Architecture:
  *   CPU document (config.layers) --> GPU textures --> WebGL compositing --> offscreen canvas
@@ -17,9 +17,11 @@
  *   - Handles context loss by rebuilding from CPU document
  *
  * Limitations (intentional for incremental migration):
- *   - Only normal blend mode is implemented
- *   - Filters are not yet GPU-accelerated (fall through to Canvas 2D)
- *   - Selection clipping is handled by Canvas 2D post-composite
+ *   - Layers with filters, non-source-over composition, or a layer mask are
+ *     not GPU-faithful yet; they are detected by can_render_layers() and the
+ *     whole document falls back to the Canvas 2D pipeline for that frame.
+ *     Masked layers render through that pipeline's multiply_alpha_by_mask_world
+ *     path, which matches the CPU document model exactly.
  *   - Tool overlays remain Canvas 2D
  */
 
@@ -64,21 +66,12 @@ var FRAG_SHADER = `
 precision mediump float;
 
 uniform sampler2D u_layerTexture;
-uniform sampler2D u_maskTexture;
-uniform bool u_hasMask;
 uniform float u_opacity;
 
 varying vec2 v_texCoord;
 
 void main() {
 	vec4 color = texture2D(u_layerTexture, v_texCoord);
-
-	if (u_hasMask) {
-		vec4 maskColor = texture2D(u_maskTexture, v_texCoord);
-		// Mask luminance: white reveals, black hides
-		float maskAlpha = dot(maskColor.rgb, vec3(0.2126, 0.7152, 0.0722));
-		color.a *= maskAlpha;
-	}
 
 	color.a *= u_opacity;
 
@@ -124,7 +117,7 @@ class WebGL_renderer_class {
 		/** @type {Object} uniform locations */
 		this.uniforms = {};
 
-		/** @type {Object.<number, {texture: WebGLTexture, width: number, height: number, maskTexture: WebGLTexture|null}>} */
+		/** @type {Object.<number, {texture: WebGLTexture, width: number, height: number}>} */
 		this.textureCache = {};
 
 		/** @type {number} document width */
@@ -141,6 +134,51 @@ class WebGL_renderer_class {
 	}
 
 	// ---- Initialization ----
+
+	/**
+	 * Reports whether the GPU path can faithfully render the given layer stack.
+	 * The caller falls back to the Canvas 2D pipeline when this returns false.
+	 *
+	 * The WebGL path currently drops layer filters and only reproduces the
+	 * source-over blend mode exactly, so any visible layer that needs an active
+	 * filter or another composition mode must go through Canvas 2D.
+	 *
+	 * @param {Object[]} layers - sorted layers (bottom to top)
+	 * @param {number|null} disabled_filter_id - id of the currently disabled
+	 *   filter (matched the same way the Canvas 2D pipeline skips it)
+	 * @returns {boolean}
+	 */
+	can_render_layers(layers, disabled_filter_id) {
+		for (var i = 0; i < layers.length; i++) {
+			var layer = layers[i];
+			if (layer == null || layer.type == null || layer.visible === false)
+				continue;
+
+			//active filters need the 2D filter pipeline
+			var filters = layer.filters;
+			if (filters && filters.length) {
+				for (var f = 0; f < filters.length; f++) {
+					if (filters[f] && filters[f].id !== disabled_filter_id) {
+						return false;
+					}
+				}
+			}
+
+			//only source-over is reproduced exactly by the GPU blend setup
+			var composition = layer.composition;
+			if (composition != null && composition !== 'source-over') {
+				return false;
+			}
+
+			//layer masks are applied on the CPU by the Canvas 2D pipeline
+			//(multiply_alpha_by_mask_world); the WebGL shader path can't sample
+			//mask textures reliably for render-function layers, so fall back
+			if (layer.mask && layer.mask.enabled !== false) {
+				return false;
+			}
+		}
+		return true;
+	}
 
 	/**
 	 * Initialize the renderer.
@@ -251,8 +289,6 @@ class WebGL_renderer_class {
 			u_dstRect: gl.getUniformLocation(program, 'u_dstRect'),
 			u_rotation: gl.getUniformLocation(program, 'u_rotation'),
 			u_layerTexture: gl.getUniformLocation(program, 'u_layerTexture'),
-			u_maskTexture: gl.getUniformLocation(program, 'u_maskTexture'),
-			u_hasMask: gl.getUniformLocation(program, 'u_hasMask'),
 			u_opacity: gl.getUniformLocation(program, 'u_opacity'),
 		};
 
@@ -409,8 +445,7 @@ class WebGL_renderer_class {
 	 * For each layer:
 	 *   1. Upload or reuse cached GPU texture
 	 *   2. Set blend mode and opacity
-	 *   3. Set up mask texture if present
-	 *   4. Draw quad
+	 *   3. Draw quad
 	 *
 	 * @param {Object[]} layers - sorted layers (bottom to top)
 	 * @param {number} zoom - current zoom level (unused in this pass, applied externally)
@@ -451,19 +486,6 @@ class WebGL_renderer_class {
 			gl.activeTexture(gl.TEXTURE0);
 			gl.bindTexture(gl.TEXTURE_2D, texInfo.texture);
 			gl.uniform1i(this.uniforms.u_layerTexture, 0);
-
-			// Bind mask texture if present
-			var hasMask = false;
-			if (layer.mask && layer.mask.enabled !== false) {
-				var maskTexInfo = this._get_or_create_mask_texture(layer);
-				if (maskTexInfo) {
-					gl.activeTexture(gl.TEXTURE1);
-					gl.bindTexture(gl.TEXTURE_2D, maskTexInfo.texture);
-					gl.uniform1i(this.uniforms.u_maskTexture, 1);
-					hasMask = true;
-				}
-			}
-			gl.uniform1i(this.uniforms.u_hasMask, hasMask ? 1 : 0);
 
 			// Set opacity
 			gl.uniform1f(this.uniforms.u_opacity, (layer.opacity || 100) / 100);
@@ -523,20 +545,6 @@ class WebGL_renderer_class {
 	}
 
 	/**
-	 * Invalidate cached mask texture for a layer.
-	 * @param {number} layerId
-	 */
-	on_mask_changed(layerId) {
-		if (this.textureCache[layerId] && this.textureCache[layerId].maskTexture) {
-			var gl = this.gl;
-			if (gl) {
-				gl.deleteTexture(this.textureCache[layerId].maskTexture);
-			}
-			this.textureCache[layerId].maskTexture = null;
-		}
-	}
-
-	/**
 	 * Release all GPU resources.
 	 */
 	destroy() {
@@ -547,7 +555,6 @@ class WebGL_renderer_class {
 			for (var id in this.textureCache) {
 				var entry = this.textureCache[id];
 				if (entry.texture) gl.deleteTexture(entry.texture);
-				if (entry.maskTexture) gl.deleteTexture(entry.maskTexture);
 			}
 			this.textureCache = {};
 
@@ -641,71 +648,11 @@ class WebGL_renderer_class {
 			texture: texture,
 			width: srcWidth,
 			height: srcHeight,
-			maskTexture: null,
 			pad: source._pad || 0,
 		};
 
 		this.textureCache[id] = texInfo;
 		return texInfo;
-	}
-
-	/**
-	 * Get or create a GPU texture for a layer's mask.
-	 *
-	 * @param {Object} layer
-	 * @returns {{texture: WebGLTexture, width: number, height: number}|null}
-	 */
-	_get_or_create_mask_texture(layer) {
-		var gl = this.gl;
-		if (!gl || !layer.mask) return null;
-
-		var id = layer.id;
-		var cached = this.textureCache[id];
-
-		// Get the mask source canvas
-		var maskSource = layer.mask.link_canvas || layer.mask.link;
-		if (!maskSource || typeof maskSource.getContext !== 'function') return null;
-
-		var maskWidth = maskSource.width;
-		var maskHeight = maskSource.height;
-
-		if (maskWidth <= 0 || maskHeight <= 0) return null;
-
-		// Check if cached mask texture is still valid
-		if (cached && cached.maskTexture &&
-			cached.maskWidth === maskWidth &&
-			cached.maskHeight === maskHeight) {
-			return cached;
-		}
-
-		// Delete old mask texture
-		if (cached && cached.maskTexture) {
-			gl.deleteTexture(cached.maskTexture);
-		}
-
-		// Create new mask texture
-		var maskTexture = gl.createTexture();
-		gl.activeTexture(gl.TEXTURE1);
-		gl.bindTexture(gl.TEXTURE_2D, maskTexture);
-
-		// Upload mask pixel data
-		gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, false);
-		gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, maskSource);
-
-		// Set texture parameters
-		gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
-		gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
-		gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
-		gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
-
-		if (!this.textureCache[id]) {
-			this.textureCache[id] = { texture: null, width: 0, height: 0, maskTexture: null };
-		}
-		this.textureCache[id].maskTexture = maskTexture;
-		this.textureCache[id].maskWidth = maskWidth;
-		this.textureCache[id].maskHeight = maskHeight;
-
-		return this.textureCache[id];
 	}
 
 	/**

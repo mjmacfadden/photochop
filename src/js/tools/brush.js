@@ -19,6 +19,7 @@ class Brush_class extends Base_tools_class {
 		this.power = 2; //how speed affects size
 		this.event_links = [];
 		this.data_index = 0;
+		this.soft_stamp_cache = {};
 	}
 
 	load() {
@@ -210,6 +211,10 @@ class Brush_class extends Base_tools_class {
 
 		if (config.layer.type != this.name || params_hash != this.params_hash) {
 			//register new object - current layer is not ours or params changed
+			var clip_mask = null;
+			if (this.Base_layers.Base_selection != null) {
+				clip_mask = this.Base_layers.Base_selection.get_selection_clip_mask();
+			}
 			this.layer = {
 				type: this.name,
 				data: [[]],
@@ -220,6 +225,7 @@ class Brush_class extends Base_tools_class {
 				y: 0,
 				width: config.WIDTH,
 				height: config.HEIGHT,
+				mask: clip_mask,
 				hide_selection_if_active: true,
 				rotate: null,
 				is_vector: true,
@@ -383,6 +389,12 @@ class Brush_class extends Base_tools_class {
 		var params = layer.params;
 		var size = params.size;
 
+		//soft edge brush (hardness < 100)
+		if (params.hardness != null && params.hardness < 100) {
+			this.render_soft(ctx, layer);
+			return;
+		}
+
 		//set styles
 		ctx.save();
 		ctx.fillStyle = layer.color;
@@ -448,6 +460,249 @@ class Brush_class extends Base_tools_class {
 
 		ctx.translate(-layer.x, -layer.y);
 		ctx.restore();
+	}
+
+	/**
+	 * renders a brush layer with a soft (feathered) edge.
+	 *
+	 * @param {object} ctx
+	 * @param {object} layer
+	 */
+	render_soft(ctx, layer) {
+		if (layer.data.length == 0)
+			return;
+
+		var params = layer.params;
+		var hardness = (params.hardness != null) ? params.hardness : 100;
+		var color = layer.color;
+
+		ctx.save();
+		ctx.translate(layer.x, layer.y);
+
+		var data = this.check_legacy_format(layer.data);
+
+		for (var k = 0; k < data.length; k++) {
+			var group_data = data[k];
+			if (group_data == null || group_data.length == 0)
+				continue;
+
+			//split by breaks
+			var strokes = [[]];
+			for (var i = 0; i < group_data.length; i++) {
+				if (group_data[i] === null) {
+					strokes.push([]);
+				}
+				else {
+					strokes[strokes.length - 1].push(group_data[i]);
+				}
+			}
+
+			for (var s = 0; s < strokes.length; s++) {
+				var stroke = strokes[s];
+				if (stroke.length == 0)
+					continue;
+
+				if (stroke.length == 1) {
+					//a single soft dot
+					this.stamp_soft(ctx, stroke[0][0], stroke[0][1], stroke[0][2] || params.size, hardness, color, 1);
+					continue;
+				}
+
+				//build smoothed points (mirrors render_stabilized) for pressure==false
+				var points;
+				if (params.pressure == false) {
+					points = this.stabilize_points(stroke);
+				}
+				else {
+					points = [];
+					for (var j = 0; j < stroke.length; j++) {
+						points.push({
+							x: stroke[j][0],
+							y: stroke[j][1],
+							size: stroke[j][2] || params.size,
+						});
+					}
+				}
+
+				//stamp overlapping soft circles along the path
+				var size;
+				for (var p = 0; p < points.length - 1; p++) {
+					var p0 = points[p];
+					var p1 = points[p + 1];
+					this.stamp_soft_line(ctx,
+						p0.x, p0.y, p0.size || params.size,
+						p1.x, p1.y, p1.size || params.size,
+						hardness, color);
+				}
+			}
+		}
+
+		ctx.translate(-layer.x, -layer.y);
+		ctx.restore();
+	}
+
+	/**
+	 * returns the smoothed points used by render_stabilized()
+	 *
+	 * @param {array} data points [x, y, size]
+	 * @returns {array} points {x, y}
+	 */
+	stabilize_points(data) {
+		var n = data.length;
+		var points = [];
+
+		if (n <= 5) {
+			//not enough points to smooth - straight lines
+			for (var i = 0; i < n; i++) {
+				if (data[i] !== null) {
+					points.push({ x: data[i][0], y: data[i][1] });
+				}
+			}
+			return points;
+		}
+
+		//fix for loose ending, so lets duplicate last point
+		var pts = [];
+		for (var i = 0; i < n; i++) {
+			if (data[i] !== null) {
+				pts.push([data[i][0], data[i][1]]);
+			}
+		}
+		pts.push([pts[pts.length - 1][0], pts[pts.length - 1][1]]);
+
+		var temp_data1 = [pts[0]];
+		var c, d;
+		for (var i = 1; i < pts.length - 1; i++) {
+			c = (pts[i][0] + pts[i + 1][0]) / 2;
+			d = (pts[i][1] + pts[i + 1][1]) / 2;
+			temp_data1.push([c, d]);
+		}
+
+		var temp_data2 = [temp_data1[0]];
+		for (var i = 1; i < temp_data1.length - 1; i++) {
+			c = (temp_data1[i][0] + temp_data1[i + 1][0]) / 2;
+			d = (temp_data1[i][1] + temp_data1[i + 1][1]) / 2;
+			temp_data2.push([c, d]);
+		}
+
+		var temp_data = [temp_data2[0]];
+		for (var i = 1; i < temp_data2.length - 1; i++) {
+			c = (temp_data2[i][0] + temp_data2[i + 1][0]) / 2;
+			d = (temp_data2[i][1] + temp_data2[i + 1][1]) / 2;
+			temp_data.push([c, d]);
+		}
+
+		for (var i = 0; i < temp_data.length; i++) {
+			points.push({ x: temp_data[i][0], y: temp_data[i][1] });
+		}
+		return points;
+	}
+
+	/**
+	 * radial-gradient stamp used to paint soft brush edges.
+	 * A straight stroke is sampled every `step` pixels; the stamp amplitude
+	 * is normalized so the accumulated stamps reproduce the stamped kernel
+	 * (opaque core, smooth falloff toward the nominal brush radius).
+	 *
+	 * @param {int} size
+	 * @param {int} hardness 0-100
+	 * @param {string} color hex
+	 * @returns {object} {canvas, center, step, amp}
+	 */
+	build_soft_stamp(size, hardness, color) {
+		size = Math.max(1, Math.round(size));
+		var r_outer = size / 2;
+		var r_inner = r_outer * Math.max(0, Math.min(100, hardness)) / 100;
+		var side = size + 2;
+		var center = side / 2;
+
+		var rgb = { r: 0, g: 0, b: 0 };
+		if (typeof this.Helper.hexToRgb == 'function') {
+			rgb = this.Helper.hexToRgb(color) || rgb;
+		}
+
+		var canvas = document.createElement('canvas');
+		canvas.width = side;
+		canvas.height = side;
+		var ctx = canvas.getContext('2d');
+
+		var gradient = ctx.createRadialGradient(center, center, r_inner, center, center, r_outer);
+		gradient.addColorStop(0, 'rgba(' + rgb.r + ', ' + rgb.g + ', ' + rgb.b + ', 1)');
+		gradient.addColorStop(1, 'rgba(' + rgb.r + ', ' + rgb.g + ', ' + rgb.b + ', 0)');
+		ctx.fillStyle = gradient;
+		ctx.fillRect(0, 0, side, side);
+
+		//sampling step and accumulated-amplitude normalization
+		var step = Math.max(1, Math.floor(r_outer / 3));
+		var integral = r_outer + r_inner; //2 * ∫_0^∞ kernel(x) dx for a linear ramp
+		var amp = Math.min(1, step / Math.max(integral, 0.001));
+
+		return {
+			canvas: canvas,
+			center: center,
+			step: step,
+			amp: amp,
+			size: size,
+			hardness: hardness,
+			color: color,
+		};
+	}
+
+	get_soft_stamp(size, hardness, color) {
+		size = Math.max(1, Math.round(size));
+		hardness = Math.round(hardness);
+		var key = size + '_' + hardness + '_' + color;
+		if (this.soft_stamp_cache[key] == null) {
+			this.soft_stamp_cache[key] = this.build_soft_stamp(size, hardness, color);
+		}
+		return this.soft_stamp_cache[key];
+	}
+
+	/**
+	 * paints a single soft brush stamp.
+	 *
+	 * @param {object} ctx
+	 * @param {int} x
+	 * @param {int} y
+	 * @param {int} size
+	 * @param {int} hardness
+	 * @param {string} color
+	 * @param {float} amplitude optional per-stamp alpha (defaults to normalized amplitude)
+	 */
+	stamp_soft(ctx, x, y, size, hardness, color, amplitude) {
+		var stamp = this.get_soft_stamp(size, hardness, color);
+		if (amplitude == null) {
+			amplitude = stamp.amp;
+		}
+		ctx.save();
+		ctx.globalAlpha = Math.max(0, Math.min(1, amplitude));
+		ctx.drawImage(stamp.canvas, Math.round(x - stamp.center), Math.round(y - stamp.center));
+		ctx.restore();
+	}
+
+	/**
+	 * paints a soft stroke segment, stamping overlapping circles between two points.
+	 */
+	stamp_soft_line(ctx, x0, y0, s0, x1, y1, s1, hardness, color) {
+		var dx = x1 - x0;
+		var dy = y1 - y0;
+		var dist = Math.sqrt(dx * dx + dy * dy);
+
+		var stamp = this.get_soft_stamp(Math.max(s0, s1), hardness, color);
+		var step = Math.max(1, stamp.step);
+		var count = Math.max(1, Math.ceil(dist / step));
+
+		for (var i = 0; i <= count; i++) {
+			var t = i / count;
+			this.stamp_soft(
+				ctx,
+				x0 + dx * t,
+				y0 + dy * t,
+				s0 + (s1 - s0) * t,
+				hardness,
+				color
+			);
+		}
 	}
 
 	/**
