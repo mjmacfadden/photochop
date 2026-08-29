@@ -589,10 +589,6 @@ class GUI_tools_class {
 							}
 						});
 
-					if (attribute_key === 'hardness') {
-						//soft (transparent) on the left, hard (opaque) on the right
-						$range.uiRange('set_background', 'linear-gradient(to right, rgba(255,255,255,0.10) 0%, rgba(255,255,255,0.15) 35%, rgba(255,255,255,0.55) 70%, rgba(255,255,255,0.9) 100%)');
-					}
 
 					//live typing previews the value; committed (snapped) on blur / Enter
 					elementValue.addEventListener('input', () => {
@@ -784,29 +780,17 @@ class GUI_tools_class {
 		fgSwatch.title = 'Foreground Color (click to change)';
 		fgSwatch.style.background = config.COLOR;
 
+		var swapBtn = document.createElement('button');
+		swapBtn.id = 'toolbar_swap_colors';
+		swapBtn.className = 'toolbar-swap-btn';
+		swapBtn.title = 'Swap Colors (X)';
+		swapBtn.innerHTML = '<svg width="11" height="11" viewBox="0 0 12 12" fill="currentColor"><path d="M 3.5,3 A 5.5,5.5 0 0,1 9,8.5" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/><polygon points="3.5,0.8 0.5,3 3.5,5.2"/><polygon points="6.8,8.5 9,11.5 11.2,8.5"/></svg>';
+
+		innerDiv.appendChild(swapBtn);
 		innerDiv.appendChild(bgSwatch);
 		innerDiv.appendChild(fgSwatch);
 
-		var buttonsDiv = document.createElement('div');
-		buttonsDiv.className = 'toolbar-color-buttons';
-
-		var swapBtn = document.createElement('button');
-		swapBtn.id = 'toolbar_swap_colors';
-		swapBtn.className = 'toolbar-color-btn';
-		swapBtn.title = 'Swap Colors (X)';
-		swapBtn.innerHTML = '<svg width="10" height="10" viewBox="0 0 16 16" fill="currentColor"><path d="M11 1.5v1H3.5l2.3-2.3-.7-.7L1.5 2l3.6 3.6.7-.7L3.5 2.5H11V1.5zM5 14.5v-1h7.5l-2.3 2.3.7.7L14.5 14l-3.6-3.6-.7.7L11.5 12.5H5v1z"/></svg>';
-
-		var defaultBtn = document.createElement('button');
-		defaultBtn.id = 'toolbar_default_colors';
-		defaultBtn.className = 'toolbar-color-btn';
-		defaultBtn.title = 'Default Colors (D)';
-		defaultBtn.innerHTML = '<svg width="10" height="10" viewBox="0 0 16 16" fill="currentColor"><rect x="1" y="1" width="6" height="6" fill="#000" stroke="#888" stroke-width="1"/><rect x="5" y="5" width="6" height="6" fill="#fff" stroke="#888" stroke-width="1"/></svg>';
-
-		buttonsDiv.appendChild(swapBtn);
-		buttonsDiv.appendChild(defaultBtn);
-
 		swatchesDiv.appendChild(innerDiv);
-		swatchesDiv.appendChild(buttonsDiv);
 		container.appendChild(swatchesDiv);
 
 		fgSwatch.addEventListener('click', function () {
@@ -817,9 +801,6 @@ class GUI_tools_class {
 		});
 		swapBtn.addEventListener('click', function () {
 			_this.swap_colors();
-		});
-		defaultBtn.addEventListener('click', function () {
-			_this.default_colors();
 		});
 	}
 
@@ -947,6 +928,9 @@ class GUI_tools_class {
 		this.update_toolbar_swatches();
 		this.Helper.setCookie('color', config.COLOR);
 		this.Helper.setCookie('color_bg', config.COLOR_BG);
+		if (app.GUI && app.GUI.GUI_colors) {
+			app.GUI.GUI_colors.render_selected_color();
+		}
 	}
 
 	default_colors() {
@@ -957,6 +941,9 @@ class GUI_tools_class {
 		this.update_toolbar_swatches();
 		this.Helper.setCookie('color', config.COLOR);
 		this.Helper.setCookie('color_bg', config.COLOR_BG);
+		if (app.GUI && app.GUI.GUI_colors) {
+			app.GUI.GUI_colors.render_selected_color();
+		}
 	}
 
 	update_toolbar_swatches() {

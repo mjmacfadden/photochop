@@ -496,28 +496,35 @@ button img{
 /* precise variant: slim line track with a draggable circular knob */
 .ui_range.precise {
     --range-handle-width: 0px;
-    background: transparent;
+    background: rgba(255, 255, 255, 0.22);
     border: 0;
+    border-radius: 2px;
+    display: flex;
+    align-items: center;
     flex: 1 1 auto;
-    height: 1.4rem;
+    height: 4px;
     min-width: 140px;
     padding: 0;
+    position: relative;
     width: auto;
+    margin-top: 1px;
 }
 .ui_range.precise .padded_track {
-    background: rgba(255,255,255,0.22);
-    border-radius: 3px;
-    bottom: auto;
-    height: 4px;
-    left: 1px;
-    right: 1px;
-    top: 50%;
-    transform: translateY(-50%);
+    background: transparent;
+    border-radius: 0;
+    bottom: -8px;
+    top: -8px;
+    height: auto;
+    left: 0;
+    right: 0;
+    position: absolute;
+    transform: none;
 }
 .ui_range.precise .bar {
-    background: rgba(255,255,255,0.85);
-    border-radius: 3px 0 0 3px;
-    height: 4px;
+    background: rgba(255, 255, 255, 0.85);
+    border-radius: 2px 0 0 2px;
+    height: 100%;
+    position: relative;
 }
 .ui_range.precise .handle {
     background: #ffffff;
@@ -525,10 +532,10 @@ button img{
     border-radius: 50%;
     box-shadow: 0 1px 3px rgba(0,0,0,0.45);
     cursor: ew-resize;
-    height: 15px;
+    height: 14px;
     top: 50%;
     transform: translate(50%, -50%);
-    width: 15px;
+    width: 14px;
 }
 .ui_range.precise .handle:hover,
 .ui_range.precise.active .handle,
