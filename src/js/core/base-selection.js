@@ -1238,6 +1238,13 @@ class Base_selection_class {
 				y: settings.data.y,
 				width: settings.data.width,
 				height: settings.data.height,
+				mask: settings.data.mask ? {
+					x: settings.data.mask.x,
+					y: settings.data.mask.y,
+					width: settings.data.mask.width,
+					height: settings.data.mask.height,
+					linked: settings.data.mask.linked,
+				} : null
 			};
 			this.current_angle = null;
 		}

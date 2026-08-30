@@ -202,13 +202,21 @@ class Select_tool_class extends Base_tools_class {
 			x: Math.round(config.layer.x),
 			y: Math.round(config.layer.y),
 			width: Math.round(config.layer.width),
-			height: Math.round(config.layer.height)
+			height: Math.round(config.layer.height),
+			mask: config.layer.mask ? {
+				x: config.layer.mask.x,
+				y: config.layer.mask.y,
+				width: config.layer.mask.width,
+				height: config.layer.mask.height,
+				linked: config.layer.mask.linked,
+			} : null
 		};
 		this.mousedown_mask_dimensions = config.layer.mask ? {
 			x: config.layer.mask.x,
 			y: config.layer.mask.y,
 			width: config.layer.mask.width,
 			height: config.layer.mask.height,
+			linked: config.layer.mask.linked,
 		} : null;
 	}
 
