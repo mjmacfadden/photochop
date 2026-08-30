@@ -52,7 +52,7 @@ class Pan_tool_class extends Base_tools_class {
 		var pos = this.get_screen_pos(e);
 		zoomView.move(pos.x - this.start_screen.x, pos.y - this.start_screen.y);
 		this.start_screen = pos;
-		config.need_render = true;
+		this.Base_layers.invalidate({ viewport: true, ruler: true });
 	}
 
 	mouseup(e) {

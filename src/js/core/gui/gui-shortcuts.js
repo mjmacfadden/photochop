@@ -88,8 +88,8 @@ class GUI_shortcuts_class {
 				return;
 			}
 
-			// Ctrl/Cmd + Shift + [ / ] = Decrease/Increase brush hardness
-			if ((event.ctrlKey || event.metaKey) && event.shiftKey && !event.altKey
+			// Shift + [ / ] = Decrease/Increase brush hardness
+			if (event.shiftKey && !event.ctrlKey && !event.metaKey && !event.altKey
 				&& (event.code === 'BracketLeft' || event.code === 'BracketRight')) {
 				event.preventDefault();
 				event.stopImmediatePropagation();

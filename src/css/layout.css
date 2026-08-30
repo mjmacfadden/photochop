@@ -242,7 +242,7 @@ body .sp-preview{
 	outline: none;
 	cursor: pointer;
 	filter: var(--mobile-menu-toggle-filter);
-	background: url(images/icons/undo.svg) no-repeat center center;
+	background: url(/images/icons/undo.svg) no-repeat center center;
 	background-size: auto 25px;
 	margin-left: 10px;
 }
@@ -351,7 +351,7 @@ body .sp-preview{
 .sidebar_left .item{
 	position: relative;
 	display:block;
-	background-color: #4a4a4a;
+	background-color: transparent;
 	height: 24px;
 	width: 24px;
 	margin: 2px;
@@ -372,39 +372,43 @@ body .sp-preview{
 	background-size: 20px 20px;
 }
 .sidebar_left .item:hover{
-	background-color: var(--background-color-hover);
+	background-color: var(--button-background-color-hover);
 }
 .sidebar_left .item.active{
-	background-color: var(--background-color-active);
+	background-color: #242424;
+	box-shadow: inset 1px 1px 2px rgba(0, 0, 0, 0.6), inset -1px -1px 1px rgba(255, 255, 255, 0.05);
 	color: var(--text-color-active);
 }
+.sidebar_left .item.active:hover{
+	background-color: #1e1e1e;
+}
 .sidebar_left .item.active:after{
-	filter: var(--menu-icons-filter-active);
+	filter: var(--menu-icons-filter);
 }
 
 /*
 IMPORTANT: any new icon should also must be added on /service-worker.js + its version should be updated - FEATURE DISABLED
  */
-.sidebar_left .select:after{ background-image: url('images/icons/select.svg'); }
-.sidebar_left .selection:after{ background-image: url('images/icons/selection.svg'); }
-.sidebar_left .brush:after{ background-image: url('images/icons/brush.svg'); }
-.sidebar_left .pencil:after{ background-image: url('images/icons/pencil.svg'); }
-.sidebar_left .pick_color:after{ background-image: url('images/icons/pick_color.svg'); }
-.sidebar_left .erase:after{ background-image: url('images/icons/erase.svg'); }
-.sidebar_left .magic_erase:after{ background-image: url('images/icons/magic_erase.svg'); }
-.sidebar_left .fill:after{ background-image: url('images/icons/fill.svg'); }
-.sidebar_left .media:after{ background-image: url('images/icons/media.svg'); }
-.sidebar_left .shape:after{ background-image: url('images/icons/shape.svg'); }
-.sidebar_left .text:after{ background-image: url('images/icons/text.svg'); background-size: 16px auto; }
-.sidebar_left .gradient:after{ background-image: url('images/icons/gradient.png'); background-size: 18px 12px; filter: none; }
-.sidebar_left .clone:after{ background-image: url('images/icons/clone.svg'); }
-.sidebar_left .crop:after{ background-image: url('images/icons/crop.svg'); }
-.sidebar_left .blur:after{ background-image: url('images/icons/blur.svg'); }
-.sidebar_left .sharpen:after{ background-image: url('images/icons/sharpen.svg'); }
-.sidebar_left .desaturate:after{ background-image: url('images/icons/desaturate.svg'); }
-.sidebar_left .bulge_pinch:after{ background-image: url('images/icons/bulge_pinch.svg'); }
-.sidebar_left .animation:after{ background-image: url('images/icons/animation.svg'); }
-.sidebar_left .pan:after{ background-image: url('images/icons/pan.svg'); }
+.sidebar_left .select:after{ background-image: url('/images/icons/select.svg'); }
+.sidebar_left .selection:after{ background-image: url('/images/icons/selection.svg'); }
+.sidebar_left .brush:after{ background-image: url('/images/icons/brush.svg'); }
+.sidebar_left .pencil:after{ background-image: url('/images/icons/pencil.svg'); }
+.sidebar_left .pick_color:after{ background-image: url('/images/icons/pick_color.svg'); }
+.sidebar_left .erase:after{ background-image: url('/images/icons/erase.svg'); }
+.sidebar_left .magic_erase:after{ background-image: url('/images/icons/magic_erase.svg'); }
+.sidebar_left .fill:after{ background-image: url('/images/icons/fill.svg'); }
+.sidebar_left .media:after{ background-image: url('/images/icons/media.svg'); }
+.sidebar_left .shape:after{ background-image: url('/images/icons/shape.svg'); }
+.sidebar_left .text:after{ background-image: url('/images/icons/text.svg'); background-size: 16px auto; }
+.sidebar_left .gradient:after{ background-image: url('/images/icons/gradient.png'); background-size: 18px 12px; filter: none; }
+.sidebar_left .clone:after{ background-image: url('/images/icons/clone.svg'); }
+.sidebar_left .crop:after{ background-image: url('/images/icons/crop.svg'); }
+.sidebar_left .blur:after{ background-image: url('/images/icons/blur.svg'); }
+.sidebar_left .sharpen:after{ background-image: url('/images/icons/sharpen.svg'); }
+.sidebar_left .desaturate:after{ background-image: url('/images/icons/desaturate.svg'); }
+.sidebar_left .bulge_pinch:after{ background-image: url('/images/icons/bulge_pinch.svg'); }
+.sidebar_left .animation:after{ background-image: url('/images/icons/animation.svg'); }
+.sidebar_left .pan:after{ background-image: url('/images/icons/pan.svg'); }
 
 /* pan (hand) tool - grab/grabbing cursor, overrides inline cursor set by selection code */
 body.tool-pan #main_wrapper,
@@ -419,11 +423,10 @@ body.tool-pan.pan-dragging #canvas_minipaint{
 }
 
 /* tool group - button shows the active sub-tool icon */
-.sidebar_left .item.has_group{ overflow: visible; width: 20px; height: 20px; }
-.sidebar_left .item.has_group:after{ background-size: 16px 16px; }
-.sidebar_left .item.selection.marquee_ellipse:after{ background-image: url('images/icons/selection_ellipse.svg'); }
-.sidebar_left .item.selection.marquee_lasso:after{ background-image: url('images/icons/lasso.svg'); }
-.sidebar_left .item.brush.marquee_pencil:after{ background-image: url('images/icons/pencil.svg'); }
+.sidebar_left .item.has_group{ overflow: visible; }
+.sidebar_left .item.selection.marquee_ellipse:after{ background-image: url('/images/icons/selection_ellipse.svg'); }
+.sidebar_left .item.selection.marquee_lasso:after{ background-image: url('/images/icons/lasso.svg'); }
+.sidebar_left .item.brush.marquee_pencil:after{ background-image: url('/images/icons/pencil.svg'); }
 .sidebar_left .item .corner_triangle{
 	position: absolute;
 	right: 0;
@@ -471,11 +474,11 @@ body.tool-pan.pan-dragging #canvas_minipaint{
 	background-size: 16px;
 	filter: var(--menu-icons-filter);
 }
-.tg_icon.selection{ background-image: url('images/icons/selection.svg'); }
-.tg_icon.selection_ellipse{ background-image: url('images/icons/selection_ellipse.svg'); }
-.tg_icon.lasso{ background-image: url('images/icons/lasso.svg'); }
-.tg_icon.brush{ background-image: url('images/icons/brush.svg'); }
-.tg_icon.pencil{ background-image: url('images/icons/pencil.svg'); }
+.tg_icon.selection{ background-image: url('/images/icons/selection.svg'); }
+.tg_icon.selection_ellipse{ background-image: url('/images/icons/selection_ellipse.svg'); }
+.tg_icon.lasso{ background-image: url('/images/icons/lasso.svg'); }
+.tg_icon.brush{ background-image: url('/images/icons/brush.svg'); }
+.tg_icon.pencil{ background-image: url('/images/icons/pencil.svg'); }
 
 @media screen and (max-width:550px){
 	#sidebar_left{
@@ -673,7 +676,7 @@ body.tool-pan.pan-dragging #canvas_minipaint{
 	bottom:0;
 	right:0;
 	filter: var(--menu-icons-filter);
-	background: url('images/icons/arrow-down.svg') no-repeat center center;
+	background: url('/images/icons/arrow-down.svg') no-repeat center center;
 	background-size: 12px auto;
 }
 .layers_list .visibility{
@@ -696,7 +699,7 @@ body.tool-pan.pan-dragging #canvas_minipaint{
 	top:0;
 	bottom:0;
 	right:0;
-	background: url('images/icons/view.svg') no-repeat center center;
+	background: url('/images/icons/view.svg') no-repeat center center;
 	background-size: 16px auto;
 	filter: invert(0.7);
 }
@@ -832,7 +835,7 @@ body.tool-pan.pan-dragging #canvas_minipaint{
 	width:12px;
 	height:18px;
 	margin-left: 4px;
-	background: transparent url(images/icons/delete.svg) no-repeat center center;
+	background: transparent url(/images/icons/delete.svg) no-repeat center center;
 	background-size: 10px 10px;
 	border: none;
 	box-shadow: none;
@@ -915,7 +918,7 @@ body.tool-pan.pan-dragging #canvas_minipaint{
 	top:0;
 	bottom:0;
 	right:0;
-	background: url(images/icons/refresh.svg) no-repeat center center;
+	background: url(/images/icons/refresh.svg) no-repeat center center;
 	background-size: auto 14px;
 	filter: var(--menu-icons-filter);
 }
@@ -1056,7 +1059,7 @@ visible around/outside the canvas edge; never blocks pointer events */
 	height: 100%;
 	position: absolute;
 	pointer-events: none;
-	/*background: url(images/icons/grid.png) repeat top left;*/
+	/*background: url(/images/icons/grid.png) repeat top left;*/
 	background: url('data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABQAAAAUCAYAAACNiR0NAAAAQElEQVQ4T2N89+7dfwYigKCgIBGqGBgYRw3EGU6jYYgzaIZAsvn//z9ROeX9+/fE5ZRRA3GG02gY4s4pgz7ZAAAnSWvHPkHXaAAAAABJRU5ErkJggg==') repeat top left;
 	z-index:1;
 	image-rendering: pixelated; /* disable antialiasing */

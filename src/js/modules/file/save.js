@@ -7,8 +7,6 @@ import Dialog_class from './../../libs/popup.js';
 import alertify from './../../../../node_modules/alertifyjs/build/alertify.min.js';
 import canvasToBlob from './../../../../node_modules/blueimp-canvas-to-blob/js/canvas-to-blob.min.js';
 import filesaver from './../../../../node_modules/file-saver/dist/FileSaver.min.js';
-import GIF from './../../../../node_modules/gif.js.optimized/';
-import CanvasToTIFF from './../../libs/canvastotiff.js';
 import Tools_settings_class from "../tools/settings";
 
 var instance = null;
@@ -441,7 +439,7 @@ class File_save_class {
 	 * @param {object} user_response parameters
 	 * @param {boolean} autoname if use name from layer, false by default
 	 */
-	save_action(user_response, autoname) {
+	async save_action(user_response, autoname) {
 		var fname = user_response.name;
 		if(autoname === true && user_response.layers == 'Selected'){
 			fname = config.layer.name;
@@ -573,6 +571,7 @@ class File_save_class {
 			if (this.Helper.strpos(fname, '.tiff') == false)
 				fname = fname + ".tiff";
 			var data_header = "image/tiff";
+			var { default: CanvasToTIFF } = await import(/* webpackChunkName: "tiff-export" */ './../../libs/canvastotiff.js');
 
 			CanvasToTIFF.toBlob(canvas, function(blob) {
 				filesaver.saveAs(blob, fname);
@@ -591,6 +590,7 @@ class File_save_class {
 		}
 		else if (type == 'GIF') {
 			//gif
+			var { default: GIF } = await import(/* webpackChunkName: "gif-export" */ './../../../../node_modules/gif.js.optimized/');
 			var cores = navigator.hardwareConcurrency || 4;
 			var gif_settings = {
 				workers: cores,

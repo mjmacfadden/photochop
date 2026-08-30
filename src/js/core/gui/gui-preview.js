@@ -61,7 +61,7 @@ class GUI_preview_class {
 			.getContext("2d");
 
 		this.prepare_canvas();
-		config.need_render = true;
+		this.Base_layers.invalidate({ document: true, preview: true, details: true, ruler: true });
 		this.set_events();
 	}
 
@@ -119,7 +119,7 @@ class GUI_preview_class {
 		}, false);
 		window.addEventListener('resize', function (e) {
 			//resize
-			config.need_render = true;
+			_this.Base_layers.invalidate({ viewport: true, ruler: true });
 		}, false);
 		document.getElementById("canvas_preview").addEventListener('mousedown', function (e) {
 			if(is_touch)
@@ -273,7 +273,7 @@ class GUI_preview_class {
 		document.getElementById("zoom_100").innerHTML = Math.round(config.ZOOM * 100) + '%';
 		document.getElementById("zoom_range").value = (config.ZOOM * 100);
 
-		config.need_render = true;
+		this.Base_layers.invalidate({ viewport: true, ruler: true });
 		this.GUI.prepare_canvas();
 
 		//sleep after last image import, it maybe not be finished yet
@@ -329,7 +329,7 @@ class GUI_preview_class {
 		zoom_data.move_pos.x = change_x;
 		zoom_data.move_pos.y = change_y;
 
-		config.need_render = true;
+		this.Base_layers.invalidate({ viewport: true });
 	}
 	
 	/**
@@ -344,7 +344,7 @@ class GUI_preview_class {
 		zoom_data.move_pos.x = parseInt(x);
 		zoom_data.move_pos.y = parseInt(y);
 		
-		config.need_render = true;
+		this.Base_layers.invalidate({ viewport: true });
 	}
 	
 }

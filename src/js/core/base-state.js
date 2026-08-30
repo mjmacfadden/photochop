@@ -9,6 +9,7 @@ import Base_gui_class from './base-gui.js';
 import Helper_class from './../libs/helpers.js';
 import alertify from './../../../node_modules/alertifyjs/build/alertify.min.js';
 import app from '../app.js';
+import project_store from '../actions/store/project-store.js';
 
 var instance = null;
 
@@ -34,6 +35,7 @@ class Base_state_class {
 		this.action_history = [];
 		this.action_history_index = 0;
 		this.action_history_max = 50;
+		this.autosave_timer = null;
 
 		this.set_events();
 	}
@@ -114,7 +116,27 @@ class Base_state_class {
 		if (error_during_free) {
 			alertify.error('A problem occurred while removing undo history. It\'s suggested you save your work and refresh the page in order to free up memory.');
 		}
+		this.schedule_autosave();
 		return { status: 'completed' };
+	}
+
+	schedule_autosave() {
+		if (!app.FileSave || !window.indexedDB)
+			return;
+		if (this.autosave_timer != null)
+			clearTimeout(this.autosave_timer);
+		this.autosave_timer = setTimeout(() => {
+			this.autosave_timer = null;
+			var save = () => project_store.save(app.FileSave.export_as_json()).catch(function (error) {
+				console.warn('Recovery snapshot failed:', error);
+			});
+			if (window.requestIdleCallback) {
+				window.requestIdleCallback(save, { timeout: 5000 });
+			}
+			else {
+				setTimeout(save, 0);
+			}
+		}, 1500);
 	}
 
 	can_redo() {

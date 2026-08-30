@@ -1,14 +1,18 @@
 var webpack = require('webpack');
 var path = require('path');
+var MiniCssExtractPlugin = require('mini-css-extract-plugin');
 
-module.exports = {
+module.exports = function (env, argv) {
+	var is_production = argv.mode === 'production';
+	return {
 	entry: [
 		'./src/js/main.js',
 	],
 	output: {
 		path: path.resolve(__dirname, 'dist'),
 		filename: 'bundle.js',
-		publicPath: '/dist/'
+		publicPath: '/dist/',
+		clean: true
 	},
 	resolve: {
 		extensions: ['.js', '.css'],
@@ -21,7 +25,7 @@ module.exports = {
 			{
 				test: /\.css$/,
 				use: [
-					'style-loader',
+					MiniCssExtractPlugin.loader,
 					{
 						loader: 'css-loader',
 						options: {url: false}
@@ -36,6 +40,9 @@ module.exports = {
 		]
 	},
 	plugins: [
+		new MiniCssExtractPlugin({
+			filename: 'styles.css'
+		}),
 		new webpack.ProvidePlugin({
             $: "jquery",
             jQuery: "jquery",
@@ -45,7 +52,7 @@ module.exports = {
 			VERSION: JSON.stringify(require("./package.json").version)
 		}),
 	],
-	devtool: "cheap-module-source-map",
+	devtool: is_production ? false : "cheap-module-source-map",
 	devServer: {
 		// host: '0.0.0.0',
 		//contentBase: "./",
@@ -53,4 +60,5 @@ module.exports = {
 			directory: path.resolve(__dirname, "./"),
 		},
 	}
+};
 };

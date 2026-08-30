@@ -38,7 +38,7 @@ export class Update_layer_action extends Base_action {
 		if (this.settings.params || this.settings.width || this.settings.height) {
 			config.need_render_changed_params = true;
 		}
-		config.need_render = true;
+		app.Layers.invalidate({ document: true, preview: true, details: true });
 	}
 
 	async undo() {
@@ -56,7 +56,7 @@ export class Update_layer_action extends Base_action {
 			this.old_settings = {};
 		}
 		this.reference_layer = null;
-		config.need_render = true;
+		app.Layers.invalidate({ document: true, preview: true, details: true });
 	}
 
 	free() {

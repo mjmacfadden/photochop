@@ -102,13 +102,19 @@ const menuDefinition = [
 				target: 'edit/selection.delete'
 			},
 			{
-				name: 'Copy Selection',
-				target: 'layer/new.new_selection'
+				name: 'Cut',
+				shortcut: 'Ctrl+X',
+				target: 'edit/copy.cut_to_clipboard'
 			},
 			{
-				name: 'Copy to Clipboard',
+				name: 'Copy',
 				shortcut: 'Ctrl+C',
 				target: 'edit/copy.copy_to_clipboard'
+			},
+			{
+				name: 'Copy Selection to Layer',
+				shortcut: 'Ctrl+J',
+				target: 'layer/new.new_selection'
 			},
 			{
 				name: 'Paste',

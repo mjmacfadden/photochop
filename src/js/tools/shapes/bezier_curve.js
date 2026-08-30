@@ -110,6 +110,7 @@ class Bezier_Curve_class extends Base_tools_class {
 				is_vector: true,
 				color: config.COLOR,
 				status: 'draft',
+				mask: this.selection_clip_mask(),
 			};
 			app.State.do_action(
 				new app.Actions.Bundle_action('new_bezier_layer', 'New Bezier Layer', [

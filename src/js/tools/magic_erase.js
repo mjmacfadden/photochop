@@ -84,8 +84,10 @@ class Magic_erase_class extends Base_tools_class {
 
 		//change
 		this.working = true;
-		this.magic_erase_general(ctx, config.WIDTH, config.HEIGHT,
+		var selection_snapshot = this.copy_layer_snapshot();
+		this.magic_erase_general(ctx, canvas.width, canvas.height,
 			mouse_x, mouse_y, params.power, params.anti_aliasing, params.contiguous);
+		this.constrain_edit_to_selection(canvas, selection_snapshot);
 
 		app.State.do_action(
 			new app.Actions.Bundle_action('magic_erase_tool', 'Magic Eraser Tool', [

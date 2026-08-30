@@ -544,6 +544,10 @@ class WebGL_renderer_class {
 		}
 	}
 
+	on_mask_changed(layerId) {
+		this.on_layer_data_changed(layerId);
+	}
+
 	/**
 	 * Release all GPU resources.
 	 */

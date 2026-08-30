@@ -51,6 +51,7 @@ class Gradient_class extends Base_tools_class {
 			rotate: null,
 			is_vector: is_vector,
 			color: null,
+			mask: this.selection_clip_mask(),
 			data: {
 				center_x: mouse.x,
 				center_y: mouse.y,

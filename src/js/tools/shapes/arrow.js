@@ -53,7 +53,8 @@ class Arrow_class extends Base_tools_class {
 			y: Math.round(mouse_y),
 			rotate: null,
 			is_vector: true,
-			color: config.COLOR
+			color: config.COLOR,
+			mask: this.selection_clip_mask(),
 		};
 		app.State.do_action(
 			new app.Actions.Bundle_action('new_line_layer', 'New Line Layer', [

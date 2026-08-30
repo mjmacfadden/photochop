@@ -18,6 +18,7 @@ class Erase_class extends Base_tools_class {
 		this.tmpCanvas = null;
 		this.tmpCanvasCtx = null;
 		this.started = false;
+		this.selection_snapshot = null;
 	}
 
 	load() {
@@ -84,6 +85,7 @@ class Erase_class extends Base_tools_class {
 		this.tmpCanvas.width = config.layer.width_original;
 		this.tmpCanvas.height = config.layer.height_original;
 		this.tmpCanvasCtx.drawImage(config.layer.link, 0, 0);
+		this.selection_snapshot = this.copy_layer_snapshot();
 
 		this.tmpCanvasCtx.scale(
 			config.layer.width_original / config.layer.width,
@@ -92,6 +94,7 @@ class Erase_class extends Base_tools_class {
 
 		//do erase
 		this.erase_general(this.tmpCanvasCtx, 'click', mouse, params.size, params.strict, params.circle);
+		this.constrain_edit_to_selection(this.tmpCanvas, this.selection_snapshot);
 
 		//register tmp canvas for faster redraw
 		config.layer.link_canvas = this.tmpCanvas;
@@ -120,6 +123,7 @@ class Erase_class extends Base_tools_class {
 
 		//do erase
 		this.erase_general(this.tmpCanvasCtx, 'move', mouse, params.size, params.strict, params.circle, is_touch);
+		this.constrain_edit_to_selection(this.tmpCanvas, this.selection_snapshot);
 
 		//draw draft preview
 		config.need_render = true;
@@ -134,6 +138,7 @@ class Erase_class extends Base_tools_class {
 			return;
 		}
 		delete config.layer.link_canvas;
+		this.constrain_edit_to_selection(this.tmpCanvas, this.selection_snapshot);
 
 		app.State.do_action(
 			new app.Actions.Bundle_action('erase_tool', 'Erase Tool', [
@@ -146,6 +151,7 @@ class Erase_class extends Base_tools_class {
 		this.tmpCanvas.height = 1;
 		this.tmpCanvas = null;
 		this.tmpCanvasCtx = null;
+		this.selection_snapshot = null;
 	}
 
 	erase_general(ctx, type, mouse, size, strict, is_circle, is_touch) {

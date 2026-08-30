@@ -103,6 +103,79 @@ class Mask_class {
 	}
 
 	/**
+	 * asks the compositor to rebuild the document so a mask edit is visible.
+	 * Viewport-only frames (marching ants, pan/zoom) must not swallow this.
+	 */
+	request_mask_render(layer) {
+		if (app.Layers != null && typeof app.Layers.notify_mask_changed == 'function') {
+			app.Layers.notify_mask_changed(layer && layer.id);
+		}
+		else {
+			config.need_render = true;
+		}
+	}
+
+	_get_scratch_canvas(width, height) {
+		if (this._scratch_canvas == null) {
+			this._scratch_canvas = document.createElement('canvas');
+		}
+		if (this._scratch_canvas.width != width || this._scratch_canvas.height != height) {
+			this._scratch_canvas.width = width;
+			this._scratch_canvas.height = height;
+		}
+		else {
+			var sctx = this._scratch_canvas.getContext('2d');
+			sctx.setTransform(1, 0, 0, 1, 0, 0);
+			sctx.clearRect(0, 0, width, height);
+		}
+		return this._scratch_canvas;
+	}
+
+	/**
+	 * converts a grayscale mask bitmap (white reveals, black hides) into an
+	 * alpha canvas for destination-in compositing. Cached until the source
+	 * canvas identity changes; live strokes use link_canvas and rebuild.
+	 */
+	get_mask_alpha_canvas(layer) {
+		var source = this.get_mask_source(layer);
+		if (source == null || typeof source.getContext != 'function')
+			return null;
+		var sw = source.width;
+		var sh = source.height;
+		if (!sw || !sh)
+			return null;
+
+		var mask = layer.mask;
+		if (mask.link_canvas == null && mask._alpha_canvas != null && mask._alpha_source === source
+			&& mask._alpha_canvas.width === sw && mask._alpha_canvas.height === sh) {
+			return mask._alpha_canvas;
+		}
+
+		var canvas = (mask._alpha_canvas && mask._alpha_canvas.width === sw
+			&& mask._alpha_canvas.height === sh)
+			? mask._alpha_canvas
+			: document.createElement('canvas');
+		canvas.width = sw;
+		canvas.height = sh;
+		var ctx = canvas.getContext('2d', { willReadFrequently: true });
+		ctx.clearRect(0, 0, sw, sh);
+		ctx.drawImage(source, 0, 0);
+		var imageData = ctx.getImageData(0, 0, sw, sh);
+		var data = imageData.data;
+		for (var i = 0; i < data.length; i += 4) {
+			var value = data[i] * 0.2126 + data[i + 1] * 0.7152 + data[i + 2] * 0.0722;
+			data[i] = 255;
+			data[i + 1] = 255;
+			data[i + 2] = 255;
+			data[i + 3] = value;
+		}
+		ctx.putImageData(imageData, 0, 0);
+		mask._alpha_canvas = canvas;
+		mask._alpha_source = source;
+		return canvas;
+	}
+
+	/**
 	 * returns a fresh full layer sized mask object
 	 *
 	 * @param {object} layer
@@ -111,8 +184,8 @@ class Mask_class {
 	 */
 	create_mask(layer, reveal) {
 		var canvas = document.createElement('canvas');
-		canvas.width = Math.max(1, Math.round(layer.width || 1));
-		canvas.height = Math.max(1, Math.round(layer.height || 1));
+		canvas.width = Math.max(1, Math.round(layer.width || config.WIDTH || 1));
+		canvas.height = Math.max(1, Math.round(layer.height || config.HEIGHT || 1));
 		var ctx = canvas.getContext('2d');
 		ctx.fillStyle = (reveal === false) ? '#000000' : '#ffffff';
 		ctx.fillRect(0, 0, canvas.width, canvas.height);
@@ -248,6 +321,9 @@ class Mask_class {
 	 * by the layer mask, for the layer's rendered pixels.
 	 * The context transform (zoom / pan) is taken into account.
 	 *
+	 * White reveals, black hides. Pixels that fall outside the mask placement
+	 * rect are hidden, matching Photoshop.
+	 *
 	 * @param {context} ctx content drawn in world coordinates
 	 * @param {object} layer
 	 */
@@ -256,130 +332,46 @@ class Mask_class {
 		if (mask == null || mask.enabled === false)
 			return;
 
-		var cache = this._prepare_mask_cache(layer);
-		if (cache == null)
+		var alpha = this.get_mask_alpha_canvas(layer);
+		if (alpha == null)
 			return;
 
 		var lx = Math.round(layer.x || 0);
 		var ly = Math.round(layer.y || 0);
 		var lw = layer.width || 0;
 		var lh = layer.height || 0;
-		if (lw <= 0 || lh <= 0)
-			return;
-
 		var rotate = layer.rotate || 0;
 		var rad = rotate * Math.PI / 180;
+		var mx = mask.x || 0;
+		var my = mask.y || 0;
+		var mw = mask.width || alpha.width;
+		var mh = mask.height || alpha.height;
 
-		var cw = ctx.canvas.width;
-		var ch = ctx.canvas.height;
-
-		//read the current transform (zoom/pan) so world coords can map to pixels
 		var t = null;
 		if (typeof ctx.getTransform == 'function')
 			t = ctx.getTransform();
 		var a = t ? t.a : 1, b = t ? t.b : 0, c = t ? t.c : 0, d = t ? t.d : 1, e = t ? t.e : 0, f = t ? t.f : 0;
-		var det = a * d - b * c;
-		if (det === 0)
-			return;
 
-		var world_to_px = function (wx, wy) {
-			return [a * wx + c * wy + e, b * wx + d * wy + f];
-		};
-
-		//axis aligned pixel region occupied by the (possibly rotated) object
-		var left, top, right, bottom;
-		var corners = [];
-		if (rad === 0) {
-			corners.push(world_to_px(lx, ly));
-			corners.push(world_to_px(lx + lw, ly));
-			corners.push(world_to_px(lx + lw, ly + lh));
-			corners.push(world_to_px(lx, ly + lh));
+		// Full-buffer cover so destination-in hides pixels outside the mask
+		// rect instead of leaving them fully visible.
+		var cover = this._get_scratch_canvas(ctx.canvas.width, ctx.canvas.height);
+		var cctx = cover.getContext('2d');
+		cctx.setTransform(a, b, c, d, e, f);
+		if (rad !== 0) {
+			cctx.translate(lx + lw / 2, ly + lh / 2);
+			cctx.rotate(rad);
+			cctx.translate(-lw / 2, -lh / 2);
+			cctx.drawImage(alpha, mx - lx, my - ly, mw, mh);
 		}
 		else {
-			var cx = lx + lw / 2;
-			var cy = ly + lh / 2;
-			var hw = lw / 2;
-			var hh = lh / 2;
-			var cos = Math.cos(rad);
-			var sin = Math.sin(rad);
-			corners.push(world_to_px(cx - hw * cos + hh * sin, cy - hw * sin - hh * cos));
-			corners.push(world_to_px(cx + hw * cos + hh * sin, cy + hw * sin - hh * cos));
-			corners.push(world_to_px(cx + hw * cos - hh * sin, cy + hw * sin + hh * cos));
-			corners.push(world_to_px(cx - hw * cos - hh * sin, cy - hw * sin + hh * cos));
+			cctx.drawImage(alpha, mx, my, mw, mh);
 		}
 
-		left = Math.floor(Math.min(corners[0][0], corners[1][0], corners[2][0], corners[3][0]));
-		top = Math.floor(Math.min(corners[0][1], corners[1][1], corners[2][1], corners[3][1]));
-		right = Math.ceil(Math.max(corners[0][0], corners[1][0], corners[2][0], corners[3][0]));
-		bottom = Math.ceil(Math.max(corners[0][1], corners[1][1], corners[2][1], corners[3][1]));
-
-		left = Math.max(0, left);
-		top = Math.max(0, top);
-		right = Math.min(cw, right);
-		bottom = Math.min(ch, bottom);
-		if (right <= left || bottom <= top)
-			return;
-
-		var width = right - left;
-		var height = bottom - top;
-		var imageData = ctx.getImageData(left, top, width, height);
-		var data = imageData.data;
-
-		//world <=> pixel mapping for the inverse transform
-		var ia = d / det, ib = -c / det, ic = -b / det, idm = a / det;
-		var world_x = function (px, py) {
-			return ia * (px - e) + ib * (py - f);
-		};
-		var world_y = function (px, py) {
-			return ic * (px - e) + idm * (py - f);
-		};
-
-		var mx = mask.x || 0;
-		var my = mask.y || 0;
-		var center_x = lx + lw / 2;
-		var center_y = ly + lh / 2;
-		var cos2 = (rad !== 0) ? Math.cos(rad) : 0;
-		var sin2 = (rad !== 0) ? Math.sin(rad) : 0;
-
-		for (var y = 0; y < height; y++) {
-			for (var x = 0; x < width; x++) {
-				var px = left + x;
-				var py = top + y;
-				var wx = world_x(px, py);
-				var wy = world_y(px, py);
-
-				var u_local, v_local;
-				if (rad !== 0) {
-					var dx = wx - center_x;
-					var dy = wy - center_y;
-					u_local = dx * cos2 + dy * sin2 + lw / 2;
-					v_local = -dx * sin2 + dy * cos2 + lh / 2;
-					if (u_local < 0 || v_local < 0 || u_local >= lw || v_local >= lh) {
-						continue;
-					}
-				}
-				else {
-					u_local = wx - lx;
-					v_local = wy - ly;
-				}
-
-				var sample_x = Math.floor((u_local + lx - mx) * cache.sx);
-				var sample_y = Math.floor((v_local + ly - my) * cache.sy);
-				if (sample_x < 0 || sample_y < 0 || sample_x >= cache.sw || sample_y >= cache.sh) {
-					continue;
-				}
-
-				var index = (sample_y * cache.sw + sample_x) * 4;
-				var value = cache.data[index] * 0.2126 + cache.data[index + 1] * 0.7152 + cache.data[index + 2] * 0.0722;
-				if (value >= 254)
-					continue; //fully white - no change
-
-				var pixel_index = (y * width + x) * 4 + 3;
-				data[pixel_index] = (data[pixel_index] * value / 255) | 0;
-			}
-		}
-
-		ctx.putImageData(imageData, left, top);
+		ctx.save();
+		ctx.setTransform(1, 0, 0, 1, 0, 0);
+		ctx.globalCompositeOperation = 'destination-in';
+		ctx.drawImage(cover, 0, 0);
+		ctx.restore();
 	}
 
 	/**
@@ -394,36 +386,26 @@ class Mask_class {
 		if (mask == null || mask.enabled === false)
 			return;
 
-		var cache = this._prepare_mask_cache(layer);
-		if (cache == null)
+		var alpha = this.get_mask_alpha_canvas(layer);
+		if (alpha == null)
 			return;
 
 		var width = ctx.canvas.width;
 		var height = ctx.canvas.height;
-		var imageData = ctx.getImageData(0, 0, width, height);
-		var data = imageData.data;
 		var mx = mask.x || 0;
 		var my = mask.y || 0;
 		var layer_x = Math.round(layer.x || 0);
 		var layer_y = Math.round(layer.y || 0);
+		var mw = mask.width || alpha.width;
+		var mh = mask.height || alpha.height;
 
-		for (var y = 0; y < height; y++) {
-			for (var x = 0; x < width; x++) {
-				var sample_x = Math.floor((layer_x + x - mx) * cache.sx);
-				var sample_y = Math.floor((layer_y + y - my) * cache.sy);
-				if (sample_x < 0 || sample_y < 0 || sample_x >= cache.sw || sample_y >= cache.sh) {
-					continue;
-				}
-				var index = (sample_y * cache.sw + sample_x) * 4;
-				var value = cache.data[index] * 0.2126 + cache.data[index + 1] * 0.7152 + cache.data[index + 2] * 0.0722;
-				if (value >= 254)
-					continue;
-				var pixel_index = (y * width + x) * 4 + 3;
-				data[pixel_index] = (data[pixel_index] * value / 255) | 0;
-			}
-		}
+		var cover = this._get_scratch_canvas(width, height);
+		cover.getContext('2d').drawImage(alpha, mx - layer_x, my - layer_y, mw, mh);
 
-		ctx.putImageData(imageData, 0, 0);
+		ctx.save();
+		ctx.globalCompositeOperation = 'destination-in';
+		ctx.drawImage(cover, 0, 0);
+		ctx.restore();
 	}
 
 	/**
@@ -440,36 +422,20 @@ class Mask_class {
 		if (layer == null || layer.mask == null || layer.mask.linked !== true)
 			return actions;
 
-		var mask = layer.mask;
-		var x_changed = new_props.x !== old_props.x || new_props.y !== old_props.y;
-		var size_changed = new_props.width !== old_props.width || new_props.height !== old_props.height;
-		if (x_changed || size_changed) {
-			var xr = (old_props.width > 0 && new_props.width > 0) ? new_props.width / old_props.width : 1;
-			var yr = (old_props.height > 0 && new_props.height > 0) ? new_props.height / old_props.height : 1;
-
-			//move or resize - keep the mask anchored to the layer bounds
-			var new_settings = {
-				x: Math.round(new_props.x + (mask.x - old_props.x) * xr),
-				y: Math.round(new_props.y + (mask.y - old_props.y) * yr),
-				width: Math.max(1, Math.round(mask.width * xr)),
-				height: Math.max(1, Math.round(mask.height * yr)),
-			};
-			//when only moving keep the exact mask size
-			if (!size_changed) {
-				new_settings.width = mask.width;
-				new_settings.height = mask.height;
-			}
+		var new_settings = this.get_linked_mask_settings(layer, old_props, new_props);
+		if (new_settings != null) {
 			actions.push(new app.Actions.Update_layer_mask_action(layer.id, new_settings));
 		}
 
+		var size_changed = new_props.width !== old_props.width || new_props.height !== old_props.height;
 		if (size_changed) {
 			//resample the mask bitmap so it keeps matching the new placement size
 			var source = this.get_mask_source(layer);
 			if (source != null && typeof source.getContext == 'function') {
 				var xr = (old_props.width > 0 && new_props.width > 0) ? new_props.width / old_props.width : 1;
 				var yr = (old_props.height > 0 && new_props.height > 0) ? new_props.height / old_props.height : 1;
-				var nw = Math.max(1, Math.round(mask.width * xr));
-				var nh = Math.max(1, Math.round(mask.height * yr));
+				var nw = Math.max(1, Math.round(layer.mask.width * xr));
+				var nh = Math.max(1, Math.round(layer.mask.height * yr));
 				var canvas = document.createElement('canvas');
 				canvas.width = nw;
 				canvas.height = nh;
@@ -479,6 +445,37 @@ class Mask_class {
 		}
 
 		return actions;
+	}
+
+	get_linked_mask_settings(layer, old_props, new_props) {
+		if (layer == null || layer.mask == null || layer.mask.linked !== true)
+			return null;
+
+		var mask = layer.mask;
+		var x_changed = new_props.x !== old_props.x || new_props.y !== old_props.y;
+		var size_changed = new_props.width !== old_props.width || new_props.height !== old_props.height;
+		if (!x_changed && !size_changed)
+			return null;
+		var xr = (old_props.width > 0 && new_props.width > 0) ? new_props.width / old_props.width : 1;
+		var yr = (old_props.height > 0 && new_props.height > 0) ? new_props.height / old_props.height : 1;
+		var new_settings = {
+			x: Math.round(new_props.x + (mask.x - old_props.x) * xr),
+			y: Math.round(new_props.y + (mask.y - old_props.y) * yr),
+			width: Math.max(1, Math.round(mask.width * xr)),
+			height: Math.max(1, Math.round(mask.height * yr)),
+		};
+		if (!size_changed) {
+			new_settings.width = mask.width;
+			new_settings.height = mask.height;
+		}
+		return new_settings;
+	}
+
+	preview_linked_mask_transform(layer, old_props, new_props) {
+		var settings = this.get_linked_mask_settings(layer, old_props, new_props);
+		if (settings != null) {
+			Object.assign(layer.mask, settings);
+		}
 	}
 
 	/**
@@ -747,7 +744,7 @@ class Mask_class {
 
 		layer.mask.link_canvas = canvas;
 		this.paint_point(tool, e, true);
-		config.need_render = true;
+		this.request_mask_render(layer);
 	}
 
 	/**
@@ -820,7 +817,7 @@ class Mask_class {
 		this.stroke.last_x = point.x;
 		this.stroke.last_y = point.y;
 		this.stroke.painted = true;
-		config.need_render = true;
+		this.request_mask_render(config.layer);
 	}
 
 	paint_point(tool, e, first) {
@@ -854,7 +851,7 @@ class Mask_class {
 		this.stroke.last_x = point.x;
 		this.stroke.last_y = point.y;
 		this.stroke.painted = true;
-		config.need_render = true;
+		this.request_mask_render(config.layer);
 	}
 
 	/**
@@ -963,24 +960,23 @@ class Mask_class {
 		this.stroke = null;
 
 		var layer = config.layer;
-		if (config.layer.mask != null) {
-			delete config.layer.mask.link_canvas;
+		try {
+			if (stroke.painted === true) {
+				await app.State.do_action(
+					new app.Actions.Bundle_action('paint_mask', 'Paint Mask', [
+						new app.Actions.Update_layer_mask_image_action(stroke.canvas, layer.id),
+					])
+				);
+			}
+		} finally {
+			if (layer != null && layer.mask != null) {
+				delete layer.mask.link_canvas;
+			}
+			//decrease memory
+			stroke.canvas.width = 1;
+			stroke.canvas.height = 1;
+			this.request_mask_render(layer);
 		}
-
-		if (stroke.painted === true) {
-			await app.State.do_action(
-				new app.Actions.Bundle_action('paint_mask', 'Paint Mask', [
-					new app.Actions.Update_layer_mask_image_action(stroke.canvas, layer.id),
-				])
-			);
-		}
-		else {
-			config.need_render = true;
-		}
-
-		//decrease memory
-		stroke.canvas.width = 1;
-		stroke.canvas.height = 1;
 	}
 
 	/**

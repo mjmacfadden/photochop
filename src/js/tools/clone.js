@@ -18,6 +18,7 @@ class Clone_class extends Base_tools_class {
 		this.started = false;
 		this.clone_coords = null;
 		this.pressTimer = null;
+		this.selection_snapshot = null;
 	}
 
 	load() {
@@ -224,9 +225,11 @@ class Clone_class extends Base_tools_class {
 		this.tmpCanvas.width = config.layer.width_original;
 		this.tmpCanvas.height = config.layer.height_original;
 		this.tmpCanvasCtx.drawImage(config.layer.link, 0, 0);
+		this.selection_snapshot = this.copy_layer_snapshot();
 
 		//clone
 		this.clone_general(this.tmpCanvas, this.tmpCanvas, 'click', mouse);
+		this.constrain_edit_to_selection(this.tmpCanvas, this.selection_snapshot);
 
 		//register tmp canvas for progress redraw
 		config.layer.link_canvas = this.tmpCanvas;
@@ -248,6 +251,7 @@ class Clone_class extends Base_tools_class {
 
 		//clone
 		this.clone_general(this.tmpCanvas, this.tmpCanvas, 'move', mouse);
+		this.constrain_edit_to_selection(this.tmpCanvas, this.selection_snapshot);
 
 		//draw draft preview
 		config.need_render = true;
@@ -258,6 +262,7 @@ class Clone_class extends Base_tools_class {
 			return;
 		}
 		delete config.layer.link_canvas;
+		this.constrain_edit_to_selection(this.tmpCanvas, this.selection_snapshot);
 
 		app.State.do_action(
 			new app.Actions.Bundle_action('clone_tool', 'Clone Tool', [
@@ -270,6 +275,7 @@ class Clone_class extends Base_tools_class {
 		this.tmpCanvas.height = 1;
 		this.tmpCanvas = null;
 		this.tmpCanvasCtx = null;
+		this.selection_snapshot = null;
 	}
 
 	clone_general(canvas_from, canvas_to, type, mouse) {

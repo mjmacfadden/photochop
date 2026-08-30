@@ -159,13 +159,16 @@ class Base_gui_class {
 	}
 
 	init_service_worker() {
-		/*if ('serviceWorker' in navigator) {
-			navigator.serviceWorker.register('./service-worker.js').then(function(reg) {
-				//Successfully registered service worker
-			}).catch(function(err) {
-				console.warn('Error registering service worker', err);
-			});
-		}*/
+		if (!('serviceWorker' in navigator))
+			return;
+		var is_local = location.hostname === 'localhost' || location.hostname === '127.0.0.1';
+		if (location.protocol !== 'https:' && !is_local)
+			return;
+		if (is_local && !new URLSearchParams(location.search).has('serviceWorker'))
+			return;
+		navigator.serviceWorker.register('./service-worker.js', { updateViaCache: 'none' }).catch(function (error) {
+			console.warn('Service worker registration failed:', error);
+		});
 	}
 
 	set_events() {

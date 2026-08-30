@@ -242,6 +242,33 @@ class Base_tools_class {
 		return JSON.parse(JSON.stringify(object));
 	}
 
+	copy_layer_snapshot() {
+		var src = config.layer.link_canvas || config.layer.link;
+		if (src == null)
+			return null;
+		var canvas = document.createElement('canvas');
+		canvas.width = config.layer.width_original || src.width || 1;
+		canvas.height = config.layer.height_original || src.height || 1;
+		canvas.getContext('2d').drawImage(src, 0, 0);
+		return canvas;
+	}
+
+	constrain_edit_to_selection(editedCanvas, originalCanvas) {
+		if (editedCanvas == null || originalCanvas == null)
+			return;
+		if (this.Base_layers == null || this.Base_layers.Base_selection == null)
+			return;
+		this.Base_layers.Base_selection.restore_outside_selection(
+			editedCanvas, originalCanvas, config.layer
+		);
+	}
+
+	selection_clip_mask() {
+		if (this.Base_layers == null || this.Base_layers.Base_selection == null)
+			return null;
+		return this.Base_layers.Base_selection.get_selection_clip_mask();
+	}
+
 	/**
 	 * customized mouse cursor
 	 *
@@ -421,7 +448,8 @@ class Base_tools_class {
 			x: Math.round(mouse_x),
 			y: Math.round(mouse_y),
 			color: null,
-			is_vector: true
+			is_vector: true,
+			mask: this.selection_clip_mask(),
 		};
 		app.State.do_action(
 			new app.Actions.Bundle_action('new_'+this.name+'_layer', 'New '+this.Helper.ucfirst(this.name)+' Layer', [

@@ -44,7 +44,7 @@ export class Add_layer_mask_action extends Base_action {
 		Mask.default_mask_colors();
 
 		app.GUI.GUI_layers.render_layers();
-		config.need_render = true;
+		app.Layers.notify_mask_changed(this.layer_id);
 	}
 
 	async undo() {
@@ -59,7 +59,7 @@ export class Add_layer_mask_action extends Base_action {
 			config.mask_active = false;
 		}
 		app.GUI.GUI_layers.render_layers();
-		config.need_render = true;
+		app.Layers.notify_mask_changed(this.layer_id);
 	}
 
 	free() {

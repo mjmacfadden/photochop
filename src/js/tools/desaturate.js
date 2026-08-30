@@ -17,6 +17,7 @@ class Desaturate_class extends Base_tools_class {
 		this.tmpCanvas = null;
 		this.tmpCanvasCtx = null;
 		this.started = false;
+		this.selection_snapshot = null;
 	}
 
 	load() {
@@ -58,9 +59,11 @@ class Desaturate_class extends Base_tools_class {
 		this.tmpCanvas.height = config.layer.height_original;
 
 		this.tmpCanvasCtx.drawImage(config.layer.link, 0, 0);
+		this.selection_snapshot = this.copy_layer_snapshot();
 
 		//do desaturate
 		this.desaturate_general('click', mouse, params.size, params.anti_aliasing);
+		this.constrain_edit_to_selection(this.tmpCanvas, this.selection_snapshot);
 
 		//register tmp canvas for faster redraw
 		config.layer.link_canvas = this.tmpCanvas;
@@ -81,6 +84,7 @@ class Desaturate_class extends Base_tools_class {
 
 		//do desaturate
 		this.desaturate_general('move', mouse, params.size, params.anti_aliasing);
+		this.constrain_edit_to_selection(this.tmpCanvas, this.selection_snapshot);
 
 		//draw draft preview
 		config.need_render = true;
@@ -91,6 +95,7 @@ class Desaturate_class extends Base_tools_class {
 			return;
 		}
 		delete config.layer.link_canvas;
+		this.constrain_edit_to_selection(this.tmpCanvas, this.selection_snapshot);
 
 		app.State.do_action(
 			new app.Actions.Bundle_action('desaturate_tool', 'Desaturate Tool', [
@@ -103,6 +108,7 @@ class Desaturate_class extends Base_tools_class {
 		this.tmpCanvas.height = 1;
 		this.tmpCanvas = null;
 		this.tmpCanvasCtx = null;
+		this.selection_snapshot = null;
 	}
 
 	desaturate_general(type, mouse, size, anti_aliasing) {

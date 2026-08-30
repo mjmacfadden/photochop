@@ -208,13 +208,15 @@ class Brush_class extends Base_tools_class {
 		}
 
 		var params_hash = this.get_params_hash();
+		var clip_mask = this.selection_clip_mask();
+		var reuse = config.layer.type == this.name && params_hash == this.params_hash;
+		if (clip_mask != null && (config.layer.mask == null || config.layer.mask._selection_clip !== true)) {
+			reuse = false;
+		}
 
-		if (config.layer.type != this.name || params_hash != this.params_hash) {
-			//register new object - current layer is not ours or params changed
-			var clip_mask = null;
-			if (this.Base_layers.Base_selection != null) {
-				clip_mask = this.Base_layers.Base_selection.get_selection_clip_mask();
-			}
+		if (!reuse) {
+			//register new object - current layer is not ours, params changed,
+			//or a selection is constraining this stroke onto a fresh clipped layer
 			this.layer = {
 				type: this.name,
 				data: [[]],
@@ -313,7 +315,7 @@ class Brush_class extends Base_tools_class {
 		var mouse_y = mouse_coords.y;
 
 		current_group.push([mouse_x - config.layer.x, mouse_y - config.layer.y, new_size]);
-		this.Base_layers.render();
+		this.Base_layers.render_interactive_layer(config.layer.id);
 	}
 
 	mousemove_action(e, index) {
@@ -361,7 +363,7 @@ class Brush_class extends Base_tools_class {
 
 		current_group.push([mouse_x - config.layer.x, mouse_y - config.layer.y, new_size]);
 		config.layer.status = 'draft';
-		this.Base_layers.render();
+		this.Base_layers.render_interactive_layer(config.layer.id);
 	}
 
 	mouseup_action(e, index) {

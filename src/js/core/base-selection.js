@@ -50,6 +50,9 @@ class Base_selection_class {
 
 		//singleton
 		if (instance) {
+			if (ctx != null && instance.ctx == null) {
+				instance.ctx = ctx;
+			}
 			return instance;
 		}
 		instance = this;
@@ -168,6 +171,8 @@ class Base_selection_class {
 	 * marks object as selected, and draws corners
 	 */
 	draw_selection() {
+		if (this.ctx == null)
+			return;
 		var settings = this.find_settings();
 		var data = settings.data;
 
@@ -378,7 +383,13 @@ class Base_selection_class {
 		var shape = data.shape || 'rect';
 
 		if (shape == 'ellipse') {
-			ctx.ellipse(x + w / 2, y + h / 2, Math.abs(w) / 2, Math.abs(h) / 2, 0, 0, 2 * Math.PI);
+			var rx = Math.abs(w) / 2;
+			var ry = Math.abs(h) / 2;
+			var cx = (w < 0 ? x + w : x) + rx;
+			var cy = (h < 0 ? y + h : y) + ry;
+			if (rx > 0 && ry > 0) {
+				ctx.ellipse(cx, cy, rx, ry, 0, 0, 2 * Math.PI);
+			}
 		}
 		else if (shape == 'lasso' && data.path != null && data.path.length > 1) {
 			ctx.moveTo(data.path[0][0], data.path[0][1]);
@@ -388,7 +399,9 @@ class Base_selection_class {
 			ctx.closePath();
 		}
 		else {
-			ctx.rect(x, y, w, h);
+			var rx = w < 0 ? x + w : x;
+			var ry = h < 0 ? y + h : y;
+			ctx.rect(rx, ry, Math.abs(w), Math.abs(h));
 		}
 	}
 
@@ -417,15 +430,17 @@ class Base_selection_class {
 		if (Array.isArray(data.regions)) {
 			regions = data.regions.slice();
 			if (includeActive === true && data.active_region != null
+				&& data.active_region.shape !== 'lasso'
 				&& data.active_region.width != null && data.active_region.height != null) {
 				regions.push(data.active_region);
 			}
 		}
 		else if (includeActive === true && data.active_region != null
+			&& data.active_region.shape !== 'lasso'
 			&& data.active_region.width != null && data.active_region.height != null) {
 			regions = [data.active_region];
 		}
-		else if (data.x != null && data.width != null && data.height != null) {
+		else if (data.active_region == null && data.x != null && data.width != null && data.height != null) {
 			regions = [{
 				shape: data.shape || 'rect',
 				x: data.x,
@@ -516,8 +531,6 @@ class Base_selection_class {
 		var Z = config.ZOOM || 1;
 
 		var contours = this.get_union_contours(data);
-		if (!contours.length)
-			return;
 
 		//animate - one dash step every ~50 ms
 		var phase = Math.floor(performance.now() / 50);
@@ -554,6 +567,31 @@ class Base_selection_class {
 			ctx.stroke();
 			ctx.setLineDash([]);
 		}
+
+		// If there is an active in-progress lasso path, draw it as an open path following cursor
+		if (data.active_region && data.active_region.shape === 'lasso'
+			&& data.active_region.path && data.active_region.path.length > 1) {
+			var lpath = data.active_region.path;
+			ctx.beginPath();
+			ctx.moveTo(lpath[0][0], lpath[0][1]);
+			for (var lp = 1; lp < lpath.length; lp++) {
+				ctx.lineTo(lpath[lp][0], lpath[lp][1]);
+			}
+
+			//white underlay
+			ctx.strokeStyle = '#ffffff';
+			ctx.lineWidth = 2.5 / Z;
+			ctx.stroke();
+
+			//animated black dashes
+			ctx.strokeStyle = '#000000';
+			ctx.lineWidth = 1.5 / Z;
+			ctx.setLineDash([dash, gap]);
+			ctx.lineDashOffset = this.ant_offset;
+			ctx.stroke();
+			ctx.setLineDash([]);
+		}
+
 		ctx.restore();
 	}
 
@@ -641,10 +679,10 @@ class Base_selection_class {
 		//edges per marching-squares case (top, right, bottom, left). Cases 5
 		//and 10 are ambiguous and get two segments.
 		var table = [
-			[],        [0, 3], [0, 1], [1, 3],
-			[1, 2],    [0, 1, 2, 3], [0, 2], [2, 3],
-			[2, 3],    [0, 2], [0, 3, 1, 2], [1, 2],
-			[0, 1],    [0, 1], [0, 3], []
+			[],              [0, 3],        [0, 1],        [1, 3],
+			[1, 2],          [0, 3, 1, 2],  [0, 2],        [2, 3],
+			[2, 3],          [0, 2],        [0, 1, 2, 3],  [1, 2],
+			[1, 3],          [0, 1],        [0, 3],        []
 		];
 
 		var segments = [];
@@ -663,14 +701,14 @@ class Base_selection_class {
 				//edge intersection points (linear interpolation)
 				var e0 = [i + interp(v00, v10), j];
 				var e1 = [i + 1, j + interp(v10, v11)];
-				var e2 = [i + 1 - interp(v11, v01), j + 1];
-				var e3 = [i, j + 1 - interp(v01, v00)];
+				var e2 = [i + interp(v01, v11), j + 1];
+				var e3 = [i, j + interp(v00, v01)];
 				var edge_pts = [e0, e1, e2, e3];
 
 				if (edges.length === 2) {
 					segments.push([edge_pts[edges[0]], edge_pts[edges[1]]]);
 				}
-				else {
+				else if (edges.length === 4) {
 					segments.push([edge_pts[edges[0]], edge_pts[edges[1]]]);
 					segments.push([edge_pts[edges[2]], edge_pts[edges[3]]]);
 				}
@@ -725,8 +763,13 @@ class Base_selection_class {
 
 				var nxt = -1;
 				for (var k = 0; k < adjacency[cur].length; k++) {
-					if (adjacency[cur][k] !== prev && !used[adjacency[cur][k]]) {
-						nxt = adjacency[cur][k];
+					var neighbor = adjacency[cur][k];
+					if (neighbor === start && contour.length > 2) {
+						nxt = start;
+						break;
+					}
+					if (neighbor !== prev && !used[neighbor]) {
+						nxt = neighbor;
 						break;
 					}
 				}
@@ -811,6 +854,213 @@ class Base_selection_class {
 			enabled: true,
 			linked: true,
 			_selection_clip: true,
+		};
+	}
+
+	has_committed_selection() {
+		var data = this.get_committed_selection_data();
+		return data != null && data.width != null && data.height != null
+			&& data.width > 0 && data.height > 0;
+	}
+
+	get_selection_bounds(data) {
+		data = data || this.get_committed_selection_data();
+		if (data == null)
+			return null;
+		var regions = this.get_selection_regions(data, false);
+		var x1 = Infinity;
+		var y1 = Infinity;
+		var x2 = -Infinity;
+		var y2 = -Infinity;
+		var found = false;
+		for (var i = 0; i < regions.length; i++) {
+			if (regions[i].mode == 'subtract')
+				continue;
+			found = true;
+			x1 = Math.min(x1, regions[i].x);
+			y1 = Math.min(y1, regions[i].y);
+			x2 = Math.max(x2, regions[i].x + regions[i].width);
+			y2 = Math.max(y2, regions[i].y + regions[i].height);
+		}
+		if (!found) {
+			if (data.x == null || data.width == null)
+				return null;
+			return {
+				x: data.x,
+				y: data.y,
+				width: data.width,
+				height: data.height,
+			};
+		}
+		return {
+			x: x1,
+			y: y1,
+			width: x2 - x1,
+			height: y2 - y1,
+		};
+	}
+
+	_paint_selection_alpha(ctx, data) {
+		var regions = this.get_selection_regions(data, false);
+		if (!regions.length)
+			return;
+
+		ctx.beginPath();
+		var has_add = false;
+		for (var i = 0; i < regions.length; i++) {
+			if (regions[i].mode == 'subtract')
+				continue;
+			this._build_shape_path(ctx, regions[i]);
+			has_add = true;
+		}
+		if (has_add) {
+			ctx.fillStyle = '#ffffff';
+			ctx.globalCompositeOperation = 'source-over';
+			ctx.fill();
+		}
+		for (var i = 0; i < regions.length; i++) {
+			if (regions[i].mode != 'subtract')
+				continue;
+			ctx.beginPath();
+			this._build_shape_path(ctx, regions[i]);
+			ctx.globalCompositeOperation = 'destination-out';
+			ctx.fillStyle = '#ffffff';
+			ctx.fill();
+		}
+		ctx.globalCompositeOperation = 'source-over';
+	}
+
+	/**
+	 * alpha mask in the layer's native pixel space (width_original x
+	 * height_original). Opaque white inside the selection, transparent outside.
+	 */
+	create_layer_selection_alpha(layer) {
+		var w = Math.max(1, Math.round(layer.width_original || layer.width || 1));
+		var h = Math.max(1, Math.round(layer.height_original || layer.height || 1));
+		var canvas = document.createElement('canvas');
+		canvas.width = w;
+		canvas.height = h;
+		var ctx = canvas.getContext('2d');
+
+		var data = this.get_committed_selection_data();
+		if (data == null) {
+			ctx.fillStyle = '#ffffff';
+			ctx.fillRect(0, 0, w, h);
+			return canvas;
+		}
+
+		var lw = layer.width || w;
+		var lh = layer.height || h;
+		var ratio_w = lw / w;
+		var ratio_h = lh / h;
+
+		ctx.save();
+		ctx.scale(1 / (ratio_w || 1), 1 / (ratio_h || 1));
+		ctx.translate(-(layer.x || 0), -(layer.y || 0));
+		this._paint_selection_alpha(ctx, data);
+		ctx.restore();
+		return canvas;
+	}
+
+	/**
+	 * keeps edits that fall inside the committed selection and restores
+	 * original pixels everywhere else. `edited` is the layer's native canvas
+	 * (typically width_original x height_original).
+	 */
+	restore_outside_selection(edited, original, layer) {
+		if (edited == null || original == null || layer == null)
+			return;
+		if (!this.has_committed_selection())
+			return;
+
+		var clip = this.create_layer_selection_alpha(layer);
+		var keep = document.createElement('canvas');
+		keep.width = edited.width;
+		keep.height = edited.height;
+		var kctx = keep.getContext('2d');
+		kctx.drawImage(edited, 0, 0);
+		kctx.globalCompositeOperation = 'destination-in';
+		kctx.drawImage(clip, 0, 0, edited.width, edited.height);
+
+		var ectx = edited.getContext('2d');
+		ectx.save();
+		ectx.setTransform(1, 0, 0, 1, 0, 0);
+		ectx.globalCompositeOperation = 'source-over';
+		ectx.clearRect(0, 0, edited.width, edited.height);
+		ectx.drawImage(original, 0, 0, edited.width, edited.height);
+		ectx.drawImage(keep, 0, 0);
+		ectx.restore();
+
+		keep.width = 1;
+		keep.height = 1;
+		clip.width = 1;
+		clip.height = 1;
+	}
+
+	/**
+	 * copies the current layer's pixels inside the selection into a cropped
+	 * canvas with transparency outside the shape. Returns
+	 * {canvas, x, y, width, height} in world coordinates, or null.
+	 */
+	extract_selection_image(layer) {
+		if (layer == null)
+			layer = config.layer;
+		var data = this.get_committed_selection_data();
+		if (data == null || layer == null)
+			return null;
+
+		var bounds = this.get_selection_bounds(data);
+		if (bounds == null || bounds.width <= 0 || bounds.height <= 0)
+			return null;
+
+		var x = Math.round(bounds.x);
+		var y = Math.round(bounds.y);
+		var width = Math.max(1, Math.round(bounds.width));
+		var height = Math.max(1, Math.round(bounds.height));
+
+		var canvas = document.createElement('canvas');
+		canvas.width = width;
+		canvas.height = height;
+		var ctx = canvas.getContext('2d');
+		ctx.translate(-x, -y);
+
+		if (app.Layers != null && typeof app.Layers.render_object == 'function') {
+			app.Layers.render_object(ctx, layer);
+		}
+		else if (layer.type == 'image' && (layer.link_canvas != null || layer.link != null)) {
+			ctx.save();
+			ctx.translate((layer.x || 0) + (layer.width || 0) / 2, (layer.y || 0) + (layer.height || 0) / 2);
+			ctx.rotate(((layer.rotate || 0) * Math.PI) / 180);
+			ctx.drawImage(
+				layer.link_canvas != null ? layer.link_canvas : layer.link,
+				-(layer.width || 0) / 2,
+				-(layer.height || 0) / 2,
+				layer.width || width,
+				layer.height || height
+			);
+			ctx.restore();
+		}
+
+		var alpha = document.createElement('canvas');
+		alpha.width = width;
+		alpha.height = height;
+		var actx = alpha.getContext('2d');
+		actx.translate(-x, -y);
+		this._paint_selection_alpha(actx, data);
+
+		ctx.setTransform(1, 0, 0, 1, 0, 0);
+		ctx.globalCompositeOperation = 'destination-in';
+		ctx.drawImage(alpha, 0, 0);
+
+		alpha.width = 1;
+		alpha.height = 1;
+
+		return {
+			canvas: canvas,
+			x: x,
+			y: y,
+			width: width,
+			height: height,
 		};
 	}
 
@@ -1035,7 +1285,7 @@ class Base_selection_class {
 					}
 
 					this.current_angle = angle;
-					config.need_render = true;
+					app.Layers.render_interactive_layer(settings.data.id);
 				}
 			}
 			else if (e.buttons == 1 || typeof e.buttons == "undefined") {
@@ -1095,7 +1345,8 @@ class Base_selection_class {
 						}
 					}
 				}
-				config.need_render = true;
+				new Mask_class().preview_linked_mask_transform(settings.data, this.click_details, settings.data);
+				app.Layers.render_interactive_layer(settings.data.id);
 			}
 			return;
 		}

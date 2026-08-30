@@ -14,6 +14,7 @@ import Helper_class from "./../libs/helpers.js";
 import Mask_class from "./../modules/mask/mask.js";
 import alertify from "./../../../node_modules/alertifyjs/build/alertify.min.js";
 import { create_renderer, get_renderer, switch_renderer } from "./renderer/index.js";
+import Composite_cache_class from "./renderer/composite-cache.js";
 
 var instance = null;
 
@@ -68,6 +69,8 @@ class Base_layers_class {
 		this.debug_rendering = false;
 		this.render_success = null;
 		this.disabled_filter_id = null;
+		this.Composite_cache = new Composite_cache_class();
+		this.render_frame_request = null;
 	}
 
 	/**
@@ -111,7 +114,7 @@ class Base_layers_class {
 		var renderer_mode = config.RENDERER || 'auto';
 		this.active_renderer = create_renderer(renderer_mode, config.WIDTH, config.HEIGHT);
 
-		this.render(true);
+		this.invalidate({ document: true, preview: true, details: true, ruler: true });
 	}
 
 	init_zoom_lib() {
@@ -139,8 +142,112 @@ class Base_layers_class {
 
 		//keep re-rendering so marching ants stay animated
 		if (this.Base_selection.is_marching_ants_active()) {
-			config.need_render = true;
+			this.invalidate({ viewport: true });
 		}
+	}
+
+	/**
+	 * Request a render with an explicit scope. Existing callers that only set
+	 * config.need_render remain conservative and trigger a full document build.
+	 */
+	invalidate(request = {}) {
+		const cache = this.Composite_cache;
+		cache.explicitRequest = true;
+		if (request.document === true || request.full === true)
+			cache.invalidate_document();
+		if (request.preview === true) cache.previewDirty = true;
+		if (request.details === true) cache.detailsDirty = true;
+		if (request.ruler === true) cache.rulerDirty = true;
+		config.need_render = true;
+	}
+
+	/**
+	 * Schedules a single display frame. The config.need_render setter calls this
+	 * as a compatibility bridge for legacy callers that still set that flag.
+	 */
+	request_render() {
+		if (this.render_frame_request != null)
+			return;
+		this.render_frame_request = requestAnimationFrame(() => {
+			this.render_frame_request = null;
+			this.render(true);
+		});
+	}
+
+	/**
+	 * Recompose a draft top layer over a cached prefix. This is deliberately
+	 * narrow: unsupported stacks fall back to a normal full invalidation.
+	 */
+	render_interactive_layer(layerId) {
+		this.Composite_cache.explicitRequest = true;
+		this.Composite_cache.pendingInteractiveLayerId = layerId;
+		config.need_render = true;
+	}
+
+	can_render_interactive_layer(layer, layers) {
+		if (!layer || layer.visible === false || layer.type == null)
+			return false;
+		// The initial fast path intentionally handles only an independent,
+		// top-most normal layer. Masks, filters, clipping and blend modes keep
+		// using the exact legacy compositor.
+		if (layer.composition !== 'source-over' || (layer.filters && layer.filters.length)
+			|| (layer.mask && layer.mask.enabled !== false))
+			return false;
+		return layers[0] && layers[0].id === layer.id
+			&& (!layers[1] || layers[1].composition !== 'source-atop');
+	}
+
+	render_document_cache(layers) {
+		const cache = this.Composite_cache;
+		const ctx = cache.documentCanvas.getContext('2d');
+		ctx.setTransform(1, 0, 0, 1, 0, 0);
+		ctx.clearRect(0, 0, config.WIDTH, config.HEIGHT);
+		const tempCanvas = this.create_new_canvas(null, config.WIDTH, config.HEIGHT);
+		this.render_objects(ctx, tempCanvas, layers, () => ctx.save());
+		ctx.restore();
+		cache.documentDirty = false;
+		cache.previewDirty = true;
+		cache.activeLayerId = null;
+	}
+
+	render_interactive_layer_cache(layer, layers) {
+		const cache = this.Composite_cache;
+		if (!this.can_render_interactive_layer(layer, layers))
+			return false;
+
+		const documentCtx = cache.documentCanvas.getContext('2d');
+		const prefixCtx = cache.prefixCanvas.getContext('2d');
+		if (cache.activeLayerId !== layer.id) {
+			prefixCtx.setTransform(1, 0, 0, 1, 0, 0);
+			prefixCtx.clearRect(0, 0, config.WIDTH, config.HEIGHT);
+			const tempCanvas = this.create_new_canvas(null, config.WIDTH, config.HEIGHT);
+			this.render_objects(prefixCtx, tempCanvas, layers.slice(1), () => prefixCtx.save());
+			prefixCtx.restore();
+		}
+
+		documentCtx.setTransform(1, 0, 0, 1, 0, 0);
+		documentCtx.clearRect(0, 0, config.WIDTH, config.HEIGHT);
+		documentCtx.drawImage(cache.prefixCanvas, 0, 0);
+		documentCtx.globalAlpha = layer.opacity / 100;
+		documentCtx.globalCompositeOperation = layer.composition;
+		this.render_object(documentCtx, layer);
+		documentCtx.globalAlpha = 1;
+		documentCtx.globalCompositeOperation = 'source-over';
+		cache.mark_interactive(layer.id);
+		return true;
+	}
+
+	render_cached_preview() {
+		const cache = this.Composite_cache;
+		const w = this.Base_gui.GUI_preview.PREVIEW_SIZE.w;
+		const h = this.Base_gui.GUI_preview.PREVIEW_SIZE.h;
+		this.ctx_preview.save();
+		this.ctx_preview.setTransform(1, 0, 0, 1, 0, 0);
+		this.ctx_preview.clearRect(0, 0, w, h);
+		this.ctx_preview.drawImage(cache.documentCanvas, 0, 0, w, h);
+		this.ctx_preview.restore();
+		this.Base_gui.GUI_preview.render_preview_active_zone();
+		cache.previewDirty = false;
 	}
 
 	/**
@@ -149,10 +256,11 @@ class Base_layers_class {
 	 * @param {bool} force
 	 */
 	render(force) {
-		var _this = this;
 		if (force !== true) {
-			//request render and exit
-			config.need_render = true;
+			// Legacy callers do not describe what changed, so preserve their
+			// correctness by invalidating the document cache. New callers use
+			// invalidate({ viewport: true }) or render_interactive_layer().
+			this.invalidate({ document: true, preview: true, details: true });
 			return;
 		}
 
@@ -165,13 +273,25 @@ class Base_layers_class {
 		}
 
 		if (config.need_render == true) {
+			const cache = this.Composite_cache;
+			const zoom_changed = this.last_zoom != config.ZOOM;
+			// A direct write to config.need_render is an old, unclassified
+			// invalidation. It must stay conservative. Explicit invalidations can
+			// safely request a viewport-only frame.
+			if (!cache.explicitRequest) {
+				cache.invalidate_document();
+				cache.detailsDirty = true;
+				cache.rulerDirty = true;
+			}
+			cache.explicitRequest = false;
+			cache.ensure_size(config.WIDTH, config.HEIGHT);
 			this.render_success = null;
 
 			if (this.debug_rendering === true) {
 				console.log("Rendering...");
 			}
 
-			if (this.last_zoom != config.ZOOM) {
+			if (zoom_changed) {
 				//change zoom
 				zoomView.scaleAt(
 					this.Base_gui.GUI_preview.zoom_data.x,
@@ -195,6 +315,7 @@ class Base_layers_class {
 			// composition modes, etc.)
 			var renderer = get_renderer();
 			var webgl_usable = renderer && renderer.type === 'webgl' && renderer.available
+				&& cache.pendingInteractiveLayerId == null
 				&& (!renderer.can_render_layers || renderer.can_render_layers(layers_sorted, this.disabled_filter_id));
 			if (webgl_usable) {
 				// ---- WebGL rendering path ----
@@ -247,54 +368,57 @@ class Base_layers_class {
 				// Reset
 				this.after_render();
 			} else {
-				// ---- Canvas 2D rendering path (existing) ----
-				//prepare
+				// ---- Canvas 2D document cache ----
+				let interactive_rendered = false;
+				if (cache.pendingInteractiveLayerId != null) {
+					const layer = this.get_layer(cache.pendingInteractiveLayerId);
+					interactive_rendered = this.render_interactive_layer_cache(layer, layers_sorted);
+					cache.pendingInteractiveLayerId = null;
+					if (!interactive_rendered)
+						cache.invalidate_document();
+				}
+				if (!interactive_rendered && cache.documentDirty) {
+					this.render_document_cache(layers_sorted);
+				}
+
+				// Presentation is deliberately separate from composition. Zoom, pan,
+				// selection animation, guides and tool controls only draw this bitmap.
 				this.pre_render();
-
 				zoomView.apply();
-
-				const newCanvas = this.create_new_canvas(
-					null,
-					config.WIDTH,
-					config.HEIGHT
-				);
-
-				this.render_objects(this.ctx, newCanvas, layers_sorted, ()=>{
-					this.ctx.save();
-				});
-
-				//grid
+				this.ctx.imageSmoothingEnabled = (config.ZOOM < 1);
+				this.ctx.drawImage(cache.documentCanvas, 0, 0);
 				this.Base_gui.draw_grid(this.ctx);
-
-				//guides
 				this.Base_gui.draw_guides(this.ctx);
-
-				//render selected object controls
 				this.Base_selection.draw_selection();
-
-				//active tool overlay
 				this.render_overlay();
 
-				//render preview
-				this.render_preview(layers_sorted);
+				if (cache.previewDirty) {
+					this.render_cached_preview();
+				} else {
+					// Navigation still changes the viewport rectangle even when the
+					// document thumbnail itself is unchanged.
+					this.Base_gui.GUI_preview.render_preview_active_zone();
+				}
 
-				//reset
 				this.after_render();
 			}
 
 			this.last_zoom = config.ZOOM;
 
-			this.Base_gui.GUI_details.render_details();
-			this.View_ruler.render_ruler();
+			if (cache.detailsDirty) {
+				this.Base_gui.GUI_details.render_details();
+				cache.detailsDirty = false;
+			}
+			if (cache.rulerDirty || zoom_changed) {
+				this.View_ruler.render_ruler();
+				cache.rulerDirty = false;
+			}
 
 			if (this.render_success === false) {
 				alertify.error("Rendered with errors.");
 			}
 		}
 
-		requestAnimationFrame(function () {
-			_this.render(force);
-		});
 	}
 
 	render_overlay() {
@@ -1074,6 +1198,7 @@ class Base_layers_class {
 	 * @param {number} layerId
 	 */
 	notify_layer_data_changed(layerId) {
+		this.invalidate({ document: true, preview: true, details: true });
 		var renderer = get_renderer();
 		if (renderer && renderer.on_layer_data_changed) {
 			renderer.on_layer_data_changed(layerId);
@@ -1086,10 +1211,19 @@ class Base_layers_class {
 	 * @param {number} layerId
 	 */
 	notify_mask_changed(layerId) {
+		var layer = layerId != null ? this.get_layer(layerId) : config.layer;
+		if (layer && layer.mask) {
+			delete layer.mask._alpha_canvas;
+			delete layer.mask._alpha_source;
+		}
+		if (this.Composite_cache) {
+			this.Composite_cache.invalidate_document();
+		}
 		var renderer = get_renderer();
 		if (renderer && renderer.on_mask_changed) {
 			renderer.on_mask_changed(layerId);
 		}
+		config.need_render = true;
 	}
 }
 

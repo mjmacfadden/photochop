@@ -19,6 +19,7 @@ class Select_tool_class extends Base_tools_class {
 		this.name = 'select';
 		this.saved = false;
 		this.mousedown_dimensions = { x: null, y: null, width: null, height: null };
+		this.mousedown_mask_dimensions = null;
 		this.keyboard_move_start_position = null;
 		this.moving = false;
 		this.resizing = false;
@@ -45,7 +46,7 @@ class Select_tool_class extends Base_tools_class {
 			sel.enable_borders = settings.value;
 			sel.enable_controls = settings.value;
 			sel.enable_rotation = settings.value;
-			config.need_render = true;
+			this.Base_layers.render_interactive_layer(config.layer.id);
 		}
 	}
 
@@ -203,6 +204,12 @@ class Select_tool_class extends Base_tools_class {
 			width: Math.round(config.layer.width),
 			height: Math.round(config.layer.height)
 		};
+		this.mousedown_mask_dimensions = config.layer.mask ? {
+			x: config.layer.mask.x,
+			y: config.layer.mask.y,
+			width: config.layer.mask.width,
+			height: config.layer.mask.height,
+		} : null;
 	}
 
 	mousemove(e) {
@@ -224,6 +231,7 @@ class Select_tool_class extends Base_tools_class {
 			//move object
 			config.layer.x = Math.round(mouse.x - mouse.click_x + this.mousedown_dimensions.x);
 			config.layer.y = Math.round(mouse.y - mouse.click_y + this.mousedown_dimensions.y);
+			this.Mask.preview_linked_mask_transform(config.layer, this.mousedown_dimensions, config.layer);
 
 			//apply snap
 			var snap_info = this.calc_snap(e, config.layer.x, config.layer.y);
@@ -256,6 +264,9 @@ class Select_tool_class extends Base_tools_class {
 			config.layer.y = this.mousedown_dimensions.y;
 			config.layer.width = this.mousedown_dimensions.width;
 			config.layer.height = this.mousedown_dimensions.height;
+			if (this.mousedown_mask_dimensions != null) {
+				Object.assign(config.layer.mask, this.mousedown_mask_dimensions);
+			}
 			if (this.mousedown_dimensions.x !== x || this.mousedown_dimensions.y !== y ||
 				this.mousedown_dimensions.width !== width || this.mousedown_dimensions.height !== height
 			) {
@@ -294,6 +305,9 @@ class Select_tool_class extends Base_tools_class {
 			var new_y = Math.round(mouse.y - mouse.click_y + this.mousedown_dimensions.y);
 			config.layer.x = this.mousedown_dimensions.x;
 			config.layer.y = this.mousedown_dimensions.y;
+			if (this.mousedown_mask_dimensions != null) {
+				Object.assign(config.layer.mask, this.mousedown_mask_dimensions);
+			}
 
 			if(mouse.x - mouse.click_x || mouse.y - mouse.click_y) {
 				var snap_info = this.calc_snap(e, new_x, new_y);
@@ -330,6 +344,7 @@ class Select_tool_class extends Base_tools_class {
 		}
 		this.moving = false;
 		this.resizing = false;
+		this.mousedown_mask_dimensions = null;
 	}
 
 	render_overlay(ctx){
@@ -563,7 +578,7 @@ class Select_tool_class extends Base_tools_class {
 
 		config.layer.x += direction_x * power;
 		config.layer.y += direction_y * power;
-		config.need_render = true;
+		this.Base_layers.render_interactive_layer(config.layer.id);
 	}
 
 	async auto_select_object(e) {

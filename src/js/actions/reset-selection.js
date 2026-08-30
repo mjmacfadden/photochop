@@ -17,7 +17,7 @@ export class Reset_selection_action extends Base_action {
 
 	async do() {
 		super.do();
-		this.settings_reference = app.Layers.Base_selection.find_settings();
+		this.settings_reference = app.Layers.Base_selection.find_settings('selection');
 		this.old_settings_data = JSON.parse(JSON.stringify(this.settings_reference.data));
 		this.settings_reference.data = {
 			x: null,

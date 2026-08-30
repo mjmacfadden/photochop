@@ -17,6 +17,7 @@ class Sharpen_class extends Base_tools_class {
 		this.tmpCanvas = null;
 		this.tmpCanvasCtx = null;
 		this.started = false;
+		this.selection_snapshot = null;
 	}
 
 	load() {
@@ -57,9 +58,11 @@ class Sharpen_class extends Base_tools_class {
 		this.tmpCanvas.width = config.layer.width_original;
 		this.tmpCanvas.height = config.layer.height_original;
 		this.tmpCanvasCtx.drawImage(config.layer.link, 0, 0);
+		this.selection_snapshot = this.copy_layer_snapshot();
 
 		//do sharpen
 		this.sharpen_general('click', mouse, params.size);
+		this.constrain_edit_to_selection(this.tmpCanvas, this.selection_snapshot);
 
 		//register tmp canvas for faster redraw
 		config.layer.link_canvas = this.tmpCanvas;
@@ -80,6 +83,7 @@ class Sharpen_class extends Base_tools_class {
 
 		//do sharpen
 		this.sharpen_general('move', mouse, params.size);
+		this.constrain_edit_to_selection(this.tmpCanvas, this.selection_snapshot);
 
 		//draw draft preview
 		config.need_render = true;
@@ -90,6 +94,7 @@ class Sharpen_class extends Base_tools_class {
 			return;
 		}
 		delete config.layer.link_canvas;
+		this.constrain_edit_to_selection(this.tmpCanvas, this.selection_snapshot);
 
 		app.State.do_action(
 			new app.Actions.Bundle_action('sharpen_tool', 'Sharpen Tool', [
@@ -102,6 +107,7 @@ class Sharpen_class extends Base_tools_class {
 		this.tmpCanvas.height = 1;
 		this.tmpCanvas = null;
 		this.tmpCanvasCtx = null;
+		this.selection_snapshot = null;
 	}
 
 	sharpen_general(type, mouse, size) {
