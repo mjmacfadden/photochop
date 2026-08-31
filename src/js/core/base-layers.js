@@ -9,6 +9,7 @@ import Base_gui_class from "./base-gui.js";
 import Base_selection_class from "./base-selection.js";
 import Image_trim_class from "./../modules/image/trim.js";
 import View_ruler_class from "./../modules/view/ruler.js";
+import View_guides_class from "./../modules/view/guides.js";
 import zoomView from "./../libs/zoomView.js";
 import Helper_class from "./../libs/helpers.js";
 import Mask_class from "./../modules/mask/mask.js";
@@ -57,6 +58,7 @@ class Base_layers_class {
 		this.Helper = new Helper_class();
 		this.Image_trim = new Image_trim_class();
 		this.View_ruler = new View_ruler_class();
+		this.View_guides = new View_guides_class();
 
 		this.canvas = document.getElementById("canvas_minipaint");
 		this.ctx = document.getElementById("canvas_minipaint").getContext("2d");
@@ -362,7 +364,7 @@ class Base_layers_class {
 
 				// Draw grid, guides, selection, tool overlays on main canvas (2D)
 				this.Base_gui.draw_grid(this.ctx);
-				this.Base_gui.draw_guides(this.ctx);
+				this.Base_gui.draw_guides();
 				this.Base_selection.draw_selection();
 				this.render_overlay();
 
@@ -392,7 +394,7 @@ class Base_layers_class {
 				this.ctx.imageSmoothingEnabled = (config.ZOOM < 1);
 				this.ctx.drawImage(cache.documentCanvas, 0, 0);
 				this.Base_gui.draw_grid(this.ctx);
-				this.Base_gui.draw_guides(this.ctx);
+				this.Base_gui.draw_guides();
 				this.Base_selection.draw_selection();
 				this.render_overlay();
 

@@ -2,18 +2,116 @@ import config from './../../config.js';
 import Dialog_class from './../../libs/popup.js';
 import Helper_class from './../../libs/helpers.js';
 import Base_layers_class from './../../core/base-layers.js';
+import Base_gui_class from './../../core/base-gui.js';
+import View_ruler_class from './ruler.js';
+import zoomView from './../../libs/zoomView.js';
 import alertify from './../../../../node_modules/alertifyjs/build/alertify.min.js';
 import Tools_settings_class from './../tools/settings.js';
 import app from './../../app.js';
 
 class View_guides_class {
 
-
 	constructor() {
 		this.POP = new Dialog_class();
 		this.Base_layers = new Base_layers_class();
+		this.GUI = new Base_gui_class();
 		this.Tools_settings = new Tools_settings_class();
 		this.Helper = new Helper_class();
+
+		this.set_events();
+	}
+
+	set_events() {
+		var _this = this;
+
+		document.addEventListener('mousemove', (e) => {
+			if (!config.TOOL || config.TOOL.name !== 'select') {
+				return;
+			}
+			if (config.guides_enabled === false || !Array.isArray(config.guides) || config.guides.length === 0) {
+				return;
+			}
+			if (config.mouse && config.mouse.is_drag) {
+				return;
+			}
+			var main_wrapper = document.getElementById('main_wrapper');
+			if (!main_wrapper) return;
+			if (!e.target || (!e.target.closest('#main_wrapper') && e.target.id !== 'main_wrapper')) {
+				return;
+			}
+
+			var hovered = _this.get_hovered_guide(e);
+			if (hovered) {
+				main_wrapper.style.cursor = hovered.type === 'vertical' ? 'col-resize' : 'row-resize';
+			}
+		});
+
+		document.addEventListener('mousedown', (e) => {
+			if (e.button !== 0) return;
+			if (!config.TOOL || config.TOOL.name !== 'select') {
+				return;
+			}
+			if (config.guides_enabled === false || !Array.isArray(config.guides) || config.guides.length === 0) {
+				return;
+			}
+			var main_wrapper = document.getElementById('main_wrapper');
+			if (!main_wrapper) return;
+			if (!e.target || (!e.target.closest('#main_wrapper') && e.target.id !== 'main_wrapper')) {
+				return;
+			}
+
+			var hovered = _this.get_hovered_guide(e);
+			if (hovered) {
+				e.preventDefault();
+				e.stopPropagation();
+				if (!_this.View_ruler) {
+					_this.View_ruler = new View_ruler_class();
+				}
+				_this.View_ruler.start_guide_drag(hovered.type, e, hovered.index);
+			}
+		}, true);
+	}
+
+	get_hovered_guide(e) {
+		if (config.guides_enabled === false || !Array.isArray(config.guides) || config.guides.length === 0) {
+			return null;
+		}
+		var main_wrapper = document.getElementById('main_wrapper');
+		var canvas_minipaint = document.getElementById('canvas_minipaint');
+		if (!main_wrapper || !canvas_minipaint) return null;
+
+		var canvas_rect = canvas_minipaint.getBoundingClientRect();
+		var main_rect = main_wrapper.getBoundingClientRect();
+		var offset_x = canvas_rect.left - main_rect.left;
+		var offset_y = canvas_rect.top - main_rect.top;
+
+		var mouse_screen_x = e.pageX - main_rect.left;
+		var mouse_screen_y = e.pageY - main_rect.top;
+
+		var threshold = 6;
+
+		for (var i = config.guides.length - 1; i >= 0; i--) {
+			var guide = config.guides[i];
+			if (!guide) continue;
+
+			if (guide.y === null && guide.x !== null) {
+				// Vertical guide
+				var screen_pt = zoomView.toScreen({ x: guide.x, y: 0 });
+				var sx = offset_x + screen_pt.x;
+				if (Math.abs(mouse_screen_x - sx) <= threshold) {
+					return { type: 'vertical', index: i, guide: guide };
+				}
+			} else if (guide.x === null && guide.y !== null) {
+				// Horizontal guide
+				var screen_pt = zoomView.toScreen({ x: 0, y: guide.y });
+				var sy = offset_y + screen_pt.y;
+				if (Math.abs(mouse_screen_y - sy) <= threshold) {
+					return { type: 'horizontal', index: i, guide: guide };
+				}
+			}
+		}
+
+		return null;
 	}
 
 	insert() {

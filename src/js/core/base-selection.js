@@ -214,16 +214,19 @@ class Base_selection_class {
 
 		//the active tool is a marching-ants one - box controls are not needed
 		if (settings.marching_ants_mode === true) {
+			this.selected_obj_positions = {};
 			return;
 		}
 
 		if (settings.data === null || settings.data.status == 'draft'
 			|| (settings.data.hide_selection_if_active === true && settings.data.type == config.TOOL.name)) {
+			this.selected_obj_positions = {};
 			return;
 		}
 
 		//locked layers never show transform controls
 		if (settings.data.locked === true) {
+			this.selected_obj_positions = {};
 			return;
 		}
 
@@ -234,6 +237,7 @@ class Base_selection_class {
 
 		if (x == null || y == null || w == null || h == null) {
 			//not supported 
+			this.selected_obj_positions = {};
 			return;
 		}
 
@@ -277,7 +281,7 @@ class Base_selection_class {
 			this.ctx.fillRect(x, y, w, h);
 		}
 
-		const wholeLineWidth = 2 / config.ZOOM;
+		const wholeLineWidth = 1 / config.ZOOM;
 		const halfLineWidth = wholeLineWidth / 2;
 
 		//borders - centered on the layer bounds so no padding is added
@@ -356,6 +360,7 @@ class Base_selection_class {
 		//stack (custom) - rotation activated by hovering just outside the layer,
 		//so no dedicated rotation handle is drawn
 		if (settings.enable_controls == true) {
+			this.selected_obj_positions = {};
 			corner(x - corner_offset - wholeLineWidth, y - corner_offset - wholeLineWidth, hitsLeftEdge ? 0.5 : 0, hitsTopEdge ? 0.5 : 0, DRAG_TYPE_LEFT | DRAG_TYPE_TOP, 'nwse-resize');
 			corner(x + w + corner_offset + wholeLineWidth, y - corner_offset - wholeLineWidth, hitsRightEdge ? -0.5 : 0, hitsTopEdge ? 0.5 : 0, DRAG_TYPE_RIGHT | DRAG_TYPE_TOP, 'nesw-resize');
 			corner(x - corner_offset - wholeLineWidth, y + h + corner_offset + wholeLineWidth, hitsLeftEdge ? 0.5 : 0, hitsBottomEdge ? -0.5 : 0, DRAG_TYPE_LEFT | DRAG_TYPE_BOTTOM, 'nesw-resize');
@@ -589,8 +594,8 @@ class Base_selection_class {
 		var gap = 4 / Z;
 
 		ctx.save();
-		ctx.lineJoin = 'round';
-		ctx.lineCap = 'round';
+		ctx.lineJoin = 'miter';
+		ctx.lineCap = 'butt';
 
 		var draw_path_ants = (pts, is_closed) => {
 			if (pts.length < 2) return;
@@ -605,12 +610,12 @@ class Base_selection_class {
 
 			//white underlay
 			ctx.strokeStyle = '#ffffff';
-			ctx.lineWidth = 2.5 / Z;
+			ctx.lineWidth = 1 / Z;
 			ctx.stroke();
 
 			//animated black dashes
 			ctx.strokeStyle = '#000000';
-			ctx.lineWidth = 1.5 / Z;
+			ctx.lineWidth = 1 / Z;
 			ctx.setLineDash([dash, gap]);
 			ctx.lineDashOffset = this.ant_offset;
 			ctx.stroke();
@@ -1256,12 +1261,6 @@ class Base_selection_class {
 			return;
 		}
 
-		this.ctx.save();
-		if (data.rotate != null && data.rotate != 0) {
-			this.ctx.translate(data.x + data.width / 2, data.y + data.height / 2);
-			this.ctx.rotate(data.rotate * Math.PI / 180);
-		}
-
 		var x = settings.data.x;
 		var y = settings.data.y;
 		var w = settings.data.width;
@@ -1485,15 +1484,41 @@ class Base_selection_class {
 		}
 
 		if (!this.mouse_lock) {
-			//set mouse move cursor
-			if(settings.enable_move && mouse.x > x &&  mouse.x < x + w && mouse.y > y &&  mouse.y < y + h){
+			//project the mouse into the space the handle paths were drawn in.
+			//the paths live in the layer's pre-transform content space: world space
+			//when unrotated, and centered-local space for a rotated layer. Doing the
+			//projection here (pure math) makes the hit-test independent of any
+			//leftover transform on the context.
+			let testX = mouse.x;
+			let testY = mouse.y;
+			if (data.rotate != null && data.rotate != 0) {
+				const rot_rad = data.rotate * Math.PI / 180;
+				const cosA = Math.cos(-rot_rad);
+				const sinA = Math.sin(-rot_rad);
+				const rx = mouse.x - (x + w / 2);
+				const ry = mouse.y - (y + h / 2);
+				testX = rx * cosA - ry * sinA;
+				testY = rx * sinA + ry * cosA;
+			}
+
+			//set mouse move cursor if hovering inside body of layer
+			const inBody = (data.rotate != null && data.rotate != 0)
+				? (testX > -w / 2 && testX < w / 2 && testY > -h / 2 && testY < h / 2)
+				: (mouse.x > x && mouse.x < x + w && mouse.y > y && mouse.y < y + h);
+
+			if (settings.enable_move && inBody) {
 				mainWrapper.style.cursor = "move";
+			}
+
+			if (this.ctx) {
+				this.ctx.save();
+				this.ctx.setTransform(1, 0, 0, 1, 0, 0);
 			}
 
 			let handleMatched = false;
 			for (let current_drag_type in this.selected_obj_positions) {
 				const position = this.selected_obj_positions[current_drag_type];
-				if (position.path && this.ctx.isPointInPath(position.path, mouse.x, mouse.y)) {
+				if (position.path && this.ctx && this.ctx.isPointInPath(position.path, testX, testY)) {
 					// match
 					handleMatched = true;
 					if (event_type == 'mousedown') {
@@ -1506,6 +1531,10 @@ class Base_selection_class {
 						mainWrapper.style.cursor = position.cursor;
 					}
 				}
+			}
+
+			if (this.ctx) {
+				this.ctx.restore();
 			}
 
 			//rotate? - cursor outside the layer bounds & handles (ring zone)
@@ -1549,8 +1578,6 @@ class Base_selection_class {
 					}
 				}
 			}
-
-			this.ctx.restore();
 		}
 	}
 

@@ -627,21 +627,11 @@ class Helper_class {
 	 * @param end_y
 	 */
 	draw_special_line(ctx, start_x, start_y, end_x, end_y){
-		const wholeLineWidth = 2 / config.ZOOM;
-		const halfLineWidth = wholeLineWidth / 2;
-
-		ctx.lineWidth = wholeLineWidth;
-		ctx.strokeStyle = 'rgb(255, 255, 255)';
+		ctx.lineWidth = 1 / config.ZOOM;
+		ctx.strokeStyle = '#ff4bff';
 		ctx.beginPath();
-		ctx.moveTo(start_x - halfLineWidth, start_y);
-		ctx.lineTo(end_x - halfLineWidth, end_y);
-		ctx.stroke();
-
-		ctx.lineWidth = halfLineWidth;
-		ctx.strokeStyle = 'rgb(0, 0, 0)';
-		ctx.beginPath();
-		ctx.moveTo(start_x - halfLineWidth, start_y);
-		ctx.lineTo(end_x - halfLineWidth, end_y);
+		ctx.moveTo(start_x, start_y);
+		ctx.lineTo(end_x, end_y);
 		ctx.stroke();
 	}
 
