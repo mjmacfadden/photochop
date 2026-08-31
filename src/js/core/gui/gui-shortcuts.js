@@ -37,8 +37,23 @@ class GUI_shortcuts_class {
 	}
 
 	load() {
+		// Prevent browser Alt/Option key from stealing focus / hiding cursor in Chromium
+		const preventAltFocus = (event) => {
+			if (event.key === 'Alt' || event.key === 'AltGraph' || event.code === 'AltLeft' || event.code === 'AltRight' || event.keyCode === 18) {
+				event.preventDefault();
+			}
+		};
+		window.addEventListener('keydown', preventAltFocus, { capture: true, passive: false });
+		window.addEventListener('keyup', preventAltFocus, { capture: true, passive: false });
+
 		document.addEventListener('keydown', (event) => {
 			if (this.Helper.is_input(event.target)) return;
+
+			// Prevent browser Alt/Option key from stealing focus / hiding cursor
+			if (event.key === 'Alt' || event.key === 'AltGraph' || event.code === 'AltLeft' || event.code === 'AltRight' || event.keyCode === 18) {
+				event.preventDefault();
+				return;
+			}
 
 			// Ctrl/Cmd + 0 = Fit window
 			if ((event.ctrlKey || event.metaKey) && !event.altKey
@@ -60,6 +75,27 @@ class GUI_shortcuts_class {
 				if (app.GUI && app.GUI.GUI_preview) {
 					const isIn = event.code === 'Equal' || event.code === 'NumpadAdd';
 					app.GUI.GUI_preview.zoom(isIn ? 1 : -1);
+				}
+				return;
+			}
+
+			// Shift + N = New Layer
+			if (event.shiftKey && (event.code === 'KeyN' || event.key === 'N' || event.key === 'n' || event.keyCode === 78)) {
+				event.preventDefault();
+				event.stopImmediatePropagation();
+				app.State.do_action(
+					new app.Actions.Insert_layer_action()
+				);
+				return;
+			}
+
+			// Ctrl/Cmd + N = File > New File
+			if ((event.ctrlKey || event.metaKey) && !event.shiftKey && !event.altKey
+				&& (event.code === 'KeyN' || event.key === 'N' || event.key === 'n' || event.keyCode === 78)) {
+				event.preventDefault();
+				event.stopImmediatePropagation();
+				if (app.GUI && app.GUI.modules && app.GUI.modules['file/new']) {
+					app.GUI.modules['file/new'].new();
 				}
 				return;
 			}
@@ -94,6 +130,28 @@ class GUI_shortcuts_class {
 				event.preventDefault();
 				event.stopImmediatePropagation();
 				this.adjust_brush_hardness(event.code === 'BracketRight' ? 1 : -1);
+				return;
+			}
+
+			// Alt/Option + Delete/Backspace = Fill with foreground color
+			if (event.altKey && !event.ctrlKey && !event.metaKey
+				&& (event.code === 'Delete' || event.code === 'Backspace' || event.key === 'Delete' || event.key === 'Backspace' || event.keyCode === 46 || event.keyCode === 8)) {
+				event.preventDefault();
+				event.stopImmediatePropagation();
+				if (app.GUI && app.GUI.GUI_tools && app.GUI.GUI_tools.tools_modules['selection']) {
+					app.GUI.GUI_tools.tools_modules['selection'].object.fill(config.COLOR || '#000000');
+				}
+				return;
+			}
+
+			// Ctrl/Cmd + Delete/Backspace = Fill with background color
+			if ((event.ctrlKey || event.metaKey) && !event.altKey
+				&& (event.code === 'Delete' || event.code === 'Backspace' || event.key === 'Delete' || event.key === 'Backspace' || event.keyCode === 46 || event.keyCode === 8)) {
+				event.preventDefault();
+				event.stopImmediatePropagation();
+				if (app.GUI && app.GUI.GUI_tools && app.GUI.GUI_tools.tools_modules['selection']) {
+					app.GUI.GUI_tools.tools_modules['selection'].object.fill(config.COLOR_BG || '#ffffff');
+				}
 				return;
 			}
 
@@ -137,6 +195,11 @@ class GUI_shortcuts_class {
 		}, true);
 
 		document.addEventListener('keyup', (event) => {
+			if (event.key === 'Alt' || event.key === 'AltGraph' || event.code === 'AltLeft' || event.code === 'AltRight' || event.keyCode === 18) {
+				event.preventDefault();
+				return;
+			}
+
 			if (event.code !== 'Space' || this.space_pan_tool == null) {
 				return;
 			}

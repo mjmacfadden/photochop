@@ -146,30 +146,22 @@ class Mask_class {
 			return null;
 
 		var mask = layer.mask;
-		var cw = sw + 2;
-		var ch = sh + 2;
 		if (mask.link_canvas == null && mask._alpha_canvas != null && mask._alpha_source === source
-			&& mask._alpha_canvas.width === cw && mask._alpha_canvas.height === ch) {
+			&& mask._alpha_canvas.width === sw && mask._alpha_canvas.height === sh) {
 			return mask._alpha_canvas;
 		}
 
-		var canvas = (mask._alpha_canvas && mask._alpha_canvas.width === cw
-			&& mask._alpha_canvas.height === ch)
+		var canvas = (mask._alpha_canvas && mask._alpha_canvas.width === sw
+			&& mask._alpha_canvas.height === sh)
 			? mask._alpha_canvas
 			: document.createElement('canvas');
-		canvas.width = cw;
-		canvas.height = ch;
+		canvas.width = sw;
+		canvas.height = sh;
 		var ctx = canvas.getContext('2d', { willReadFrequently: true });
-		ctx.clearRect(0, 0, cw, ch);
+		ctx.clearRect(0, 0, sw, sh);
+		ctx.drawImage(source, 0, 0);
 
-		// Draw source at (1, 1) and replicate 1px edges to prevent bilinear edge bleeding/clipping
-		ctx.drawImage(source, 1, 1);
-		ctx.drawImage(source, 0, 0, sw, 1, 1, 0, sw, 1); // top edge
-		ctx.drawImage(source, 0, sh - 1, sw, 1, 1, sh + 1, sw, 1); // bottom edge
-		ctx.drawImage(canvas, 1, 0, 1, ch, 0, 0, 1, ch); // left column
-		ctx.drawImage(canvas, sw, 0, 1, ch, sw + 1, 0, 1, ch); // right column
-
-		var imageData = ctx.getImageData(0, 0, cw, ch);
+		var imageData = ctx.getImageData(0, 0, sw, sh);
 		var data = imageData.data;
 		for (var i = 0; i < data.length; i += 4) {
 			var value = data[i] * 0.2126 + data[i + 1] * 0.7152 + data[i + 2] * 0.0722;
@@ -185,33 +177,31 @@ class Mask_class {
 	}
 
 	/**
-	 * returns a fresh full layer sized mask object
+	 * returns a fresh canvas-sized mask object
 	 *
 	 * @param {object} layer
 	 * @param {Boolean} reveal true reveals (white), false hides (black)
 	 * @returns {object}
 	 */
 	create_mask(layer, reveal) {
-		var lw = (layer.width != null && layer.width > 0) ? layer.width : ((layer.link && layer.link.width) || (layer.link_canvas && layer.link_canvas.width) || layer.width_original || config.WIDTH || 1);
-		var lh = (layer.height != null && layer.height > 0) ? layer.height : ((layer.link && layer.link.height) || (layer.link_canvas && layer.link_canvas.height) || layer.height_original || config.HEIGHT || 1);
-		var lx = (layer.x != null) ? layer.x : 0;
-		var ly = (layer.y != null) ? layer.y : 0;
+		var w = config.WIDTH || 1;
+		var h = config.HEIGHT || 1;
 
 		var canvas = document.createElement('canvas');
-		canvas.width = Math.max(1, Math.round(lw));
-		canvas.height = Math.max(1, Math.round(lh));
+		canvas.width = Math.max(1, Math.round(w));
+		canvas.height = Math.max(1, Math.round(h));
 		var ctx = canvas.getContext('2d');
 		ctx.fillStyle = (reveal === false) ? '#000000' : '#ffffff';
 		ctx.fillRect(0, 0, canvas.width, canvas.height);
 
 		return {
 			link: canvas,
-			x: lx,
-			y: ly,
+			x: 0,
+			y: 0,
 			width: canvas.width,
 			height: canvas.height,
 			enabled: true,
-			linked: true,
+			linked: false,
 		};
 	}
 
@@ -245,13 +235,9 @@ class Mask_class {
 			return mask;
 		}
 
-		var shape = selection.shape || 'rect';
 		var selection_module = app.GUI.GUI_tools.tools_modules['selection'].object;
-		var lx = (layer.x != null) ? layer.x : 0;
-		var ly = (layer.y != null) ? layer.y : 0;
 
 		ctx.save();
-		ctx.translate(-lx, -ly);
 		ctx.beginPath();
 		selection_module.build_selection_path(ctx, selection);
 		ctx.fillStyle = (reveal === false) ? '#000000' : '#ffffff';
@@ -332,8 +318,8 @@ class Mask_class {
 			return;
 
 		var source = this.get_mask_source(layer);
-		var sw = source ? source.width : (alpha.width - 2);
-		var sh = source ? source.height : (alpha.height - 2);
+		var sw = source ? source.width : alpha.width;
+		var sh = source ? source.height : alpha.height;
 
 		var lx = (layer.x != null) ? layer.x : 0;
 		var ly = (layer.y != null) ? layer.y : 0;
@@ -341,10 +327,10 @@ class Mask_class {
 		var lh = (layer.height != null && layer.height > 0) ? layer.height : sh;
 		var rotate = layer.rotate || 0;
 		var rad = rotate * Math.PI / 180;
-		var mx = (mask.x != null) ? mask.x : lx;
-		var my = (mask.y != null) ? mask.y : ly;
-		var mw = (mask.width != null && mask.width > 0) ? mask.width : lw;
-		var mh = (mask.height != null && mask.height > 0) ? mask.height : lh;
+		var mx = (mask.x != null) ? mask.x : 0;
+		var my = (mask.y != null) ? mask.y : 0;
+		var mw = (mask.width != null && mask.width > 0) ? mask.width : (config.WIDTH || sw);
+		var mh = (mask.height != null && mask.height > 0) ? mask.height : (config.HEIGHT || sh);
 
 		var t = null;
 		if (typeof ctx.getTransform == 'function')
@@ -358,14 +344,14 @@ class Mask_class {
 		cctx.setTransform(a, b, c, d, e, f);
 		cctx.imageSmoothingEnabled = (mw !== sw || mh !== sh || rad !== 0);
 
-		if (rad !== 0 && mask.linked !== false) {
+		if (rad !== 0 && mask.linked === true) {
 			cctx.translate(lx + lw / 2, ly + lh / 2);
 			cctx.rotate(rad);
 			cctx.translate(-lw / 2, -lh / 2);
-			cctx.drawImage(alpha, 1, 1, sw, sh, mx - lx, my - ly, mw, mh);
+			cctx.drawImage(alpha, 0, 0, sw, sh, mx - lx, my - ly, mw, mh);
 		}
 		else {
-			cctx.drawImage(alpha, 1, 1, sw, sh, mx, my, mw, mh);
+			cctx.drawImage(alpha, 0, 0, sw, sh, mx, my, mw, mh);
 		}
 
 		ctx.save();
@@ -392,22 +378,22 @@ class Mask_class {
 			return;
 
 		var source = this.get_mask_source(layer);
-		var sw = source ? source.width : (alpha.width - 2);
-		var sh = source ? source.height : (alpha.height - 2);
+		var sw = source ? source.width : alpha.width;
+		var sh = source ? source.height : alpha.height;
 
 		var width = ctx.canvas.width;
 		var height = ctx.canvas.height;
 		var layer_x = (layer.x != null) ? layer.x : 0;
 		var layer_y = (layer.y != null) ? layer.y : 0;
-		var mx = (mask.x != null) ? mask.x : layer_x;
-		var my = (mask.y != null) ? mask.y : layer_y;
-		var mw = (mask.width != null && mask.width > 0) ? mask.width : width;
-		var mh = (mask.height != null && mask.height > 0) ? mask.height : height;
+		var mx = (mask.x != null) ? mask.x : 0;
+		var my = (mask.y != null) ? mask.y : 0;
+		var mw = (mask.width != null && mask.width > 0) ? mask.width : (config.WIDTH || width);
+		var mh = (mask.height != null && mask.height > 0) ? mask.height : (config.HEIGHT || height);
 
 		var cover = this._get_scratch_canvas(width, height);
 		var cctx = cover.getContext('2d');
 		cctx.imageSmoothingEnabled = (mw !== sw || mh !== sh);
-		cctx.drawImage(alpha, 1, 1, sw, sh, mx - layer_x, my - layer_y, mw, mh);
+		cctx.drawImage(alpha, 0, 0, sw, sh, mx - layer_x, my - layer_y, mw, mh);
 
 		ctx.save();
 		ctx.globalCompositeOperation = 'destination-in';
@@ -695,14 +681,14 @@ class Mask_class {
 	 */
 	world_to_mask(layer, x, y) {
 		var source = this.get_mask_source(layer);
-		var mw = Math.max(1, Math.round(layer.mask.width || 1));
-		var mh = Math.max(1, Math.round(layer.mask.height || 1));
+		var mw = Math.max(1, Math.round((layer.mask && layer.mask.width) || config.WIDTH || 1));
+		var mh = Math.max(1, Math.round((layer.mask && layer.mask.height) || config.HEIGHT || 1));
 		var sw = source ? source.width : mw;
 		var sh = source ? source.height : mh;
 
 		var px = x;
 		var py = y;
-		if (layer.rotate && layer.mask.linked !== false) {
+		if (layer.rotate && layer.mask && layer.mask.linked === true) {
 			var rad = -layer.rotate * Math.PI / 180;
 			var cx = (layer.x || 0) + (layer.width || 0) / 2;
 			var cy = (layer.y || 0) + (layer.height || 0) / 2;
@@ -712,9 +698,12 @@ class Mask_class {
 			py = cy + (x - cx) * sin + (y - cy) * cos;
 		}
 
+		var mx = (layer.mask && layer.mask.x != null) ? layer.mask.x : 0;
+		var my = (layer.mask && layer.mask.y != null) ? layer.mask.y : 0;
+
 		return {
-			x: (px - (layer.mask.x || 0)) * sw / mw,
-			y: (py - (layer.mask.y || 0)) * sh / mh,
+			x: (px - mx) * sw / mw,
+			y: (py - my) * sh / mh,
 		};
 	}
 
@@ -1005,12 +994,14 @@ class Mask_class {
 		var color = this.Helper.hexToRgb(config.COLOR);
 		var gray = Math.round(0.2126 * color.r + 0.7152 * color.g + 0.0722 * color.b);
 		var params = tool.getParams();
+		var toolOpacity = (params.opacity != null) ? params.opacity / 100 : 1;
+		var alpha = Math.round(((config.ALPHA != null) ? config.ALPHA : 255) * toolOpacity);
 
 		var options = {
 			size: params.size || 1,
 			circle: params.circle !== false,
 			strict: params.strict === true,
-			alpha: config.ALPHA,
+			alpha: alpha,
 			hardness: (params.hardness != null) ? params.hardness : 100,
 		};
 
@@ -1027,11 +1018,15 @@ class Mask_class {
 	 */
 	erase(tool, e, type) {
 		var params = tool.getParams();
+		var toolOpacity = (params.opacity != null) ? params.opacity / 100 : 1;
+		var alpha = Math.round(((config.ALPHA != null) ? config.ALPHA : 255) * toolOpacity);
+
 		var options = {
 			size: params.size || 1,
 			circle: params.circle !== false,
 			strict: params.strict === true,
-			alpha: config.ALPHA,
+			alpha: alpha,
+			hardness: (params.hardness != null) ? params.hardness : 100,
 		};
 
 		if (type == 'start')

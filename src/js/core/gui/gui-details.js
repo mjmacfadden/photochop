@@ -166,14 +166,16 @@ class GUI_details_class {
 		//add params
 		this.render_more_parameters();
 
-		this.render_text(events);
-		this.render_general_select_param('boundary', events);
-		this.render_general_select_param('kerning', events);
-		this.render_general_select_param('text_direction', events);
-		this.render_general_select_param('wrap', events);
-		this.render_general_select_param('wrap_direction', events);
-		this.render_general_select_param('halign', events);
-		this.render_general_select_param('valign', events);
+		if (config.layer && config.layer.type === 'text') {
+			this.render_text(events);
+			this.render_general_select_param('boundary', events);
+			this.render_general_select_param('kerning', events);
+			this.render_general_select_param('text_direction', events);
+			this.render_general_select_param('wrap', events);
+			this.render_general_select_param('wrap_direction', events);
+			this.render_general_select_param('halign', events);
+			this.render_general_select_param('valign', events);
+		}
 	}
 
 	render_general(key, events) {
@@ -290,8 +292,9 @@ class GUI_details_class {
 	render_general_param(key, events) {
 		var layer = config.layer;
 
-		if (layer != undefined) {
+		if (layer != undefined && layer.params != undefined) {
 			var target = document.getElementById('detail_param_' + key);
+			if (!target) return;
 			if (layer.params[key] == null) {
 				target.value = '';
 				target.disabled = true;
@@ -319,11 +322,13 @@ class GUI_details_class {
 		if (events) {
 			//events
 			var target = document.getElementById('detail_param_' + key);
+			if (!target) return;
 			let focus_value = null;
 			target.addEventListener('focus', function (e) {
 				focus_value = parseInt(this.value);
 			});
 			target.addEventListener('blur', function (e) {
+				if (!config.layer || !config.layer.params) return;
 				var value = parseInt(this.value);
 				config.layer.params[key] = focus_value;
 				let params_copy = JSON.parse(JSON.stringify(config.layer.params));
@@ -339,6 +344,7 @@ class GUI_details_class {
 				}
 			});
 			target.addEventListener('change', function (e) {
+				if (!config.layer || !config.layer.params) return;
 				var value = parseInt(this.value);
 				config.layer.params[key] = value;
 				config.need_render = true;
@@ -346,7 +352,7 @@ class GUI_details_class {
 
 			});
 			target.addEventListener('click', function (e) {
-				if (typeof config.layer.params[key] != 'boolean')
+				if (!config.layer || !config.layer.params || typeof config.layer.params[key] != 'boolean')
 					return;
 				this.classList.toggle('active');
 				config.layer.params[key] = !config.layer.params[key];
@@ -359,8 +365,9 @@ class GUI_details_class {
 	render_general_select_param(key, events){
 		var layer = config.layer;
 
-		if (layer != undefined) {
+		if (layer != undefined && layer.params != undefined) {
 			var target = document.getElementById('detail_param_' + key);
+			if (!target) return;
 
 			if (layer.params[key] == null) {
 				target.value = '';
@@ -378,11 +385,13 @@ class GUI_details_class {
 		if (events) {
 			//events
 			var target = document.getElementById('detail_param_' + key);
+			if (!target) return;
 			let focus_value = null;
 			target.addEventListener('focus', function (e) {
 				focus_value = this.value;
 			});
 			target.addEventListener('blur', function (e) {
+				if (!config.layer || !config.layer.params) return;
 				var value = this.value;
 				config.layer.params[key] = focus_value;
 				let params_copy = JSON.parse(JSON.stringify(config.layer.params));
@@ -398,6 +407,7 @@ class GUI_details_class {
 				}
 			});
 			target.addEventListener('change', function (e) {
+				if (!config.layer || !config.layer.params) return;
 				var value = this.value;
 				config.layer.params[key] = value;
 				config.need_render = true;

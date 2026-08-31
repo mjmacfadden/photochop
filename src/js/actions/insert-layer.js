@@ -29,6 +29,20 @@ export class Insert_layer_action extends Base_action {
 		this.previous_selected_layer = config.layer;
 		let autoresize_as = null;
 
+		// Calculate top order
+		let max_order = 0;
+		if (config.layers && Array.isArray(config.layers)) {
+			for (let i in config.layers) {
+				let lOrder = config.layers[i].order;
+				if (lOrder != null && lOrder > max_order) {
+					max_order = lOrder;
+				}
+			}
+		}
+		let target_order = (this.settings && this.settings.order != null)
+			? this.settings.order
+			: (max_order + 1);
+
 		// Default data
 		const layer = {
 			id: app.Layers.auto_increment,
@@ -47,7 +61,7 @@ export class Insert_layer_action extends Base_action {
 			is_vector: false,
 			hide_selection_if_active: false,
 			opacity: 100,
-			order: app.Layers.auto_increment,
+			order: target_order,
 			composition: 'source-over',
 			rotate: 0,
 			data: null,

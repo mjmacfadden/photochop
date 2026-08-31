@@ -20,6 +20,7 @@ import Base_layers_class from './core/base-layers.js';
 import Base_tools_class from './core/base-tools.js';
 import Base_state_class from './core/base-state.js';
 import Base_search_class from './core/base-search.js';
+import Base_documents_class from './core/base-documents.js';
 import File_open_class from './modules/file/open.js';
 import File_save_class from './modules/file/save.js';
 import * as Actions from './actions/index.js';
@@ -30,6 +31,7 @@ window.addEventListener('load', function (e) {
 	var Base_tools = new Base_tools_class(true);
 	var GUI = new Base_gui_class();
 	var Base_state = new Base_state_class();
+	var Documents = new Base_documents_class();
 	var File_open = new File_open_class();
 	var File_save = new File_save_class();
 	var Base_search = new Base_search_class();
@@ -39,6 +41,7 @@ window.addEventListener('load', function (e) {
 	app.Config = config;
 	app.FileOpen = File_open;
 	app.FileSave = File_save;
+	app.Documents = Documents;
 	app.GUI = GUI;
 	app.Layers = Layers;
 	app.State = Base_state;
@@ -48,10 +51,12 @@ window.addEventListener('load', function (e) {
 	window.Layers = Layers;
 	window.AppConfig = config;
 	window.State = Base_state;
+	window.Documents = Documents;
 	window.FileOpen = File_open;
 	window.FileSave = File_save;
 
 	// Render all
 	GUI.init();
 	Layers.init();
+	Documents.init();
 }, false);

@@ -53,13 +53,13 @@ class File_save_class {
 			if (this.Helper.is_input(event.target))
 				return;
 
-			if (code == "s") {
+			if (code == "s" && (event.ctrlKey || event.metaKey)) {
 				if(event.shiftKey){
-					//export
+					//save as
 					this.save();
 				}
 				else{
-					//save
+					//export
 					this.export();
 				}
 				event.preventDefault();
@@ -624,6 +624,10 @@ class File_save_class {
 				filesaver.saveAs(blob, fname);
 			});
 		}
+
+		if (app.Documents && fname) {
+			app.Documents.update_active_title(fname);
+		}
 	}
 	
 	fillCanvasBackground(ctx, color, width = config.WIDTH, height = config.HEIGHT) {
@@ -700,25 +704,41 @@ class File_save_class {
 		//image data
 		export_data.data = [];
 		for (var i in config.layers) {
-			if (config.layers[i].type != 'image')
+			var layerObj = config.layers[i];
+			if (layerObj.type != 'image')
 				continue;
 
-			var canvas = document.createElement('canvas');
-			canvas.width = config.layers[i].width_original;
-			canvas.height = config.layers[i].height_original;
-			this.disable_canvas_smooth(canvas.getContext("2d"));
+			var imgSource = layerObj.link_canvas || layerObj.link;
+			if (imgSource && (imgSource instanceof HTMLCanvasElement || imgSource instanceof HTMLImageElement || imgSource instanceof ImageBitmap)) {
+				try {
+					var canvas = document.createElement('canvas');
+					canvas.width = layerObj.width_original || config.WIDTH;
+					canvas.height = layerObj.height_original || config.HEIGHT;
+					this.disable_canvas_smooth(canvas.getContext("2d"));
 
-			canvas.getContext('2d').drawImage(config.layers[i].link, 0, 0);
+					canvas.getContext('2d').drawImage(imgSource, 0, 0);
 
-			var data_tmp = canvas.toDataURL("image/png");
-			export_data.data.push(
-				{
-					id: config.layers[i].id,
-					data: data_tmp,
+					var data_tmp = canvas.toDataURL("image/png");
+					export_data.data.push({
+						id: layerObj.id,
+						data: data_tmp,
+					});
+					canvas.width = 1;
+					canvas.height = 1;
+				} catch (e) {
+					if (layerObj.data) {
+						export_data.data.push({
+							id: layerObj.id,
+							data: layerObj.data,
+						});
+					}
 				}
-			);
-			canvas.width = 1;
-			canvas.height = 1;
+			} else if (layerObj.data) {
+				export_data.data.push({
+					id: layerObj.id,
+					data: layerObj.data,
+				});
+			}
 		}
 
 		return JSON.stringify(export_data, null, "\t");

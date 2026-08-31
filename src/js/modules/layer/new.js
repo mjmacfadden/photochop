@@ -15,21 +15,6 @@ class Layer_new_class {
 		this.Base_selection = new Base_selection_class(this.Base_layers.ctx);
 		this.GUI_tools = new GUI_tools_class();
 		this.Helper = new Helper_class();
-
-		this.set_events();
-	}
-
-	set_events() {
-		document.addEventListener('keydown', (event) => {
-			var code = event.keyCode;
-			if (this.Helper.is_input(event.target))
-				return;
-
-			if (code == 78 && event.ctrlKey != true && event.metaKey != true) {
-				//N
-				this.new();
-			}
-		}, false);
 	}
 
 	new() {

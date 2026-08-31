@@ -144,6 +144,13 @@ config.TOOLS = [
 		name: 'brush',
 		attributes: {
 			size: 13,
+			opacity: {
+				value: 100,
+				min: 1,
+				max: 100,
+				step: 1,
+				slider: true,
+			},
 			hardness: {
 				value: 100,
 				min: 0,
@@ -176,6 +183,13 @@ config.TOOLS = [
 		visible: false,
 		attributes: {
 			size: 1,
+			opacity: {
+				value: 100,
+				min: 1,
+				max: 100,
+				step: 1,
+				slider: true,
+			},
 			pressure: false,
 		},
 	},
@@ -187,15 +201,27 @@ config.TOOLS = [
 	},
 	{
 		name: 'erase',
-		on_update: 'on_params_update',
 		attributes: {
 			size: 30,
-			circle: true,
-			strict: true,
-			erase_to: {
-				value: 'Transparent',
-				values: ['Transparent', 'Background Color'],
+			opacity: {
+				value: 100,
+				min: 1,
+				max: 100,
+				step: 1,
+				slider: true,
 			},
+			hardness: {
+				value: 100,
+				min: 0,
+				max: 100,
+				step: 1,
+				slider: true,
+			},
+			erase_to: {
+				value: 'Auto',
+				values: ['Auto', 'Transparent', 'Background Color'],
+			},
+			pressure: false,
 		},
 	},
 	{

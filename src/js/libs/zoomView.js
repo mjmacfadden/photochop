@@ -126,6 +126,44 @@ const zoomView = (() => {
 			pos.y = y_from - (y_from - pos.y) * amount;
 			dirty = true;
 		},
+		reset(newScale = 1) {
+			scale = newScale;
+			pos.x = 0;
+			pos.y = 0;
+			m[0] = scale;
+			m[1] = 0;
+			m[2] = 0;
+			m[3] = scale;
+			m[4] = 0;
+			m[5] = 0;
+			dirty = true;
+			if (ctx && ctx.canvas) {
+				this.update();
+			}
+		},
+		getState() {
+			return {
+				scale: scale,
+				pos: { x: pos.x, y: pos.y },
+				bounds: { ...bounds },
+			};
+		},
+		setState(state) {
+			if (!state) return;
+			scale = state.scale || 1;
+			pos.x = state.pos ? state.pos.x : 0;
+			pos.y = state.pos ? state.pos.y : 0;
+			if (state.bounds) {
+				bounds.top = state.bounds.top;
+				bounds.left = state.bounds.left;
+				bounds.right = state.bounds.right;
+				bounds.bottom = state.bounds.bottom;
+			}
+			dirty = true;
+			if (ctx && ctx.canvas) {
+				this.update();
+			}
+		},
 		move(move_x, move_y) {  // move is in screen coords
 			pos.x += move_x;
 			pos.y += move_y;

@@ -17,8 +17,9 @@ const handle_size = 8;
 //The URL is resolved relative to the document root (see layout.css icon refs).
 const ROTATE_CURSOR = "url('images/icons/rotate.svg') 12 12, default";
 
-//Thickness (in screen px) of the rotation ring just outside the layer bounds.
-const rotate_zone = 12;
+// Inner and outer offset (in screen px) of the rotation ring outside the layer bounds and handles.
+const rotate_inner_zone = 16;
+const rotate_outer_zone = 34;
 
 const DRAG_TYPE_TOP = 1;
 const DRAG_TYPE_BOTTOM = 2;
@@ -113,6 +114,17 @@ class Base_selection_class {
 		document.addEventListener('touchend', (event) => {
 			this.selected_object_actions(event);
 		});
+
+		// update cursor on Alt key state changes
+		const onAltKey = (e) => {
+			if (e.key === 'Alt' || e.key === 'AltGraph' || e.code === 'AltLeft' || e.code === 'AltRight' || e.keyCode === 18) {
+				if (config.TOOL && config.TOOL.name === 'select') {
+					this.selected_object_actions(e);
+				}
+			}
+		};
+		window.addEventListener('keydown', onAltKey);
+		window.addEventListener('keyup', onAltKey);
 	}
 
 	set_selection(x, y, width, height) {
@@ -413,6 +425,43 @@ class Base_selection_class {
 		this._build_shape_path(ctx, data);
 	}
 
+	get_simple_shape_contours(r) {
+		var shape = r.shape || 'rect';
+		var w = r.width || 0;
+		var h = r.height || 0;
+		var x = (r.x != null) ? r.x : 0;
+		var y = (r.y != null) ? r.y : 0;
+
+		var rx = w < 0 ? x + w : x;
+		var ry = h < 0 ? y + h : y;
+		var rw = Math.abs(w);
+		var rh = Math.abs(h);
+
+		if (rw === 0 && rh === 0)
+			return [];
+
+		if (shape === 'rect') {
+			return [
+				[[rx, ry], [rx + rw, ry], [rx + rw, ry + rh], [rx, ry + rh]]
+			];
+		} else if (shape === 'ellipse') {
+			var cx = rx + rw / 2;
+			var cy = ry + rh / 2;
+			var a = rw / 2;
+			var b = rh / 2;
+			var pts = [];
+			var steps = Math.max(32, Math.min(128, Math.round(Math.max(a, b))));
+			for (var s = 0; s < steps; s++) {
+				var th = (s / steps) * 2 * Math.PI;
+				pts.push([cx + a * Math.cos(th), cy + b * Math.sin(th)]);
+			}
+			return [pts];
+		} else if (shape === 'lasso' && r.path && r.path.length > 1) {
+			return [r.path];
+		}
+		return [];
+	}
+
 	/**
 	 * flattens a marching-ants selection into a list of regions to draw or
 	 * process. Composed selections return their committed regions (shift/alt
@@ -427,7 +476,7 @@ class Base_selection_class {
 		if (data == null)
 			return regions;
 
-		if (Array.isArray(data.regions)) {
+		if (Array.isArray(data.regions) && data.regions.length > 0) {
 			regions = data.regions.slice();
 			if (includeActive === true && data.active_region != null
 				&& data.active_region.shape !== 'lasso'
@@ -435,12 +484,7 @@ class Base_selection_class {
 				regions.push(data.active_region);
 			}
 		}
-		else if (includeActive === true && data.active_region != null
-			&& data.active_region.shape !== 'lasso'
-			&& data.active_region.width != null && data.active_region.height != null) {
-			regions = [data.active_region];
-		}
-		else if (data.active_region == null && data.x != null && data.width != null && data.height != null) {
+		else if (data.x != null && data.width != null && data.height != null && data.width !== 0 && data.height !== 0) {
 			regions = [{
 				shape: data.shape || 'rect',
 				x: data.x,
@@ -450,6 +494,11 @@ class Base_selection_class {
 				path: data.path || null,
 				mode: 'add',
 			}];
+		}
+		else if (includeActive === true && data.active_region != null
+			&& data.active_region.shape !== 'lasso'
+			&& data.active_region.width != null && data.active_region.height != null) {
+			regions = [data.active_region];
 		}
 		return regions;
 	}
@@ -542,40 +591,16 @@ class Base_selection_class {
 		ctx.save();
 		ctx.lineJoin = 'round';
 		ctx.lineCap = 'round';
-		for (var c = 0; c < contours.length; c++) {
-			var pts = contours[c];
-			if (pts.length < 2)
-				continue;
 
+		var draw_path_ants = (pts, is_closed) => {
+			if (pts.length < 2) return;
 			ctx.beginPath();
 			ctx.moveTo(pts[0][0], pts[0][1]);
 			for (var i = 1; i < pts.length; i++) {
 				ctx.lineTo(pts[i][0], pts[i][1]);
 			}
-			ctx.closePath();
-
-			//white underlay - always visible
-			ctx.strokeStyle = '#ffffff';
-			ctx.lineWidth = 2.5 / Z;
-			ctx.stroke();
-
-			//animated black dashes
-			ctx.strokeStyle = '#000000';
-			ctx.lineWidth = 1.5 / Z;
-			ctx.setLineDash([dash, gap]);
-			ctx.lineDashOffset = this.ant_offset;
-			ctx.stroke();
-			ctx.setLineDash([]);
-		}
-
-		// If there is an active in-progress lasso path, draw it as an open path following cursor
-		if (data.active_region && data.active_region.shape === 'lasso'
-			&& data.active_region.path && data.active_region.path.length > 1) {
-			var lpath = data.active_region.path;
-			ctx.beginPath();
-			ctx.moveTo(lpath[0][0], lpath[0][1]);
-			for (var lp = 1; lp < lpath.length; lp++) {
-				ctx.lineTo(lpath[lp][0], lpath[lp][1]);
+			if (is_closed) {
+				ctx.closePath();
 			}
 
 			//white underlay
@@ -590,6 +615,23 @@ class Base_selection_class {
 			ctx.lineDashOffset = this.ant_offset;
 			ctx.stroke();
 			ctx.setLineDash([]);
+		};
+
+		for (var c = 0; c < contours.length; c++) {
+			draw_path_ants(contours[c], true);
+		}
+
+		// If there is an active in-progress drag region, draw it in real time
+		if (data.active_region != null) {
+			var ar = data.active_region;
+			if (ar.shape === 'lasso' && ar.path && ar.path.length > 1) {
+				draw_path_ants(ar.path, false);
+			} else if (ar.width != null && ar.height != null && (ar.width !== 0 || ar.height !== 0)) {
+				var ar_contours = this.get_simple_shape_contours(ar);
+				for (var ac = 0; ac < ar_contours.length; ac++) {
+					draw_path_ants(ar_contours[ac], true);
+				}
+			}
 		}
 
 		ctx.restore();
@@ -597,29 +639,34 @@ class Base_selection_class {
 
 	/**
 	 * returns the union-silhouette contours (array of closed polylines in
-	 * world coordinates) for the given marching-ants selection. The composed
-	 * selection interior is rasterized into a mask and its boundary is traced
-	 * with marching squares (linear interpolation), giving one smooth outline
-	 * around the whole union - subtract regions contribute their own holes.
-	 * Contours are cached per selection geometry.
+	 * world coordinates) for the given marching-ants selection.
 	 */
 	get_union_contours(data) {
-		var regions = this.get_selection_regions(data, true);
+		var regions = this.get_selection_regions(data, false);
+		if (regions.length === 0)
+			return [];
+
+		// Fast path for single add region (e.g. Select All or single rectangle/ellipse marquee)
+		if (regions.length === 1 && regions[0].mode !== 'subtract') {
+			return this.get_simple_shape_contours(regions[0]);
+		}
+
 		var key = JSON.stringify(regions);
 		if (this._ant_cache.key === key) {
 			return this._ant_cache.contours;
 		}
 
-		var contours = [];
+		var PAD = 2;
 		var canvas = document.createElement('canvas');
-		canvas.width = Math.max(1, config.WIDTH);
-		canvas.height = Math.max(1, config.HEIGHT);
+		canvas.width = Math.max(1, config.WIDTH) + PAD * 2;
+		canvas.height = Math.max(1, config.HEIGHT) + PAD * 2;
 		var ctx = canvas.getContext('2d');
 
-		//black outside, white union of add/intersect, subtract carved back
-		//to black - same interior model as create_selection_clip_canvas().
 		ctx.fillStyle = '#000000';
 		ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+		ctx.save();
+		ctx.translate(PAD, PAD);
 
 		ctx.beginPath();
 		var has_add = false;
@@ -641,8 +688,17 @@ class Base_selection_class {
 			ctx.fillStyle = '#000000';
 			ctx.fill();
 		}
+		ctx.restore();
 
-		contours = this._trace_mask_contours(canvas);
+		var raw_contours = this._trace_mask_contours(canvas);
+		var contours = [];
+		for (var c = 0; c < raw_contours.length; c++) {
+			var poly = [];
+			for (var p = 0; p < raw_contours[c].length; p++) {
+				poly.push([raw_contours[c][p][0] - PAD, raw_contours[c][p][1] - PAD]);
+			}
+			contours.push(poly);
+		}
 
 		this._ant_cache.key = key;
 		this._ant_cache.contours = contours;
@@ -1221,8 +1277,19 @@ class Base_selection_class {
 			return;
 
 		const mainWrapper = document.getElementById('main_wrapper');
-		const defaultCursor = config.TOOL && config.TOOL.name === 'text' ? 'text' : 'default';
-		if (mainWrapper.style.cursor != defaultCursor) {
+		const brushTools = ['brush', 'pencil', 'erase', 'clone', 'blur', 'sharpen', 'desaturate', 'bulge_pinch'];
+		const crosshairTools = ['selection', 'lasso', 'magic_wand', 'gradient', 'crop'];
+
+		let defaultCursor = 'default';
+		if (config.TOOL && brushTools.includes(config.TOOL.name)) {
+			defaultCursor = 'none';
+		} else if (config.TOOL && config.TOOL.name === 'text') {
+			defaultCursor = 'text';
+		} else if (config.TOOL && crosshairTools.includes(config.TOOL.name)) {
+			defaultCursor = 'crosshair';
+		}
+
+		if (mainWrapper && mainWrapper.style.cursor != defaultCursor) {
 			mainWrapper.style.cursor = defaultCursor;
 		}
 		if (event_type == 'mousedown' && config.mouse.valid == false || settings.enable_controls == false) {
@@ -1297,14 +1364,33 @@ class Base_selection_class {
 			}
 			else if (e.buttons == 1 || typeof e.buttons == "undefined") {
 				// Do transformations
+				var is_alt = (e.altKey === true);
 				var dx = Math.round(mouse.x - mouse.click_x);
 				var dy = Math.round(mouse.y - mouse.click_y);
-				var width = this.click_details.width + dx;
-				var height = this.click_details.height + dy;
-				if (is_drag_type_top)
-					height = this.click_details.height - dy;
-				if (is_drag_type_left)
-					width = this.click_details.width - dx;
+				var width = this.click_details.width;
+				var height = this.click_details.height;
+
+				if (is_alt) {
+					// Symmetrical resize from center outward
+					if (is_drag_type_right) {
+						width = this.click_details.width + 2 * dx;
+					} else if (is_drag_type_left) {
+						width = this.click_details.width - 2 * dx;
+					}
+
+					if (is_drag_type_bottom) {
+						height = this.click_details.height + 2 * dy;
+					} else if (is_drag_type_top) {
+						height = this.click_details.height - 2 * dy;
+					}
+				} else {
+					width = this.click_details.width + dx;
+					height = this.click_details.height + dy;
+					if (is_drag_type_top)
+						height = this.click_details.height - dy;
+					if (is_drag_type_left)
+						width = this.click_details.width - dx;
+				}
 
 				// Keep ratio - (if drag_type power of 2, only dragging on single axis)
 				if (drag_type && (drag_type & (drag_type - 1)) !== 0 && (settings.keep_ratio == true && is_ctrl == false) 
@@ -1321,31 +1407,66 @@ class Base_selection_class {
 					}
 				}
 
-				// Set values
-				settings.data.x = this.click_details.x;
-				settings.data.y = this.click_details.y;
-				if (is_drag_type_top)
-					settings.data.y = this.click_details.y - (height - this.click_details.height);
-				if (is_drag_type_left)
-					settings.data.x = this.click_details.x - (width - this.click_details.width);
-				if (is_drag_type_left || is_drag_type_right)
-					settings.data.width = width;
-				if (is_drag_type_top || is_drag_type_bottom)
-					settings.data.height = height;
+				if (is_alt) {
+					var cx = this.click_details.x + this.click_details.width / 2;
+					var cy = this.click_details.y + this.click_details.height / 2;
+
+					if (is_drag_type_left || is_drag_type_right) {
+						settings.data.width = width;
+						settings.data.x = Math.round(cx - width / 2);
+					} else {
+						settings.data.x = this.click_details.x;
+						settings.data.width = this.click_details.width;
+					}
+
+					if (is_drag_type_top || is_drag_type_bottom) {
+						settings.data.height = height;
+						settings.data.y = Math.round(cy - height / 2);
+					} else {
+						settings.data.y = this.click_details.y;
+						settings.data.height = this.click_details.height;
+					}
+
+					// When both axes were scaled (e.g. corner handles or keep_ratio)
+					if ((is_drag_type_left || is_drag_type_right) && (is_drag_type_top || is_drag_type_bottom)) {
+						settings.data.width = width;
+						settings.data.height = height;
+						settings.data.x = Math.round(cx - width / 2);
+						settings.data.y = Math.round(cy - height / 2);
+					}
+				} else {
+					// Set values
+					settings.data.x = this.click_details.x;
+					settings.data.y = this.click_details.y;
+					if (is_drag_type_top)
+						settings.data.y = this.click_details.y - (height - this.click_details.height);
+					if (is_drag_type_left)
+						settings.data.x = this.click_details.x - (width - this.click_details.width);
+					if (is_drag_type_left || is_drag_type_right)
+						settings.data.width = width;
+					if (is_drag_type_top || is_drag_type_bottom)
+						settings.data.height = height;
+				}
 
 				// Don't allow negative width/height on most layers
 				if (!allowNegativeDimensions) {
 					if (settings.data.width <= 0) {
-						settings.data.width = Math.abs(settings.data.width);
-						if (is_drag_type_left) {
+						settings.data.width = Math.abs(settings.data.width) || 1;
+						if (is_alt) {
+							var cx = this.click_details.x + this.click_details.width / 2;
+							settings.data.x = Math.round(cx - settings.data.width / 2);
+						} else if (is_drag_type_left) {
 							settings.data.x -= settings.data.width;
 						} else {
 							settings.data.x = this.click_details.x - settings.data.width;
 						}
 					}
 					if (settings.data.height <= 0) {
-						settings.data.height = Math.abs(settings.data.height);
-						if (is_drag_type_top) {
+						settings.data.height = Math.abs(settings.data.height) || 1;
+						if (is_alt) {
+							var cy = this.click_details.y + this.click_details.height / 2;
+							settings.data.y = Math.round(cy - settings.data.height / 2);
+						} else if (is_drag_type_top) {
 							settings.data.y -= settings.data.height;
 						} else {
 							settings.data.y = this.click_details.y - settings.data.height;
@@ -1387,9 +1508,10 @@ class Base_selection_class {
 				}
 			}
 
-			//rotate? - cursor just outside the layer bounds (ring zone)
+			//rotate? - cursor outside the layer bounds & handles (ring zone)
 			if (!handleMatched && settings.enable_rotation == true) {
-				const z = rotate_zone / config.ZOOM;
+				const z_inner = rotate_inner_zone / config.ZOOM;
+				const z_outer = rotate_outer_zone / config.ZOOM;
 				const rot_rad = (data.rotate || 0) * Math.PI / 180;
 				const cosA = Math.cos(-rot_rad);
 				const sinA = Math.sin(-rot_rad);
@@ -1403,8 +1525,8 @@ class Base_selection_class {
 				const hw = w / 2;
 				const hh = h / 2;
 
-				const inOuter = lx > -hw - z && lx < hw + z && ly > -hh - z && ly < hh + z;
-				const inInner = lx > -hw && lx < hw && ly > -hh && ly < hh;
+				const inOuter = lx > -hw - z_outer && lx < hw + z_outer && ly > -hh - z_outer && ly < hh + z_outer;
+				const inInner = lx > -hw - z_inner && lx < hw + z_inner && ly > -hh - z_inner && ly < hh + z_inner;
 
 				if (inOuter && !inInner) {
 					//match

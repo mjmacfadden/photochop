@@ -4,16 +4,27 @@ const menuDefinition = [
 		children: [
 			{
 				name: 'New',
+				shortcut: 'Ctrl + N',
 				target: 'file/new.new'
 			},
 			{
 				divider: true
 			},
 			{
+				name: 'Open',
+				shortcut: 'Ctrl + O',
+				ellipsis: true,
+				target: 'file/open.open_file'
+			},
+			{
 				name: 'Open as Layer',
-				shortcut: 'O',
 				ellipsis: true,
 				target: 'file/open.open_file_as_layer'
+			},
+			{
+				name: 'Close',
+				shortcut: 'Ctrl + W',
+				target: 'file/close.close'
 			},
 			{
 				name: 'Open Directory',
@@ -45,13 +56,13 @@ const menuDefinition = [
 			{
 				name: 'Export',
 				ellipsis: true,
-				shortcut: 'S',
+				shortcut: 'Ctrl + S',
 				target: 'file/save.export'
 			},
 			{
 				name: 'Save As',
 				ellipsis: true,
-				shortcut: 'Shift + S',
+				shortcut: 'Ctrl + Shift + S',
 				target: 'file/save.save'
 			},
 			{
@@ -62,7 +73,7 @@ const menuDefinition = [
 			{
 				name: 'Print',
 				ellipsis: true,
-				shortcut: 'Ctrl+P',
+				shortcut: 'Ctrl + P',
 				target: 'file/print.print'
 			},
 			{
@@ -85,12 +96,12 @@ const menuDefinition = [
 		children: [
 			{
 				name: 'Undo',
-				shortcut: 'Ctrl+Z',
+				shortcut: 'Ctrl + Z',
 				target: 'edit/undo.undo'
 			},
 			{
 				name: 'Redo',
-				shortcut: 'Ctrl+Shift+Z',
+				shortcut: 'Ctrl + Shift + Z',
 				target: 'edit/redo.redo'
 			},
 			{
@@ -102,23 +113,33 @@ const menuDefinition = [
 				target: 'edit/selection.delete'
 			},
 			{
+				name: 'Fill with Foreground Color',
+				shortcut: 'Alt + Del',
+				target: 'edit/selection.fill_foreground'
+			},
+			{
+				name: 'Fill with Background Color',
+				shortcut: 'Ctrl + Del',
+				target: 'edit/selection.fill_background'
+			},
+			{
 				name: 'Cut',
-				shortcut: 'Ctrl+X',
+				shortcut: 'Ctrl + X',
 				target: 'edit/copy.cut_to_clipboard'
 			},
 			{
 				name: 'Copy',
-				shortcut: 'Ctrl+C',
+				shortcut: 'Ctrl + C',
 				target: 'edit/copy.copy_to_clipboard'
 			},
 			{
 				name: 'Copy Selection to Layer',
-				shortcut: 'Ctrl+J',
+				shortcut: 'Ctrl + J',
 				target: 'layer/new.new_selection'
 			},
 			{
 				name: 'Paste',
-				shortcut: 'Ctrl+V',
+				shortcut: 'Ctrl + V',
 				target: 'edit/paste.paste'
 			},
 			{
@@ -126,12 +147,12 @@ const menuDefinition = [
 			},
 			{
 				name: 'Select All',
-				shortcut: 'Ctrl+A',
+				shortcut: 'Ctrl + A',
 				target: 'edit/selection.select_all'
 			},
 			{
 				name: 'Deselect',
-				shortcut: 'Ctrl+D',
+				shortcut: 'Ctrl + D',
 				target: 'edit/selection.deselect'
 			}
 		]
@@ -301,7 +322,7 @@ const menuDefinition = [
 		children: [
 			{
 				name: 'New',
-				shortcut: 'N',
+				shortcut: 'Shift + N',
 				target: 'layer/new.new'
 			},
 			{
@@ -313,7 +334,7 @@ const menuDefinition = [
 			},
 			{
 				name: 'Duplicate',
-				shortcut: 'Ctrl+J',
+				shortcut: 'Ctrl + J',
 				target: 'layer/duplicate.duplicate'
 			},
 			{

@@ -37,6 +37,15 @@ export class Update_layer_image_action extends Base_action {
 			throw new Error('Aborted - layer is not an image');
 		}
 
+		if (!this.reference_layer.link) {
+			this.reference_layer.link = new Image();
+			if (this.reference_layer.data) {
+				this.reference_layer.link.src = (typeof this.reference_layer.data === 'string')
+					? this.reference_layer.data
+					: (this.reference_layer.data.toDataURL ? this.reference_layer.data.toDataURL() : '');
+			}
+		}
+
 		// Get data url representation of image
 		let canvas_data_url;
 		if (this.new_image_id) {
@@ -71,7 +80,10 @@ export class Update_layer_image_action extends Base_action {
 				if (this.reference_layer._link_database_id) {
 					this.old_image_id = this.reference_layer._link_database_id;
 				} else {
-					this.old_image_id = await image_store.add(this.reference_layer.link.src);
+					const currentSrc = (this.reference_layer.link && this.reference_layer.link.src)
+						? this.reference_layer.link.src
+						: (this.reference_layer.data || '');
+					this.old_image_id = await image_store.add(currentSrc);
 				}
 			}
 			if (!this.new_image_id) {
@@ -90,32 +102,55 @@ export class Update_layer_image_action extends Base_action {
 		} catch (e) {}
 
 		// Assign layer properties
+		const committed_canvas = this.canvas;
+		if (committed_canvas) {
+			this.reference_layer.link_canvas = committed_canvas;
+		}
+		this.reference_layer.link.onload = () => {
+			if (this.reference_layer && this.reference_layer.link_canvas === committed_canvas) {
+				delete this.reference_layer.link_canvas;
+			}
+			app.Layers.notify_layer_data_changed(this.layer_id);
+			config.need_render = true;
+			app.Layers.render();
+		};
 		this.reference_layer.link.src = canvas_data_url;
 		this.old_link_database_id = this.reference_layer._link_database_id;
 		this.reference_layer._link_database_id = this.new_image_id;
 
 		this.canvas = null;
 		config.need_render = true;
-		app.Layers.notify_layer_data_changed(this.layer_id);
+		app.Layers.render();
 	}
 
 	async undo() {
 		super.undo();
 
+		if (!this.reference_layer) {
+			this.reference_layer = app.Layers.get_layer(this.layer_id);
+		}
+		if (this.reference_layer && !this.reference_layer.link) {
+			this.reference_layer.link = new Image();
+		}
+
 		// Estimate storage size
 		try {
-			this.database_estimate = new Blob([this.reference_layer.link.src]).size;
+			if (this.reference_layer && this.reference_layer.link && this.reference_layer.link.src) {
+				this.database_estimate = new Blob([this.reference_layer.link.src]).size;
+			}
 		} catch (e) {}
 
 		// Restore old image
-		if (this.old_image_id != null) {
+		if (this.old_image_id != null && this.reference_layer) {
 			try {
 				this.reference_layer.link.src = await image_store.get(this.old_image_id);
 			} catch (error) {
 				throw new Error('Failed to retrieve image from store');
 			}
 		}
-		this.reference_layer._link_database_id = this.old_link_database_id;
+		if (this.reference_layer) {
+			this.reference_layer._link_database_id = this.old_link_database_id;
+		}
 		this.reference_layer = null;
 		config.need_render = true;
 		app.Layers.notify_layer_data_changed(this.layer_id);

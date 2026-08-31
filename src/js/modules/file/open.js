@@ -60,7 +60,7 @@ class File_open_class {
 			if (this.Helper.is_input(event.target))
 				return;
 
-			if (code == "o") {
+			if (code == "o" && (event.ctrlKey || event.metaKey)) {
 				//open
 				this.open_file();
 				event.preventDefault();
@@ -304,25 +304,29 @@ class File_open_class {
 
 		var img = new Image();
 		img.crossOrigin = "Anonymous";
-		img.onload = function () {
-			var new_layer = {
-				name: "Data URL",
-				type: 'image',
-				link: img,
-				width: img.width,
-				height: img.height,
-				width_original: img.width,
-				height_original: img.height,
-			};
-			app.State.do_action(
-				new app.Actions.Bundle_action('open_file_data_url', 'Open File Data URL', [
-					new app.Actions.Insert_layer_action(new_layer),
-					new app.Actions.Autoresize_canvas_action(img.width, img.height, null, true, true)
-				])
-			);
-			img.onload = function () {
-				config.need_render = true;
-			};
+		img.onload = async function () {
+			if (app.Documents) {
+				await app.Documents.create_document_from_image({
+					name: "Data URL",
+					data: data,
+				});
+			} else {
+				var new_layer = {
+					name: "Data URL",
+					type: 'image',
+					link: img,
+					width: img.width,
+					height: img.height,
+					width_original: img.width,
+					height_original: img.height,
+				};
+				app.State.do_action(
+					new app.Actions.Bundle_action('open_file_data_url', 'Open File Data URL', [
+						new app.Actions.Insert_layer_action(new_layer),
+						new app.Actions.Autoresize_canvas_action(img.width, img.height, null, true, true)
+					])
+				);
+			}
 		};
 		img.onerror = function (ex) {
 			alertify.error('Sorry, image could not be loaded. Try copy image and paste it.');
@@ -343,6 +347,19 @@ class File_open_class {
 			},
 		};
 		this.POP.show(settings);
+	}
+
+	read_file_async(file, readAs = 'dataURL') {
+		return new Promise((resolve, reject) => {
+			var FR = new FileReader();
+			FR.onload = (e) => resolve({ file: file, result: e.target.result });
+			FR.onerror = (e) => reject(e);
+			if (readAs === 'text') {
+				FR.readAsText(file);
+			} else {
+				FR.readAsDataURL(file);
+			}
+		});
 	}
 
 	async open_handler(e) {
@@ -379,9 +396,9 @@ class File_open_class {
 			}
 		}
 
-		for (var i = 0, f; i < files.length; i++) {
-			f = files[i];
-			if (!f.type.match('image.*') && !f.name.match('.json')) {
+		for (var i = 0; i < files.length; i++) {
+			var f = files[i];
+			if (!f.type.match('image.*') && !f.name.match('.json') && !f.name.match(/\.(png|jpg|jpeg|webp|gif|avif)/g)) {
 				if(dir_opened == false) {
 					alertify.error('Wrong file type, must be image or json.');
 				}
@@ -391,43 +408,40 @@ class File_open_class {
 				this.SAVE_NAME = f.name.split('.')[f.name.split('.').length - 2];
 			}
 
-			var FR = new FileReader();
-			FR.file = files[i];
-
-			FR.onload = function (event) {
-				if (this.file.type.match('image.*')) {
-					var order = auto_increment + order_map[this.file.name];
-					//image
-					var new_layer = {
-						name: this.file.name,
-						type: 'image',
-						data: event.target.result,
-						order: order,
-						_exif: _this.extract_exif(this.file)
-					};
-					app.State.do_action(
-						new app.Actions.Bundle_action('open_image', 'Open Image', [
-							new app.Actions.Insert_layer_action(new_layer)
-						])
-					);
-				}
-				else {
-					//json
-					var response = _this.load_json(event.target.result);
+			var readAs = (f.type == "text/plain" || f.name.match('.json')) ? 'text' : 'dataURL';
+			try {
+				var readResult = await this.read_file_async(f, readAs);
+				if (f.type.match('image.*') || (f.type == '' && f.name.match(/\.(png|jpg|jpeg|webp|gif|avif)/g))) {
+					if (app.Documents) {
+						await app.Documents.create_document_from_image({
+							name: f.name,
+							data: readResult.result,
+							exif: _this.extract_exif(f)
+						});
+					} else {
+						var order = auto_increment + (order_map[f.name] || i);
+						var new_layer = {
+							name: f.name,
+							type: 'image',
+							data: readResult.result,
+							order: order,
+							_exif: _this.extract_exif(f)
+						};
+						app.State.do_action(
+							new app.Actions.Bundle_action('open_image', 'Open Image', [
+								new app.Actions.Insert_layer_action(new_layer)
+							])
+						);
+					}
+				} else {
+					var response = _this.load_json(readResult.result);
 					if (response === true) {
 						return false;
 					}
 				}
-			};
-			if (f.type == "text/plain")
-				FR.readAsText(f);
-			else if (f.name.match('.json'))
-				FR.readAsText(f);
-			else
-				FR.readAsDataURL(f);
-
-			//sleep after last image import, it maybe not be finished yet
-			await new Promise(r => setTimeout(r, 10));
+			} catch (err) {
+				console.error('Error reading file:', err);
+			}
 		}
 
 		//try to open dropped directory
@@ -452,22 +466,29 @@ class File_open_class {
 				var FR = new FileReader();
 				FR.file = file;
 
-				FR.onload = function (event) {
+				FR.onload = async function (event) {
 					if (this.file.type.match('image.*')
 						//below is fix for firefox, it has empty type
 						|| (this.file.type == '' && this.file.name.match(/\.(png|jpg|jpeg|webp|gif|avif)/g))) {
-						//image
-						var new_layer = {
-							name: this.file.name,
-							type: 'image',
-							data: event.target.result,
-							_exif: _this.extract_exif(this.file)
-						};
-						app.State.do_action(
-							new app.Actions.Bundle_action('open_image', 'Open Image', [
-								new app.Actions.Insert_layer_action(new_layer)
-							])
-						);
+						if (app.Documents) {
+							await app.Documents.create_document_from_image({
+								name: this.file.name,
+								data: event.target.result,
+								exif: _this.extract_exif(this.file)
+							});
+						} else {
+							var new_layer = {
+								name: this.file.name,
+								type: 'image',
+								data: event.target.result,
+								_exif: _this.extract_exif(this.file)
+							};
+							app.State.do_action(
+								new app.Actions.Bundle_action('open_image', 'Open Image', [
+									new app.Actions.Insert_layer_action(new_layer)
+								])
+							);
+						}
 					}
 				};
 
@@ -553,25 +574,29 @@ class File_open_class {
 
 		var img = new Image();
 		img.crossOrigin = "Anonymous";
-		img.onload = function () {
-			var new_layer = {
-				name: layer_name,
-				type: 'image',
-				link: img,
-				width: img.width,
-				height: img.height,
-				width_original: img.width,
-				height_original: img.height,
-			};
-			img.onload = function () {
-				config.need_render = true;
-			};
-			app.State.do_action(
-				new app.Actions.Bundle_action('open_file_url', 'Open File URL', [
-					new app.Actions.Insert_layer_action(new_layer),
-					new app.Actions.Autoresize_canvas_action(img.width, img.height, null, true, true)
-				])
-			);
+		img.onload = async function () {
+			if (app.Documents) {
+				await app.Documents.create_document_from_image({
+					name: layer_name,
+					data: url,
+				});
+			} else {
+				var new_layer = {
+					name: layer_name,
+					type: 'image',
+					link: img,
+					width: img.width,
+					height: img.height,
+					width_original: img.width,
+					height_original: img.height,
+				};
+				app.State.do_action(
+					new app.Actions.Bundle_action('open_file_url', 'Open File URL', [
+						new app.Actions.Insert_layer_action(new_layer),
+						new app.Actions.Autoresize_canvas_action(img.width, img.height, null, true, true)
+					])
+				);
+			}
 		};
 		img.onerror = function (ex) {
 			alertify.error('Sorry, image could not be loaded. Try copy image and paste it.');

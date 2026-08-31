@@ -116,6 +116,12 @@ class Base_state_class {
 		if (error_during_free) {
 			alertify.error('A problem occurred while removing undo history. It\'s suggested you save your work and refresh the page in order to free up memory.');
 		}
+		if (app.Documents) {
+			const doc = app.Documents.get_active_document();
+			if (doc) {
+				doc.is_dirty = true;
+			}
+		}
 		this.schedule_autosave();
 		return { status: 'completed' };
 	}

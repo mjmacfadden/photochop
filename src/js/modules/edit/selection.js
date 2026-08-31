@@ -21,6 +21,14 @@ class Edit_selection_class {
 	delete() {
 		this.Selection.delete_selection();
 	}
+
+	fill_foreground() {
+		this.Selection.fill(config.COLOR || '#000000');
+	}
+
+	fill_background() {
+		this.Selection.fill(config.COLOR_BG || '#ffffff');
+	}
 }
 
 export default Edit_selection_class;

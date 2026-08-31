@@ -549,6 +549,22 @@ class WebGL_renderer_class {
 	}
 
 	/**
+	 * Invalidate all cached textures (e.g. when switching documents).
+	 */
+	clear_texture_cache() {
+		if (this.gl) {
+			var gl = this.gl;
+			for (var id in this.textureCache) {
+				var entry = this.textureCache[id];
+				if (entry && entry.texture) {
+					gl.deleteTexture(entry.texture);
+				}
+			}
+		}
+		this.textureCache = {};
+	}
+
+	/**
 	 * Release all GPU resources.
 	 */
 	destroy() {
@@ -607,12 +623,23 @@ class WebGL_renderer_class {
 
 		// Check if we need to re-upload
 		// render_function layers (brush, text, etc.) change content every frame
-		// without dimension changes, so never cache them
+		// without dimension changes, so never cache them.
+		// Layers with active link_canvas (live raster brush/pencil strokes, erase, etc.)
+		// change contents every frame during active editing, so upload dynamically.
 		if (cached &&
 			!layer.render_function &&
+			!layer.link_canvas &&
 			cached.width === srcWidth &&
 			cached.height === srcHeight) {
 			// Reuse existing texture
+			return cached;
+		}
+
+		if (cached && layer.link_canvas && cached.width === srcWidth && cached.height === srcHeight) {
+			gl.activeTexture(gl.TEXTURE0);
+			gl.bindTexture(gl.TEXTURE_2D, cached.texture);
+			gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, false);
+			gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, source);
 			return cached;
 		}
 

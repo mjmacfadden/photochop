@@ -1,13 +1,16 @@
 import Dialog_class from './../../libs/popup.js';
+import Helper_class from './../../libs/helpers.js';
 
 class Help_shortcuts_class {
 
 	constructor() {
 		this.POP = new Dialog_class();
+		this.Helper = new Helper_class();
 	}
 
 	//shortcuts
 	shortcuts() {
+		const mod = this.Helper.is_mac() ? 'Cmd' : 'Ctrl';
 		var settings = {
 			title: 'Keyboard Shortcuts',
 			className: 'shortcuts',
@@ -30,21 +33,29 @@ class Help_shortcuts_class {
 				{title: "---", value: "Colors"},
 				{title: "X", value: 'Swap Foreground/Background'},
 				{title: "D", value: 'Default Colors (Black/White)'},
-				{title: "---", value: "Brush Size"},
-				{title: "[", value: 'Decrease Brush Size'},
-				{title: "]", value: 'Increase Brush Size'},
+				{title: "---", value: "Brush Size / Hardness"},
+				{title: "[ / ]", value: 'Decrease / Increase Brush Size'},
+				{title: "Shift + [ / ]", value: 'Decrease / Increase Brush Hardness'},
 				{title: "---", value: "General"},
-				{title: "F", value: 'Auto Adjust Colors'},
-				{title: "F3 / &#8984; + F", value: 'Search'},
-				{title: "Ctrl + C", value: 'Copy to Clipboard'},
-				{title: "H", value: 'Shapes'},
-				{title: "CTRL + V", value: 'Paste'},
-				{title: "F10", value: 'Quick Load'},
-				{title: "F9", value: 'Quick Save'},
-				{title: "CTRL + A", value: 'Select All'},
-				{title: "CTRL + Z", value: 'Undo'},
-				{title: "Scroll up", value: 'Zoom in'},
-				{title: "Scroll down", value: 'Zoom out'},
+				{title: `${mod} + O`, value: 'Open Image'},
+				{title: `${mod} + W`, value: 'Close Document Tab'},
+				{title: "Ctrl + Tab", value: 'Next Document Tab'},
+				{title: `${mod} + S`, value: 'Export Image'},
+				{title: `${mod} + Shift + S`, value: 'Save As'},
+				{title: `${mod} + C`, value: 'Copy to Clipboard'},
+				{title: `${mod} + V`, value: 'Paste from Clipboard'},
+				{title: `${mod} + X`, value: 'Cut to Clipboard'},
+				{title: `${mod} + A`, value: 'Select All'},
+				{title: `${mod} + D`, value: 'Deselect'},
+				{title: `${mod} + Z`, value: 'Undo'},
+				{title: `${mod} + Shift + Z`, value: 'Redo'},
+				{title: `${mod} + 0`, value: 'Fit Window'},
+				{title: `${mod} + +/-`, value: 'Zoom In / Out'},
+				{title: `${mod} + R`, value: 'Toggle Rulers'},
+				{title: "Space (hold)", value: 'Pan Canvas (Hand Tool)'},
+				{title: "F3 / F", value: 'Search / Auto Adjust'},
+				{title: "F9 / F10", value: 'Quick Save / Quick Load'},
+				{title: "Scroll wheel", value: 'Zoom In / Out'},
 			],
 		};
 		this.POP.show(settings);

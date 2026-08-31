@@ -119,6 +119,24 @@ class GUI_layers_class {
 					});
 				}
 			}
+			else if (target.closest('.lock_icon') != null) {
+				var lockEl = target.closest('.lock_icon');
+				var layer_id = parseInt(lockEl.dataset.id);
+				var layer = app.Layers.get_layer(layer_id);
+				if (layer) {
+					var new_locked = !layer.locked;
+					var new_name = layer.name;
+					if (!new_locked && layer.name === 'Background') {
+						new_name = 'Layer 0';
+					}
+					return app.State.do_action(
+						new app.Actions.Update_layer_action(layer_id, {
+							locked: new_locked,
+							name: new_name,
+						})
+					);
+				}
+			}
 			else if (target.closest('.layer_thumb') != null) {
 				var layer_id = parseInt(target.closest('.layer_thumb').dataset.id);
 				if (config.layer && config.layer.id == layer_id && config.mask_active === true) {
@@ -340,12 +358,14 @@ class GUI_layers_class {
 	 */
 	render_layers() {
 		var target_id = 'layers';
-		var layers = config.layers.concat().sort(
-			//sort function
-				(a, b) => b.order - a.order
-			);
+		var layers = (config.layers && Array.isArray(config.layers))
+			? config.layers.concat().sort((a, b) => b.order - a.order)
+			: [];
 
-		document.getElementById(target_id).innerHTML = '';
+		var targetEl = document.getElementById(target_id);
+		if (targetEl) {
+			targetEl.innerHTML = '';
+		}
 		var html = '';
 		
 		if (config.layer) {
@@ -391,14 +411,16 @@ class GUI_layers_class {
 			html += '	<button class="layer_name" id="layer_name" data-id="' + value.id + '">' + layer_title + '</button>';
 
 			if (value.locked) {
-				html += '	<span class="lock_icon" data-id="' + value.id + '" title="Locked"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg></span>';
+				html += '	<span class="lock_icon locked" data-id="' + value.id + '" title="Locked (click to unlock)"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg></span>';
+			} else {
+				html += '	<span class="lock_icon unlocked" data-id="' + value.id + '" title="Unlocked (click to lock)"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 9.9-1"/></svg></span>';
 			}
 
 			html += '	<div class="clear"></div>';
 				html += '</div>';
 
 				//show filters
-				if (layers[i].filters.length > 0) {
+				if (layers[i].filters && layers[i].filters.length > 0) {
 					html += '<div class="filters">';
 					for (var j in layers[i].filters) {
 						var filter = layers[i].filters[j];

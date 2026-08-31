@@ -291,14 +291,18 @@ class Base_layers_class {
 				console.log("Rendering...");
 			}
 
-			if (zoom_changed) {
+			if (this.last_zoom != null && this.last_zoom > 0 && Math.abs(this.last_zoom - config.ZOOM) > 0.0001) {
 				//change zoom
+				var centerX = (this.Base_gui && this.Base_gui.GUI_preview && this.Base_gui.GUI_preview.zoom_data) ? this.Base_gui.GUI_preview.zoom_data.x : (config.visible_width / 2);
+				var centerY = (this.Base_gui && this.Base_gui.GUI_preview && this.Base_gui.GUI_preview.zoom_data) ? this.Base_gui.GUI_preview.zoom_data.y : (config.visible_height / 2);
 				zoomView.scaleAt(
-					this.Base_gui.GUI_preview.zoom_data.x,
-					this.Base_gui.GUI_preview.zoom_data.y,
+					centerX,
+					centerY,
 					config.ZOOM / this.last_zoom
 				);
-			} else if (this.Base_gui.GUI_preview.zoom_data.move_pos != null) {
+			} else if (this.last_zoom == null || Math.abs(zoomView.getScale() - config.ZOOM) > 0.0001) {
+				zoomView.reset(config.ZOOM || 1);
+			} else if (this.Base_gui && this.Base_gui.GUI_preview && this.Base_gui.GUI_preview.zoom_data && this.Base_gui.GUI_preview.zoom_data.move_pos != null) {
 				//move visible window
 				var pos = this.Base_gui.GUI_preview.zoom_data.move_pos;
 				var pos_global = zoomView.toScreen(pos);
@@ -517,7 +521,7 @@ class Base_layers_class {
 					// Render the layer
 					this.render_object(ctx, layer);
 					// Then remove the shadow (if it exists) from the render process in the temporary canvas
-					const filters = layer.filters.filter((filter) => {
+					const filters = (layer.filters || []).filter((filter) => {
 						return filter.name !== "shadow";
 					});
 					this.render_object(tempCtx, {

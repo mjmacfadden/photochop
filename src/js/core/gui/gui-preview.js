@@ -3,6 +3,7 @@
  * author: Vilius L.
  */
 
+import app from './../../app.js';
 import config from './../../config.js';
 import Base_layers_class from './../base-layers.js';
 
@@ -275,6 +276,10 @@ class GUI_preview_class {
 
 		this.Base_layers.invalidate({ viewport: true, ruler: true });
 		this.GUI.prepare_canvas();
+		if (app.Documents) {
+			app.Documents.update_zoom_display();
+		}
+		this.Base_layers.render(true);
 
 		//sleep after last image import, it maybe not be finished yet
 		await new Promise(r => setTimeout(r, 10));
@@ -282,7 +287,7 @@ class GUI_preview_class {
 		return true;
 	}
 
-	zoom_auto(only_increase) {
+	async zoom_auto(only_increase) {
 		var container = document.getElementById('main_wrapper');
 		var page_w = container.clientWidth;
 		var page_h = container.clientHeight;
@@ -297,7 +302,7 @@ class GUI_preview_class {
 			return false;
 		}
 
-		this.zoom(Math.min(best_width, best_height) * 100);
+		return await this.zoom(Math.min(best_width, best_height) * 100);
 	}
 
 	set_center_zoom() {

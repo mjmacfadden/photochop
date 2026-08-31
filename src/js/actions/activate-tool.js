@@ -63,14 +63,24 @@ export class Activate_tool_action extends Base_action {
 			const mainWrapper = document.getElementById('main_wrapper');
 			const middleArea = document.querySelector('.middle_area');
 			const brushTools = ['brush', 'pencil', 'erase', 'clone', 'blur', 'sharpen', 'desaturate', 'bulge_pinch'];
-			const defaultCursor = config.TOOL && brushTools.includes(config.TOOL.name) ? 'none' : (config.TOOL && config.TOOL.name === 'text' ? 'text' : 'default');
-			if (mainWrapper.style.cursor != defaultCursor) {
+			const crosshairTools = ['selection', 'lasso', 'magic_wand', 'gradient', 'crop'];
+
+			let defaultCursor = 'default';
+			if (config.TOOL && brushTools.includes(config.TOOL.name)) {
+				defaultCursor = 'none';
+			} else if (config.TOOL && config.TOOL.name === 'text') {
+				defaultCursor = 'text';
+			} else if (config.TOOL && crosshairTools.includes(config.TOOL.name)) {
+				defaultCursor = 'crosshair';
+			}
+
+			if (mainWrapper && mainWrapper.style.cursor != defaultCursor) {
 				mainWrapper.style.cursor = defaultCursor;
 			}
-			// Toggle brush tool class on middle_area
+			// Toggle tool class on middle_area
 			if (middleArea) {
-				middleArea.classList.remove(...brushTools.map(t => 'tool-' + t));
-				if (brushTools.includes(config.TOOL.name)) {
+				middleArea.className = 'middle_area';
+				if (config.TOOL && config.TOOL.name) {
 					middleArea.classList.add('tool-' + config.TOOL.name);
 				}
 			}
@@ -140,14 +150,24 @@ export class Activate_tool_action extends Base_action {
 		const mainWrapper = document.getElementById('main_wrapper');
 		const middleArea = document.querySelector('.middle_area');
 		const brushTools = ['brush', 'pencil', 'erase', 'clone', 'blur', 'sharpen', 'desaturate', 'bulge_pinch'];
-		const defaultCursor = config.TOOL && brushTools.includes(config.TOOL.name) ? 'none' : (config.TOOL && config.TOOL.name === 'text' ? 'text' : 'default');
-		if (mainWrapper.style.cursor != defaultCursor) {
+		const crosshairTools = ['selection', 'lasso', 'magic_wand', 'gradient', 'crop'];
+
+		let defaultCursor = 'default';
+		if (config.TOOL && brushTools.includes(config.TOOL.name)) {
+			defaultCursor = 'none';
+		} else if (config.TOOL && config.TOOL.name === 'text') {
+			defaultCursor = 'text';
+		} else if (config.TOOL && crosshairTools.includes(config.TOOL.name)) {
+			defaultCursor = 'crosshair';
+		}
+
+		if (mainWrapper && mainWrapper.style.cursor != defaultCursor) {
 			mainWrapper.style.cursor = defaultCursor;
 		}
-		// Toggle brush tool class on middle_area
+		// Toggle tool class on middle_area
 		if (middleArea) {
-			middleArea.classList.remove(...brushTools.map(t => 'tool-' + t));
-			if (brushTools.includes(config.TOOL.name)) {
+			middleArea.className = 'middle_area';
+			if (config.TOOL && config.TOOL.name) {
 				middleArea.classList.add('tool-' + config.TOOL.name);
 			}
 		}

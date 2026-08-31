@@ -306,9 +306,13 @@ class Base_gui_class {
 
 			var target = document.getElementById(targets[i].dataset.target);
 			var saved = this.Helper.getCookie(targets[i].dataset.target);
-			if (saved === 0) {
-				targets[i].classList.toggle('toggled');
+			var should_hide = (saved === 0) || (saved == null && targets[i].dataset.target === 'toggle_details');
+			if (should_hide) {
+				targets[i].classList.add('toggled');
 				target.classList.add('hidden');
+			} else {
+				targets[i].classList.remove('toggled');
+				target.classList.remove('hidden');
 			}
 		}
 	}

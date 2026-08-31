@@ -182,6 +182,12 @@ class Dialog_class {
 			if (code == "Escape") {
 				//escape
 				this.hide(false);
+			} else if (code == "Enter" || event.key == "Enter") {
+				if (!this.active) return;
+				if (event.target && event.target.tagName === 'TEXTAREA') return;
+				if (event.target && event.target.hasAttribute('data-prevent-submission')) return;
+				event.preventDefault();
+				this.save();
 			}
 		}, false);
 
@@ -411,8 +417,17 @@ class Dialog_class {
 		this.el.querySelector('[data-id="popup_close"]').addEventListener('click', (event) => {
 			this.hide(false);
 		});
-		var targets = this.el.querySelectorAll('input');
+		var targets = this.el.querySelectorAll('input, select');
 		for (var i = 0; i < targets.length; i++) {
+			targets[i].addEventListener('keydown', (event) => {
+				if (event.key == 'Enter' || event.code == 'Enter') {
+					if (event.target.hasAttribute('data-prevent-submission') || event.target.tagName === 'TEXTAREA') {
+						return;
+					}
+					event.preventDefault();
+					this.save();
+				}
+			});
 			targets[i].addEventListener('keyup', (event) => {
 				this.onkeyup(event);
 			});
