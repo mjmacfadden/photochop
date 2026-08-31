@@ -6,6 +6,7 @@
 import app from './../../app.js';
 import config from './../../config.js';
 import Base_layers_class from './../base-layers.js';
+import zoomView from './../../libs/zoomView.js';
 
 var instance = null;
 
@@ -107,17 +108,63 @@ class GUI_preview_class {
 		document.getElementById('zoom_fit').addEventListener('click', function (e) {
 			_this.zoom_auto();
 		}, false);
-		document.getElementById('main_wrapper').addEventListener('wheel', function (e) {
-			//zoom with mouse scroll
+		var gesture_start_zoom = 1;
+		var main_wrapper = document.getElementById('main_wrapper');
+
+		main_wrapper.addEventListener('wheel', function (e) {
 			e.preventDefault();
-			_this.zoom_data.x = e.offsetX;
-			_this.zoom_data.y = e.offsetY;
-			var delta = Math.max(-1, Math.min(1, (e.wheelDelta || -e.detail || -e.deltaY)));
-			if (delta > 0)
-				_this.zoom(+1, e);
-			else
-				_this.zoom(-1, e);
-		}, false);
+			if (e.ctrlKey) {
+				// Trackpad pinch-to-zoom (browser reports trackpad pinch as ctrlKey + wheel)
+				_this.zoom_data.x = e.offsetX;
+				_this.zoom_data.y = e.offsetY;
+				var factor = Math.exp(-e.deltaY * 0.01);
+				var new_zoom = Math.round(config.ZOOM * factor * 100) / 100;
+				new_zoom = Math.max(0.01, Math.min(50, new_zoom));
+				if (Math.abs(new_zoom - config.ZOOM) > 0.001) {
+					_this.zoom(new_zoom * 100);
+				}
+			} else if (e.altKey) {
+				// Alt / Option + mouse wheel zoom (Photoshop style)
+				_this.zoom_data.x = e.offsetX;
+				_this.zoom_data.y = e.offsetY;
+				var delta = Math.max(-1, Math.min(1, (e.wheelDelta || -e.detail || -e.deltaY)));
+				if (delta > 0)
+					_this.zoom(+1, e);
+				else
+					_this.zoom(-1, e);
+			} else {
+				// Normal mouse wheel or 2-finger scroll (Photoshop style)
+				var deltaX = e.deltaX || 0;
+				var deltaY = e.deltaY || 0;
+				if (e.shiftKey && deltaX === 0 && deltaY !== 0) {
+					// Shift + wheel scrolls horizontally
+					deltaX = deltaY;
+					deltaY = 0;
+				}
+				zoomView.move(-deltaX, -deltaY);
+				_this.Base_layers.invalidate({ viewport: true, ruler: true });
+			}
+		}, { passive: false });
+
+		main_wrapper.addEventListener('gesturestart', function (e) {
+			e.preventDefault();
+			gesture_start_zoom = config.ZOOM;
+		}, { passive: false });
+
+		main_wrapper.addEventListener('gesturechange', function (e) {
+			e.preventDefault();
+			var rect = main_wrapper.getBoundingClientRect();
+			_this.zoom_data.x = e.clientX - rect.left;
+			_this.zoom_data.y = e.clientY - rect.top;
+			var new_zoom = Math.round(gesture_start_zoom * e.scale * 100) / 100;
+			new_zoom = Math.max(0.01, Math.min(50, new_zoom));
+			_this.zoom(new_zoom * 100);
+		}, { passive: false });
+
+		main_wrapper.addEventListener('gestureend', function (e) {
+			e.preventDefault();
+		}, { passive: false });
+
 		window.addEventListener('resize', function (e) {
 			//resize
 			_this.Base_layers.invalidate({ viewport: true, ruler: true });

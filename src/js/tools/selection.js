@@ -220,7 +220,9 @@ class Selection_class extends Base_tools_class {
 		else {
 			//create a new region (replaces, adds, subtracts or intersects)
 			this.type = 'create';
-			this.selection_coords_from = { x: mouse.x, y: mouse.y };
+			var start_x = Math.round(mouse.x);
+			var start_y = Math.round(mouse.y);
+			this.selection_coords_from = { x: start_x, y: start_y };
 
 			//keep the committed regions when composing, drop them on replace
 			var committed = (mode != null) ? this.get_regions(this.selection) : [];
@@ -232,30 +234,30 @@ class Selection_class extends Base_tools_class {
 				this.selection.regions = committed.length ? committed : null;
 				this.selection.active_region = {
 					shape: this.get_shape(),
-					x: mouse.x,
-					y: mouse.y,
+					x: start_x,
+					y: start_y,
 					width: 0,
 					height: 0,
-					path: this.get_shape() == 'lasso' ? [[mouse.x, mouse.y]] : null,
+					path: this.get_shape() == 'lasso' ? [[start_x, start_y]] : null,
 					mode: mode,
 				};
 			}
 			else if (this.get_shape() == 'lasso') {
 				this.selection = {
-					x: mouse.x,
-					y: mouse.y,
+					x: start_x,
+					y: start_y,
 					width: 0,
 					height: 0,
 					shape: 'lasso',
-					path: [[mouse.x, mouse.y]],
+					path: [[start_x, start_y]],
 					regions: committed.length ? committed : null,
 					active_region: null,
 				};
 			}
 			else {
 				this.selection = {
-					x: mouse.x,
-					y: mouse.y,
+					x: start_x,
+					y: start_y,
 					width: 0,
 					height: 0,
 					shape: this.get_shape(),
@@ -347,10 +349,12 @@ class Selection_class extends Base_tools_class {
 			}
 
 			//rect / ellipse - grow from click point
-			var start_x = (this.selection_coords_from != null) ? this.selection_coords_from.x : mouse.click_x;
-			var start_y = (this.selection_coords_from != null) ? this.selection_coords_from.y : mouse.click_y;
-			var w = Math.round(mouse.x - start_x);
-			var h = Math.round(mouse.y - start_y);
+			var start_x = (this.selection_coords_from != null) ? this.selection_coords_from.x : Math.round(mouse.click_x);
+			var start_y = (this.selection_coords_from != null) ? this.selection_coords_from.y : Math.round(mouse.click_y);
+			var cur_x = Math.round(mouse.x);
+			var cur_y = Math.round(mouse.y);
+			var w = cur_x - start_x;
+			var h = cur_y - start_y;
 
 			if (this.shift_key && this.mode != 'add' && this.mode != 'intersect') {
 				//constrain to square / circle

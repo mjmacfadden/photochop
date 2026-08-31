@@ -3,6 +3,7 @@ import Helper_class from './../../libs/helpers.js';
 import Base_gui_class from './../../core/base-gui.js';
 import Base_layers_class from './../../core/base-layers.js';
 import Tools_settings_class from './../tools/settings.js';
+import zoomView from './../../libs/zoomView.js';
 
 var instance = null;
 
@@ -41,6 +42,107 @@ class View_ruler_class {
 				event.preventDefault();
 			}
 		}, false);
+
+		var ruler_top = document.getElementById('ruler_top');
+		var ruler_left = document.getElementById('ruler_left');
+
+		if (ruler_top) {
+			ruler_top.addEventListener('mousedown', (e) => {
+				if (e.button !== 0) return;
+				_this.start_guide_drag('horizontal', e);
+			});
+		}
+		if (ruler_left) {
+			ruler_left.addEventListener('mousedown', (e) => {
+				if (e.button !== 0) return;
+				_this.start_guide_drag('vertical', e);
+			});
+		}
+	}
+
+	start_guide_drag(type, startEvent, existing_index = null) {
+		startEvent.preventDefault();
+		var is_vertical = type === 'vertical';
+		var cursor = existing_index !== null
+			? (is_vertical ? 'col-resize' : 'row-resize')
+			: (is_vertical ? 'ew-resize' : 'ns-resize');
+		document.body.style.cursor = cursor;
+
+		var onMouseMove = (e) => {
+			var mouse_x = e.pageX - this.GUI.canvas_offset.x;
+			var mouse_y = e.pageY - this.GUI.canvas_offset.y;
+			var world_pt = zoomView.toWorld(mouse_x, mouse_y);
+
+			var val = is_vertical ? world_pt.x : world_pt.y;
+			if (e.shiftKey) {
+				val = Math.round(val / 5) * 5;
+			} else {
+				val = Math.round(val);
+			}
+
+			var active_guide = is_vertical
+				? { x: val, y: null, index: existing_index }
+				: { x: null, y: val, index: existing_index };
+
+			this.GUI.draw_guides(active_guide);
+		};
+
+		var onMouseUp = (e) => {
+			window.removeEventListener('mousemove', onMouseMove);
+			window.removeEventListener('mouseup', onMouseUp);
+			document.body.style.cursor = '';
+
+			var ruler_top = document.getElementById('ruler_top');
+			var ruler_left = document.getElementById('ruler_left');
+			var top_rect = ruler_top ? ruler_top.getBoundingClientRect() : { bottom: 48 };
+			var left_rect = ruler_left ? ruler_left.getBoundingClientRect() : { right: 20 };
+
+			var mouse_x = e.pageX - this.GUI.canvas_offset.x;
+			var mouse_y = e.pageY - this.GUI.canvas_offset.y;
+			var world_pt = zoomView.toWorld(mouse_x, mouse_y);
+
+			var val = is_vertical ? world_pt.x : world_pt.y;
+			if (e.shiftKey) {
+				val = Math.round(val / 5) * 5;
+			} else {
+				val = Math.round(val);
+			}
+
+			var droppedOnRuler = is_vertical
+				? (e.pageX <= left_rect.right)
+				: (e.pageY <= top_rect.bottom);
+
+			if (existing_index !== null) {
+				if (droppedOnRuler) {
+					// Delete existing guide
+					config.guides.splice(existing_index, 1);
+				} else {
+					// Update existing guide
+					if (is_vertical) {
+						config.guides[existing_index].x = val;
+						config.guides[existing_index].y = null;
+					} else {
+						config.guides[existing_index].x = null;
+						config.guides[existing_index].y = val;
+					}
+				}
+			} else {
+				if (!droppedOnRuler) {
+					// Add new guide
+					if (!Array.isArray(config.guides)) {
+						config.guides = [];
+					}
+					config.guides.push(is_vertical ? { x: val, y: null } : { x: null, y: val });
+					config.guides_enabled = true;
+				}
+			}
+
+			this.GUI.draw_guides();
+			config.need_render = true;
+		};
+
+		window.addEventListener('mousemove', onMouseMove);
+		window.addEventListener('mouseup', onMouseUp);
 	}
 
 	ruler() {

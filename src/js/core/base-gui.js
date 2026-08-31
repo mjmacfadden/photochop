@@ -16,6 +16,7 @@ import GUI_menu_class from './gui/gui-menu.js';
 import Tools_translate_class from './../modules/tools/translate.js';
 import Tools_settings_class from './../modules/tools/settings.js';
 import Helper_class from './../libs/helpers.js';
+import zoomView from './../libs/zoomView.js';
 import alertify from './../../../node_modules/alertifyjs/build/alertify.min.js';
 
 var instance = null;
@@ -268,9 +269,11 @@ class Base_gui_class {
 	check_canvas_offset() {
 		//calc canvas position offset
 		var bodyRect = document.body.getBoundingClientRect();
-		var canvas_el = document.getElementById('canvas_minipaint').getBoundingClientRect();
-		this.canvas_offset.x = canvas_el.left - bodyRect.left;
-		this.canvas_offset.y = canvas_el.top - bodyRect.top;
+		var canvas_dom = document.getElementById('canvas_minipaint');
+		if (!canvas_dom) return;
+		var canvas_el = canvas_dom.getBoundingClientRect();
+		this.canvas_offset.x = canvas_el.left + (canvas_dom.clientLeft || 0) - bodyRect.left;
+		this.canvas_offset.y = canvas_el.top + (canvas_dom.clientTop || 0) - bodyRect.top;
 	}
 
 	prepare_canvas() {
@@ -315,6 +318,12 @@ class Base_gui_class {
 			overlay.style.height = (h + margin * 2) + 'px';
 			overlay.style.left = (1 - margin) + 'px';
 			overlay.style.top = (1 - margin) + 'px';
+		}
+
+		var canvas_guides = document.getElementById('canvas_guides');
+		if (canvas_guides != null) {
+			canvas_guides.width = page_w;
+			canvas_guides.height = page_h;
 		}
 
 		// Notify renderer of document dimensions (for WebGL offscreen canvas)
@@ -461,39 +470,118 @@ class Base_gui_class {
 		}
 	}
 
-	draw_guides(ctx){
-		if(config.guides_enabled == false){
+	draw_guides(active_drag_guide = null) {
+		var canvas_guides = document.getElementById('canvas_guides');
+		if (canvas_guides == null) {
 			return;
 		}
-		var thick_guides = this.Tools_settings.get_setting('thick_guides');
-
-		for(var i in config.guides) {
-			var guide = config.guides[i];
-
-			if (guide.x === 0 || guide.y === 0) {
-				continue;
-			}
-
-			//set styles
-			ctx.strokeStyle = '#00b8b8';
-			if(thick_guides == false)
-				ctx.lineWidth = 1;
-			else
-				ctx.lineWidth = 3;
-
-			ctx.beginPath();
-			if (guide.y === null) {
-				//vertical
-				ctx.moveTo(guide.x, 0);
-				ctx.lineTo(guide.x, config.HEIGHT);
-			}
-			if (guide.x === null) {
-				//horizontal
-				ctx.moveTo(0, guide.y);
-				ctx.lineTo(config.WIDTH, guide.y);
-			}
-			ctx.stroke();
+		var main_wrapper = document.getElementById('main_wrapper');
+		if (main_wrapper == null) {
+			return;
 		}
+
+		var w = main_wrapper.clientWidth;
+		var h = main_wrapper.clientHeight;
+		if (canvas_guides.width !== w || canvas_guides.height !== h) {
+			canvas_guides.width = w;
+			canvas_guides.height = h;
+		}
+
+		var ctx = canvas_guides.getContext('2d');
+		ctx.clearRect(0, 0, w, h);
+
+		if (config.guides_enabled == false && active_drag_guide == null) {
+			return;
+		}
+
+		var canvas_minipaint = document.getElementById('canvas_minipaint');
+		if (!canvas_minipaint) return;
+		var canvas_rect = canvas_minipaint.getBoundingClientRect();
+		var main_rect = main_wrapper.getBoundingClientRect();
+		var offset_x = canvas_rect.left - main_rect.left;
+		var offset_y = canvas_rect.top - main_rect.top;
+
+		var thick_guides = this.Tools_settings.get_setting('thick_guides');
+		var lineWidth = thick_guides ? 3 : 1;
+
+		var guides_to_draw = [];
+		if (config.guides_enabled != false && Array.isArray(config.guides)) {
+			for (var i = 0; i < config.guides.length; i++) {
+				var guide = config.guides[i];
+				if (!guide) continue;
+				if (active_drag_guide && active_drag_guide.index === i) continue;
+				if (guide.x === 0 && guide.y === null) continue;
+				if (guide.y === 0 && guide.x === null) continue;
+				guides_to_draw.push({ guide: guide, active: false });
+			}
+		}
+
+		if (active_drag_guide) {
+			guides_to_draw.push({ guide: active_drag_guide, active: true });
+		}
+
+		for (var item of guides_to_draw) {
+			var guide = item.guide;
+			var isActive = item.active;
+
+			ctx.lineWidth = lineWidth;
+			ctx.strokeStyle = '#4dffff';
+
+			if (guide.y === null && guide.x !== null) {
+				// Vertical guide
+				var screen_pt = zoomView.toScreen({ x: guide.x, y: 0 });
+				var sx = Math.round(offset_x + screen_pt.x) + (lineWidth % 2 === 1 ? 0.5 : 0);
+
+				ctx.beginPath();
+				ctx.moveTo(sx, 0);
+				ctx.lineTo(sx, h);
+				ctx.stroke();
+
+				// Position badge for active dragged guide
+				if (isActive) {
+					var units = this.Tools_settings.get_setting('default_units');
+					var resolution = this.Tools_settings.get_setting('resolution');
+					var userVal = this.Helper.get_user_unit(guide.x, units, resolution);
+					var text = (units === 'inches' ? this.Helper.number_format(userVal, 2) : Math.round(userVal)) + (units === 'pixels' ? 'px' : ' ' + units);
+					this.draw_guide_badge(ctx, sx + 5, 30, text);
+				}
+			} else if (guide.x === null && guide.y !== null) {
+				// Horizontal guide
+				var screen_pt = zoomView.toScreen({ x: 0, y: guide.y });
+				var sy = Math.round(offset_y + screen_pt.y) + (lineWidth % 2 === 1 ? 0.5 : 0);
+
+				ctx.beginPath();
+				ctx.moveTo(0, sy);
+				ctx.lineTo(w, sy);
+				ctx.stroke();
+
+				// Position badge for active dragged guide
+				if (isActive) {
+					var units = this.Tools_settings.get_setting('default_units');
+					var resolution = this.Tools_settings.get_setting('resolution');
+					var userVal = this.Helper.get_user_unit(guide.y, units, resolution);
+					var text = (units === 'inches' ? this.Helper.number_format(userVal, 2) : Math.round(userVal)) + (units === 'pixels' ? 'px' : ' ' + units);
+					this.draw_guide_badge(ctx, 30, sy - 8, text);
+				}
+			}
+		}
+	}
+
+	draw_guide_badge(ctx, x, y, text) {
+		ctx.font = '11px sans-serif';
+		var metrics = ctx.measureText(text);
+		var padding = 4;
+		var bw = metrics.width + padding * 2;
+		var bh = 18;
+
+		ctx.fillStyle = 'rgba(0, 0, 0, 0.8)';
+		ctx.fillRect(x, y - bh + padding, bw, bh);
+		ctx.strokeStyle = '#4dffff';
+		ctx.lineWidth = 1;
+		ctx.strokeRect(x, y - bh + padding, bw, bh);
+
+		ctx.fillStyle = '#ffffff';
+		ctx.fillText(text, x + padding, y - bh + padding + 12);
 	}
 	
 	/**

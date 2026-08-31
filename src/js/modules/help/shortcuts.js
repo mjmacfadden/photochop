@@ -55,7 +55,8 @@ class Help_shortcuts_class {
 				{title: "Space (hold)", value: 'Pan Canvas (Hand Tool)'},
 				{title: "F3 / F", value: 'Search / Auto Adjust'},
 				{title: "F9 / F10", value: 'Quick Save / Quick Load'},
-				{title: "Scroll wheel", value: 'Zoom In / Out'},
+				{title: "Scroll wheel", value: 'Scroll Up / Down (Shift: Left / Right)'},
+				{title: "Alt / Option + Scroll", value: 'Zoom In / Out'},
 			],
 		};
 		this.POP.show(settings);

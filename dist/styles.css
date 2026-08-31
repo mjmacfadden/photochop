@@ -2223,6 +2223,8 @@ body.tool-pan.pan-dragging #canvas_minipaint{
 	left:0;
 	top: 48px;
 	background-color: #303030;
+	cursor: default;
+	z-index: 6;
 }
 .ruler_top{
 	display: none;
@@ -2230,6 +2232,17 @@ body.tool-pan.pan-dragging #canvas_minipaint{
 	left: 20px;
 	top: 28px;
 	background-color: #303030;
+	cursor: default;
+	z-index: 6;
+}
+.canvas_guides{
+	position: absolute;
+	top: 0;
+	left: 0;
+	width: 100%;
+	height: 100%;
+	pointer-events: none;
+	z-index: 4;
 }
 .middle_area{
 	position: relative;
@@ -2270,11 +2283,14 @@ body.tool-pan.pan-dragging #canvas_minipaint{
 .middle_area.tool-crop #main_wrapper *{
 	cursor: crosshair !important;
 }
-.middle_area.tool-select #main_wrapper,
-.middle_area.tool-select #canvas_minipaint,
-.middle_area.tool-select #canvas_overlay {
+.middle_area.tool-select #main_wrapper {
 	cursor: default;
 }
+.middle_area.tool-select #canvas_minipaint,
+.middle_area.tool-select #canvas_overlay {
+	cursor: inherit;
+}
+
 
 /* Document tabs bar */
 .document_tabs{
@@ -2904,6 +2920,7 @@ canvas{
 	line-height: 4rem;
 	padding: 0 1rem;
 	font-size: 1.2rem;
+	font-weight: 100;
 	background-color: rgba(255, 255, 255, 0.3);
 	background-color: var(--header-background-color);
 	z-index: 0;
