@@ -1,9 +1,10 @@
-var CACHE_NAME = 'photochop-shell-v1';
+var CACHE_NAME = 'photochop-shell-v2';
 var APP_SHELL = [
 	'./',
 	'./index.html',
 	'./manifest.json',
 	'./dist/bundle.js',
+	'./dist/styles.css',
 	'./images/favicon.png',
 	'./images/photochop_logo.png',
 	'./images/manifest/192x192.png'
@@ -34,11 +35,14 @@ self.addEventListener('fetch', function (event) {
 	event.respondWith(caches.match(event.request).then(function (cached) {
 		var refresh = fetch(event.request).then(function (response) {
 			if (response.ok && response.type === 'basic') {
+				var responseToCache = response.clone();
 				caches.open(CACHE_NAME).then(function (cache) {
-					cache.put(event.request, response.clone());
+					cache.put(event.request, responseToCache);
 				});
 			}
 			return response;
+		}).catch(function () {
+			return cached;
 		});
 		return cached || refresh;
 	}));
