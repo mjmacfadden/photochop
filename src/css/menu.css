@@ -159,6 +159,18 @@
 	flex-shrink: 1;
 	color: var(--menu-dropdown-text-muted-color);
 }
+.main_menu > ul.menu_dropdown > li > a > .menu_check {
+	flex-shrink: 0;
+	margin-left: 12px;
+	font-size: 12px;
+	line-height: 1;
+	color: #61afef;
+	font-weight: bold;
+}
+.main_menu > ul.menu_dropdown > li > a:hover > .menu_check,
+.main_menu > ul.menu_dropdown > li > a[aria-expanded="true"] > .menu_check {
+	color: #ffffff;
+}
 
 
 .mobile_menu {

@@ -1,30 +1,68 @@
 #popups:not(:empty) {
-	position: absolute;
+	position: fixed;
 	top: 0;
 	left: 0;
 	right: 0;
 	bottom: 0;
+	z-index: 99;
+	background: rgba(0, 0, 0, 0.55);
+	animation: popupOverlayFadeIn 140ms ease forwards;
 }
+
+@keyframes popupOverlayFadeIn {
+	from {
+		opacity: 0;
+	}
+	to {
+		opacity: 1;
+	}
+}
+
 #popups .popup {
-	position:fixed;
-	display:none;
+	position: fixed;
+	display: none;
 	top: 15vh;
-	left: calc(100vw / 2);
+	left: 50%;
 	transform: translate(-50%, 0);
 	background-color: #7A838B;
 	background-color: var(--block-background-color);
 	border: 1px solid rgba(0, 0, 0, 0.5);
 	border: 1px solid var(--border-color);
-	border-radius: 8px;
+	border-radius: 12px;
 	width: 90vw;
 	max-width: 500px;
 	max-height: calc(80vh);
-	margin:0px auto 0px auto;
+	margin: 0px auto 0px auto;
 	padding: 4rem 0 5rem 0;
-	box-shadow: 0 0 0 4000px rgba(0,0,0,0.3), 0 0 20px rgba(0,0,0,0.5);
+	box-shadow: 0 20px 60px rgba(0, 0, 0, 0.45), 0 4px 14px rgba(0, 0, 0, 0.25);
 	z-index: 100;
 	font-size: 13px;
 	overflow: hidden;
+	animation: popupSpringPop 240ms cubic-bezier(0.2, 0.8, 0.2, 1) forwards;
+}
+
+@keyframes popupSpringPop {
+	0% {
+		opacity: 0;
+		transform: translate(-50%, 0) scale(0.94);
+	}
+	65% {
+		opacity: 1;
+		transform: translate(-50%, 0) scale(1.015);
+	}
+	100% {
+		opacity: 1;
+		transform: translate(-50%, 0) scale(1);
+	}
+}
+
+@media (prefers-reduced-motion: reduce) {
+	#popups .popup {
+		animation-duration: 1ms !important;
+	}
+	#popups:not(:empty) {
+		animation-duration: 1ms !important;
+	}
 }
 #popups .popup.wide{
 	max-width: 840px;
@@ -270,4 +308,150 @@
 	#popups .popup .range_value{
 		display: none;
 	}
+}
+
+/* ==========================================================================
+   Layer Style Dialog
+   ========================================================================== */
+
+#popups .popup.layer_style_dialog {
+	max-width: 720px;
+}
+.layer_style_container {
+	display: flex;
+	gap: 14px;
+	min-height: 240px;
+}
+.layer_style_sidebar {
+	width: 160px;
+	flex-shrink: 0;
+	background-color: #242424;
+	border: 1px solid #333333;
+	border-radius: 6px;
+	padding: 6px;
+}
+.layer_style_list {
+	display: flex;
+	flex-direction: column;
+	gap: 3px;
+}
+.layer_style_item {
+	display: flex;
+	align-items: center;
+	padding: 7px 10px;
+	border-radius: 4px;
+	cursor: pointer;
+	color: #cccccc;
+	font-size: 12px;
+	font-weight: 500;
+	user-select: none;
+	transition: background-color 0.12s, color 0.12s;
+}
+.layer_style_item:hover {
+	background-color: #333333;
+	color: #ffffff;
+}
+.layer_style_item.active {
+	background-color: #2a6bb5;
+	color: #ffffff;
+}
+.layer_style_item input[type="checkbox"] {
+	margin: 0 9px 0 0 !important;
+	cursor: pointer;
+	width: 14px;
+	height: 14px;
+	flex-shrink: 0;
+}
+.layer_style_item label {
+	cursor: pointer;
+	flex-grow: 1;
+	margin: 0;
+	white-space: nowrap;
+}
+.layer_style_main {
+	flex-grow: 1;
+	background-color: #242424;
+	border: 1px solid #333333;
+	border-radius: 6px;
+	padding: 12px 16px;
+}
+.ls_heading {
+	margin: 0 0 12px 0;
+	font-size: 13px;
+	font-weight: 600;
+	color: #f0f0f0;
+	border-bottom: 1px solid #383838;
+	padding-bottom: 6px;
+}
+.ls_fields {
+	display: flex;
+	flex-direction: column;
+	gap: 10px;
+}
+.ls_row {
+	display: flex;
+	align-items: center;
+	gap: 10px;
+}
+.ls_label {
+	width: 75px;
+	flex-shrink: 0;
+	font-size: 12px;
+	color: #bbbbbb;
+}
+.ls_row input[type="range"] {
+	flex-grow: 1;
+	margin: 0;
+}
+.ls_row input[type="number"].ls_num {
+	width: 52px !important;
+	height: 24px;
+	padding: 2px 4px;
+	background: #1e1e1e;
+	border: 1px solid #444444;
+	border-radius: 3px;
+	color: #f0f0f0;
+	font-size: 11px;
+	text-align: right;
+	font-variant-numeric: tabular-nums;
+	-moz-appearance: textfield;
+}
+.ls_row input[type="number"].ls_num:focus {
+	border-color: #2a6bb5;
+	outline: none;
+}
+.ls_row input[type="number"].ls_num::-webkit-inner-spin-button,
+.ls_row input[type="number"].ls_num::-webkit-outer-spin-button {
+	opacity: 0.5;
+}
+.ls_unit {
+	width: 18px;
+	font-size: 11px;
+	color: #888888;
+	user-select: none;
+}
+.ls_val {
+	width: 45px;
+	text-align: right;
+	font-size: 11px;
+	color: #999999;
+	font-variant-numeric: tabular-nums;
+}
+.ls_row input[type="color"] {
+	width: 40px;
+	height: 22px;
+	padding: 0;
+	border: 1px solid #444444;
+	border-radius: 3px;
+	background: transparent;
+	cursor: pointer;
+}
+.ls_row select {
+	flex-grow: 1;
+	background: #333333;
+	border: 1px solid #444444;
+	color: #eeeeee;
+	padding: 4px 8px;
+	border-radius: 3px;
+	font-size: 12px;
 }

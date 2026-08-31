@@ -158,9 +158,14 @@ class WebGL_renderer_class {
 			var filters = layer.filters;
 			if (filters && filters.length) {
 				for (var f = 0; f < filters.length; f++) {
-					if (filters[f] && filters[f].id !== disabled_filter_id) {
-						return false;
+					var filter = filters[f];
+					if (!filter || filter.disabled === true || filter.visible === false) continue;
+					if (Array.isArray(disabled_filter_id)) {
+						if (disabled_filter_id.includes(filter.id) || disabled_filter_id.includes(filter.name)) continue;
+					} else if (filter.id === disabled_filter_id || filter.name === disabled_filter_id) {
+						continue;
 					}
+					return false;
 				}
 			}
 

@@ -34,6 +34,8 @@ class GUI_layers_class {
 		this.Tools_translate = new Tools_translate_class();
 		this.mask_context_menu = null;
 		this.mask_context_menu_open = false;
+		this.fx_menu = null;
+		this.fx_menu_open = false;
 	}
 
 	render_main_layers() {
@@ -68,19 +70,45 @@ class GUI_layers_class {
 					new app.Actions.Select_layer_action(target.dataset.id)
 				);
 			}
+			else if (target.id == 'filter_visibility') {
+				var layer_id = parseInt(target.dataset.pid);
+				var filter_id = target.dataset.id;
+				var layer = app.Layers.get_layer(layer_id);
+				if (layer && layer.filters) {
+					var newFilters = layer.filters.map(f => {
+						if (f.id == filter_id) {
+							return {
+								...f,
+								disabled: !f.disabled
+							};
+						}
+						return f;
+					});
+					app.State.do_action(
+						new app.Actions.Update_layer_action(layer_id, {
+							filters: newFilters
+						})
+					);
+				}
+			}
 			else if (target.id == 'delete_filter') {
 				app.State.do_action(
 					new app.Actions.Delete_layer_filter_action(target.dataset.pid, target.dataset.id)
 				);
 			}
 			else if (target.id == 'filter_name') {
-				var effects = _this.Effects_browser.get_effects_list();
-				var key = target.dataset.filter.toLowerCase();
-				for (var i in effects) {
-					if(effects[i].title.toLowerCase() == key){
-						_this.Base_layers.select(target.dataset.pid);
-						var function_name = _this.Effects_browser.get_function_from_path(key);
-						effects[i].object[function_name](target.dataset.id);
+				var filterName = target.dataset.filter;
+				_this.Base_layers.select(target.dataset.pid);
+				if (app.GUI && app.GUI.modules && app.GUI.modules['layer/styles']) {
+					app.GUI.modules['layer/styles'].open(filterName, target.dataset.id);
+				} else {
+					var effects = _this.Effects_browser.get_effects_list();
+					var key = filterName.toLowerCase();
+					for (var i in effects) {
+						if(effects[i].title.toLowerCase() == key){
+							var function_name = _this.Effects_browser.get_function_from_path(key);
+							effects[i].object[function_name](target.dataset.id);
+						}
 					}
 				}
 			}
@@ -173,9 +201,15 @@ class GUI_layers_class {
 			_this.hide_mask_context_menu();
 		});
 
-		document.addEventListener('click', function () {
+		document.addEventListener('click', function (event) {
 			if (_this.mask_context_menu_open === true) {
 				_this.hide_mask_context_menu();
+			}
+			if (_this.fx_menu_open === true) {
+				var target = event.target;
+				if (!target.closest('#layer_fx_popup_menu') && !target.closest('#status_layer_fx')) {
+					_this.hide_fx_menu();
+				}
 			}
 		});
 
@@ -318,6 +352,14 @@ class GUI_layers_class {
 	set_status_events() {
 		var _this = this;
 
+		var fx_btn = document.getElementById('status_layer_fx');
+		if (fx_btn) {
+			fx_btn.addEventListener('click', function (e) {
+				e.stopPropagation();
+				_this.toggle_fx_menu(fx_btn);
+			});
+		}
+
 		document.getElementById('status_new_layer').addEventListener('click', function () {
 			app.State.do_action(
 				new app.Actions.Insert_layer_action()
@@ -331,6 +373,92 @@ class GUI_layers_class {
 				);
 			}
 		});
+	}
+
+	/**
+	 * toggles the Fx popup menu
+	 */
+	toggle_fx_menu(button_el) {
+		if (this.fx_menu_open) {
+			this.hide_fx_menu();
+		} else {
+			this.show_fx_menu(button_el);
+		}
+	}
+
+	/**
+	 * shows the Fx popup menu anchored above the given button
+	 */
+	show_fx_menu(button_el) {
+		this.hide_fx_menu();
+
+		var rect = button_el.getBoundingClientRect();
+		var menu = document.createElement('div');
+		menu.id = 'layer_fx_popup_menu';
+		menu.className = 'layer_fx_popup_menu';
+
+		var _this = this;
+		var addItem = function (label, callback, enabled) {
+			var b = document.createElement('button');
+			b.type = 'button';
+			b.className = 'layer_fx_menu_item' + (enabled ? '' : ' disabled');
+			b.innerHTML = label;
+			if (enabled) {
+				b.addEventListener('click', function (e) {
+					e.stopPropagation();
+					_this.hide_fx_menu();
+					callback();
+				});
+			}
+			menu.appendChild(b);
+		};
+
+		addItem('Stroke...', () => {
+			if (app.GUI && app.GUI.modules && app.GUI.modules['layer/styles']) {
+				app.GUI.modules['layer/styles'].open('stroke');
+			}
+		}, true);
+
+		addItem('Inner Glow...', () => {
+			if (app.GUI && app.GUI.modules && app.GUI.modules['layer/styles']) {
+				app.GUI.modules['layer/styles'].open('inner_glow');
+			}
+		}, true);
+
+		addItem('Outer Glow...', () => {
+			if (app.GUI && app.GUI.modules && app.GUI.modules['layer/styles']) {
+				app.GUI.modules['layer/styles'].open('outer_glow');
+			}
+		}, true);
+
+		addItem('Drop Shadow...', () => {
+			if (app.GUI && app.GUI.modules && app.GUI.modules['layer/styles']) {
+				app.GUI.modules['layer/styles'].open('shadow');
+			}
+		}, true);
+
+		document.body.appendChild(menu);
+
+		// position above the button
+		var menuRect = menu.getBoundingClientRect();
+		var left = Math.max(10, Math.min(window.innerWidth - menuRect.width - 10, rect.left + (rect.width / 2) - (menuRect.width / 2)));
+		var top = Math.max(10, rect.top - menuRect.height - 4);
+		menu.style.left = Math.round(left) + 'px';
+		menu.style.top = Math.round(top) + 'px';
+
+		this.fx_menu = menu;
+		this.fx_menu_open = true;
+	}
+
+	/**
+	 * hides the Fx popup menu
+	 */
+	hide_fx_menu() {
+		this.fx_menu_open = false;
+		if (this.fx_menu) {
+			this.fx_menu.remove();
+			this.fx_menu = null;
+		}
 	}
 
 	/**
@@ -424,12 +552,24 @@ class GUI_layers_class {
 					html += '<div class="filters">';
 					for (var j in layers[i].filters) {
 						var filter = layers[i].filters[j];
-						var title = this.Helper.ucfirst(filter.name);
-						title = title.replace(/-/g, ' ');
+						var is_disabled = !!filter.disabled;
+						var titleMap = {
+							'shadow': 'Drop Shadow',
+							'drop-shadow': 'Drop Shadow',
+							'stroke': 'Stroke',
+							'inner_glow': 'Inner Glow',
+							'outer_glow': 'Outer Glow'
+						};
+						var title = titleMap[filter.name] || filter.name.replace(/[-_]/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
 
-						html += '<div class="filter">';
-						html += '	<span class="delete" id="delete_filter" data-pid="' + layers[i].id + '" data-id="' + filter.id + '" title="delete"></span>';
+						html += '<div class="filter' + (is_disabled ? ' disabled' : '') + '">';
+						if (!is_disabled) {
+							html += '	<button class="visibility visible trn" id="filter_visibility" data-pid="' + layers[i].id + '" data-id="' + filter.id + '" title="Hide effect"></button>';
+						} else {
+							html += '	<button class="visibility trn" id="filter_visibility" data-pid="' + layers[i].id + '" data-id="' + filter.id + '" title="Show effect"></button>';
+						}
 						html += '	<span class="layer_name" id="filter_name" data-pid="' + layers[i].id + '" data-id="' + filter.id + '" data-filter="' + filter.name + '">' + title + '</span>';
+						html += '	<span class="delete" id="delete_filter" data-pid="' + layers[i].id + '" data-id="' + filter.id + '" title="delete"></span>';
 						html += '	<div class="clear"></div>';
 						html += '</div>';
 					}

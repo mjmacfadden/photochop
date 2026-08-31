@@ -92,6 +92,49 @@
 .status_bar .status_btn svg{
 	flex-shrink: 0;
 }
+.status_bar .status_btn .status_fx_text{
+	font-family: Georgia, serif;
+	font-style: italic;
+	font-weight: bold;
+	font-size: 13px;
+	line-height: 1;
+	letter-spacing: -0.5px;
+	user-select: none;
+}
+
+/* Layer Fx popup menu */
+.layer_fx_popup_menu{
+	position: fixed;
+	z-index: 1000;
+	min-width: 150px;
+	padding: 4px 0;
+	background: #3c3c3c;
+	border: 1px solid #505050;
+	border-radius: 3px;
+	box-shadow: 2px 2px 10px rgba(0, 0, 0, 0.55);
+	font-size: 12px;
+}
+.layer_fx_menu_item{
+	display: block;
+	width: 100%;
+	text-align: left;
+	padding: 5px 14px;
+	background: transparent;
+	border: none;
+	color: #dcdcdc;
+	cursor: pointer;
+	font-size: 12px;
+	white-space: nowrap;
+}
+.layer_fx_menu_item:hover:not(.disabled){
+	background: #4a4a4a;
+	color: #ffffff;
+}
+.layer_fx_menu_item.disabled{
+	color: #777777;
+	cursor: default;
+	opacity: 0.5;
+}
 .trn{}
 .toggle{
 	cursor: pointer;
@@ -523,6 +566,44 @@ body.tool-pan.pan-dragging #canvas_minipaint{
 	padding-bottom: 25px;
 }
 
+/* Adjustments panel */
+.sidebar_right .block.adjustments .content{
+	padding: 6px;
+}
+.adjustments_grid{
+	display: grid;
+	grid-template-columns: repeat(auto-fill, minmax(34px, 1fr));
+	gap: 5px;
+}
+.adjustment_btn{
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	height: 32px;
+	background-color: #383838;
+	border: 1px solid #282828;
+	border-radius: 4px;
+	color: #cccccc;
+	cursor: pointer;
+	padding: 0;
+	transition: background-color 0.15s, color 0.15s, border-color 0.15s, transform 0.08s;
+}
+.adjustment_btn:hover{
+	background-color: #4a4a4a;
+	color: #ffffff;
+	border-color: #555555;
+	box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
+}
+.adjustment_btn:active{
+	background-color: #242424;
+	border-color: #1a1a1a;
+	transform: scale(0.95);
+}
+.adjustment_btn svg{
+	display: block;
+	pointer-events: none;
+}
+
 /* preview */
 .canvas_preview_wrapper{
 	position:relative;
@@ -873,20 +954,59 @@ body.tool-pan.pan-dragging #canvas_minipaint{
 	margin-bottom: 5px;
 }
 .layers_list .filter{
+	display: flex;
+	align-items: center;
 	margin-bottom: 2px;
-	margin-left: 30px;
-	opacity: 0.7;
+	margin-left: 20px;
+	padding-right: 4px;
+	opacity: 0.85;
+}
+.layers_list .filter.disabled{
+	opacity: 0.35;
+}
+.layers_list .filter.disabled .layer_name{
+	text-decoration: line-through;
+	color: #777777;
+}
+.layers_list .filter .visibility{
+	flex-shrink: 0;
+	width: 14px;
+	height: 14px;
+	margin-right: 4px;
+	opacity: 0.25;
+}
+.layers_list .filter .visibility.visible{
+	opacity: 0.8;
+}
+.layers_list .filter .visibility:after{
+	background-size: 13px auto;
 }
 .layers_list .filter .layer_name{
 	position: relative;
+	cursor: pointer;
+	flex-grow: 1;
+	font-size: 11px;
+	color: #cccccc;
+	white-space: nowrap;
+	overflow: hidden;
+	text-overflow: ellipsis;
 }
 .layers_list .filter .layer_name:after{
-	position:absolute;
-	content:"fx";
-	right: -4px;
-	top:1px;
-	bottom:0;
-	width: 20px;
+	display: inline-block;
+	content: "fx";
+	margin-left: 5px;
+	font-size: 10px;
+	font-weight: 700;
+	color: #888888;
+	font-style: italic;
+}
+.layers_list .filter .delete{
+	flex-shrink: 0;
+	margin-left: auto;
+	opacity: 0.5;
+}
+.layers_list .filter:hover .delete{
+	opacity: 1;
 }
 .sidebar_right .label{
 	display: inline-block;
@@ -1261,6 +1381,37 @@ canvas{
 }
 .alertify-notifier{
 	color: #cccccc;
+}
+.alertify .ajs-dialog {
+	border-radius: 12px !important;
+	box-shadow: 0 20px 60px rgba(0, 0, 0, 0.45), 0 4px 14px rgba(0, 0, 0, 0.25) !important;
+	animation: alertifySpringPop 240ms cubic-bezier(0.2, 0.8, 0.2, 1) forwards !important;
+}
+@keyframes alertifySpringPop {
+	0% {
+		opacity: 0;
+		transform: scale(0.94);
+	}
+	65% {
+		opacity: 1;
+		transform: scale(1.015);
+	}
+	100% {
+		opacity: 1;
+		transform: scale(1);
+	}
+}
+.alertify .ajs-dimmer {
+	background-color: rgba(0, 0, 0, 0.55) !important;
+	animation: alertifyDimmerFadeIn 140ms ease forwards !important;
+}
+@keyframes alertifyDimmerFadeIn {
+	from {
+		opacity: 0;
+	}
+	to {
+		opacity: 1;
+	}
 }
 .effectsPreview{
 	cursor: pointer;

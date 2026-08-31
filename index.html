@@ -52,7 +52,7 @@
 		</div>
 
 		<div class="sidebar_right">
-			<div class="preview block">
+			<div class="preview block hidden">
 				<h2 class="trn toggle" data-target="toggle_preview">Preview</h2>
 				<div id="toggle_preview"></div>
 			</div>
@@ -62,9 +62,14 @@
 				<div class="content" id="toggle_colors"></div>
 			</div>
 			
-			<div class="details block" id="details_base">
-				<h2 class="trn toggle toggle-full toggled" data-target="toggle_details">Layer details</h2>
-				<div class="content details-content hidden" id="toggle_details"></div>
+			<div class="details block hidden" id="details_base">
+				<h2 class="trn toggle toggle-full" data-target="toggle_details">Layer details</h2>
+				<div class="content details-content" id="toggle_details"></div>
+			</div>
+
+			<div class="adjustments block" id="adjustments_base">
+				<h2 class="trn toggle" data-target="toggle_adjustments">Adjustments</h2>
+				<div class="content" id="toggle_adjustments"></div>
 			</div>
 			
 			<div class="layers block">
@@ -76,6 +81,9 @@
 	<div class="status_bar" id="status_bar">
 		<div class="status_left" id="status_info"></div>
 		<div class="status_right">
+			<button type="button" class="status_btn" id="status_layer_fx" title="Add a layer style">
+				<span class="status_fx_text">fx</span>
+			</button>
 			<button type="button" class="status_btn" id="status_new_layer" title="New Layer">
 				<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
 					<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>

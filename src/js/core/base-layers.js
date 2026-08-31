@@ -703,22 +703,28 @@ class Base_layers_class {
 	 */
 	pre_render_object(ctx, object) {
 		//apply pre-filters
-		for (var i in object.filters) {
-			var filter = object.filters[i];
-			if (filter.id == this.disabled_filter_id) {
+		if (!object.filters) return;
+		for (let k = 0; k < object.filters.length; k++) {
+			let filter = object.filters[k];
+			if (!filter || filter.disabled === true || filter.visible === false) continue;
+			if (Array.isArray(this.disabled_filter_id)) {
+				if (this.disabled_filter_id.includes(filter.id) || this.disabled_filter_id.includes(filter.name) || (filter.name === 'drop-shadow' && this.disabled_filter_id.includes('shadow'))) {
+					continue;
+				}
+			} else if (filter.id == this.disabled_filter_id || filter.name == this.disabled_filter_id) {
 				continue;
 			}
 
-			filter.name = filter.name.replace("drop-shadow", "shadow");
+			let filter_name = filter.name === 'drop-shadow' ? 'shadow' : filter.name;
 
 			//find filter
-			var found = false;
-			for (var i in this.Base_gui.modules) {
-				if (i.indexOf("effects") == -1 || i.indexOf("abstract") > -1) continue;
+			let found = false;
+			for (let m in this.Base_gui.modules) {
+				if (m.indexOf("effects") == -1 || m.indexOf("abstract") > -1) continue;
 
-				var filter_class = this.Base_gui.modules[i];
-				var module_name = i.split("/").pop();
-				if (module_name == filter.name) {
+				let filter_class = this.Base_gui.modules[m];
+				let module_name = m.split("/").pop();
+				if (module_name == filter_name) {
 					//found it
 					found = true;
 					filter_class.render_pre(ctx, filter, object);
@@ -726,7 +732,7 @@ class Base_layers_class {
 			}
 			if (found == false) {
 				this.render_success = false;
-				console.log("Error: can not find filter: " + filter.name);
+				console.log("Error: can not find filter: " + filter_name);
 			}
 		}
 	}
@@ -738,21 +744,27 @@ class Base_layers_class {
 	 */
 	after_render_object(ctx, object) {
 		//apply post-filters
-		for (var i in object.filters) {
-			var filter = object.filters[i];
-			if (filter.id == this.disabled_filter_id) {
+		if (!object.filters) return;
+		for (let k = 0; k < object.filters.length; k++) {
+			let filter = object.filters[k];
+			if (!filter || filter.disabled === true || filter.visible === false) continue;
+			if (Array.isArray(this.disabled_filter_id)) {
+				if (this.disabled_filter_id.includes(filter.id) || this.disabled_filter_id.includes(filter.name) || (filter.name === 'drop-shadow' && this.disabled_filter_id.includes('shadow'))) {
+					continue;
+				}
+			} else if (filter.id == this.disabled_filter_id || filter.name == this.disabled_filter_id) {
 				continue;
 			}
-			filter.name = filter.name.replace("drop-shadow", "shadow");
+			let filter_name = filter.name === 'drop-shadow' ? 'shadow' : filter.name;
 
 			//find filter
-			var found = false;
-			for (var i in this.Base_gui.modules) {
-				if (i.indexOf("effects") == -1 || i.indexOf("abstract") > -1) continue;
+			let found = false;
+			for (let m in this.Base_gui.modules) {
+				if (m.indexOf("effects") == -1 || m.indexOf("abstract") > -1) continue;
 
-				var filter_class = this.Base_gui.modules[i];
-				var module_name = i.split("/").pop();
-				if (module_name == filter.name) {
+				let filter_class = this.Base_gui.modules[m];
+				let module_name = m.split("/").pop();
+				if (module_name == filter_name) {
 					//found it
 					found = true;
 					filter_class.render_post(ctx, filter, object);
@@ -760,7 +772,7 @@ class Base_layers_class {
 			}
 			if (found == false) {
 				this.render_success = false;
-				console.log("Error: can not find filter: " + filter.name);
+				console.log("Error: can not find filter: " + filter_name);
 			}
 		}
 	}

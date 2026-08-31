@@ -19,6 +19,7 @@ class View_preview_class {
 
 		var hidden = node.classList.toggle('hidden');
 		this.Helper.setCookie('preview_panel', hidden ? 0 : 1);
+		this.Helper.setCookie('panel_visible_preview', hidden ? 0 : 1);
 
 		//redraw the preview + active zone overlay when shown again
 		config.need_render = true;

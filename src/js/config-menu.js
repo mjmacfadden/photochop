@@ -772,6 +772,56 @@ const menuDefinition = [
 		]
 	},
 	{
+		name: 'Window',
+		children: [
+			{
+				name: 'Adjustments',
+				target: 'window/toggle.toggle',
+				parameter: 'adjustments',
+				check: () => {
+					const node = document.querySelector('.sidebar_right .adjustments.block');
+					return node != null && !node.classList.contains('hidden');
+				}
+			},
+			{
+				name: 'Colors',
+				target: 'window/toggle.toggle',
+				parameter: 'colors',
+				check: () => {
+					const node = document.querySelector('.sidebar_right .colors.block');
+					return node != null && !node.classList.contains('hidden');
+				}
+			},
+			{
+				name: 'Layers',
+				target: 'window/toggle.toggle',
+				parameter: 'layers',
+				check: () => {
+					const node = document.querySelector('.sidebar_right .layers.block');
+					return node != null && !node.classList.contains('hidden');
+				}
+			},
+			{
+				name: 'Layer Details',
+				target: 'window/toggle.toggle',
+				parameter: 'details',
+				check: () => {
+					const node = document.querySelector('.sidebar_right .details.block');
+					return node != null && !node.classList.contains('hidden');
+				}
+			},
+			{
+				name: 'Preview',
+				target: 'window/toggle.toggle',
+				parameter: 'preview',
+				check: () => {
+					const node = document.querySelector('.sidebar_right .preview.block');
+					return node != null && !node.classList.contains('hidden');
+				}
+			}
+		]
+	},
+	{
 		name: 'Help',
 		children: [
 			{

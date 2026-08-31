@@ -90,6 +90,15 @@ class GUI_menu_class {
 				</li>
 			`.trim();
 		} else {
+			let isChecked = false;
+			if (typeof definition.check === 'function') {
+				try {
+					isChecked = !!definition.check();
+				} catch (e) {}
+			} else if (typeof definition.check === 'boolean') {
+				isChecked = definition.check;
+			}
+
 			return `
 				<li>
 					<a id="main_menu_${ level }_${ index }" role="menuitem" tabindex="-1" aria-haspopup="${ (!!definition.children) + '' }"
@@ -100,6 +109,7 @@ class GUI_menu_class {
 						${ !!definition.shortcut ? `
 							<span class="shortcut"><span class="sr_only">Shortcut Key:</span> ${ this.Helper.format_shortcut(definition.shortcut) }</span>
 						` : `` }
+						${ isChecked ? `<span class="menu_check">✓</span>` : `` }
 					</a>
 				</li>
 			`.trim();
