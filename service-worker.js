@@ -7,6 +7,7 @@ var APP_SHELL = [
 	'./dist/styles.css',
 	'./images/favicon.png',
 	'./images/photochop_logo.png',
+	'./images/omarchy-logo.svg',
 	'./images/manifest/192x192.png'
 ];
 

@@ -1336,7 +1336,7 @@ body.tool-pan.pan-dragging #canvas_minipaint{
 visible around/outside the canvas edge; never blocks pointer events */
 #canvas_overlay.transform-overlay{
 	position:absolute;
-	z-index:3;
+	z-index:5;
 	pointer-events:none;
 	border: 0;
 }

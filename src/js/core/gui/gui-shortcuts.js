@@ -14,6 +14,9 @@ class GUI_shortcuts_class {
 	constructor() {
 		this.Helper = new Helper_class();
 		this.space_pan_tool = null;
+		this.is_meta_down = false;
+		this.is_ctrl_down = false;
+		this.is_alt_down = false;
 
 		this.keymap = {
 			'v': 'select',
@@ -46,6 +49,27 @@ class GUI_shortcuts_class {
 		};
 		window.addEventListener('keydown', preventAltFocus, { capture: true, passive: false });
 		window.addEventListener('keyup', preventAltFocus, { capture: true, passive: false });
+
+		const updateModifierState = (event, isDown) => {
+			const key = event.key;
+			const code = event.code;
+			if (key === 'Meta' || key === 'Super' || key === 'OS' || code === 'MetaLeft' || code === 'MetaRight' || code === 'OSLeft' || code === 'OSRight') {
+				this.is_meta_down = isDown;
+			}
+			if (key === 'Control' || code === 'ControlLeft' || code === 'ControlRight') {
+				this.is_ctrl_down = isDown;
+			}
+			if (key === 'Alt' || key === 'AltGraph' || code === 'AltLeft' || code === 'AltRight' || event.keyCode === 18) {
+				this.is_alt_down = isDown;
+			}
+		};
+		window.addEventListener('keydown', (event) => updateModifierState(event, true), { capture: true, passive: true });
+		window.addEventListener('keyup', (event) => updateModifierState(event, false), { capture: true, passive: true });
+		window.addEventListener('blur', () => {
+			this.is_meta_down = false;
+			this.is_ctrl_down = false;
+			this.is_alt_down = false;
+		});
 
 		document.addEventListener('keydown', (event) => {
 			if (this.Helper.is_input(event.target)) return;
@@ -80,9 +104,26 @@ class GUI_shortcuts_class {
 				return;
 			}
 
-			// Ctrl/Cmd + Alt + 4 = Toggle logo easter egg
-			if ((event.ctrlKey || event.metaKey) && event.altKey
-				&& (event.code === 'Digit4' || event.key === '4' || event.keyCode === 52)) {
+			// Command/Super/Ctrl/Option/Alt + 4 = Toggle logo easter egg
+			const hasCmdCtrlSuper = event.ctrlKey || event.metaKey || this.is_meta_down || this.is_ctrl_down
+				|| (typeof event.getModifierState === 'function' && (
+					event.getModifierState('Control')
+					|| event.getModifierState('Meta')
+					|| event.getModifierState('Super')
+					|| event.getModifierState('Hyper')
+					|| event.getModifierState('OS')
+				));
+			const hasAlt = event.altKey || this.is_alt_down
+				|| (typeof event.getModifierState === 'function' && (
+					event.getModifierState('Alt')
+					|| event.getModifierState('AltGraph')
+				));
+			const isDigit4 = event.code === 'Digit4' || event.code === 'Numpad4'
+				|| event.key === '4' || event.key === '¢' || event.key === '$' || event.key === '§' || event.key === '¼' || event.key === '¤'
+				|| event.keyCode === 52 || event.keyCode === 100
+				|| event.which === 52 || event.which === 100;
+
+			if ((hasCmdCtrlSuper || hasAlt) && isDigit4) {
 				event.preventDefault();
 				event.stopImmediatePropagation();
 				this.toggle_logo();
@@ -270,6 +311,9 @@ class GUI_shortcuts_class {
 	}
 
 	restore_logo_preference() {
+		window.togglePhotoChopLogo = () => this.toggle_logo();
+		window.PhotoChop_toggle_logo = () => this.toggle_logo();
+
 		var saved = null;
 		try {
 			saved = localStorage.getItem('photochop_logo');
@@ -292,6 +336,15 @@ class GUI_shortcuts_class {
 			//reveal the logo (CSS keeps it hidden until the preference is applied,
 			//so the default PhotoChop logo never flashes when Omarchy is selected)
 			img.style.visibility = 'visible';
+		}
+
+		var logoAnchor = document.querySelector('.logo');
+		if (logoAnchor && !logoAnchor._omarchy_click_bound) {
+			logoAnchor._omarchy_click_bound = true;
+			logoAnchor.addEventListener('click', (e) => {
+				e.preventDefault();
+				this.toggle_logo();
+			});
 		}
 	}
 

@@ -200,15 +200,22 @@ class Base_selection_class {
 		}
 
 		//draw every persistent marching-ants selection - they stay visible
-		//even when another tool (brush, pencil, fill, ...) is active
+		//even when another tool (brush, pencil, fill, ...) is active.
+		//drawn on overlay_ctx so marching ants appear above guides (z-index 5 vs 4).
 		var marquees = this.get_marquee_selections();
 		if (marquees.length) {
-			this.ctx.save();
-			this.ctx.globalAlpha = 1;
-			for (var m = 0; m < marquees.length; m++) {
-				this.draw_marching_ants(marquees[m].data);
+			var draw_ctx = this.ctx;
+			if (overlay_ctx != null) {
+				draw_ctx = overlay_ctx;
+				var mm = zoomView.matrix;
+				draw_ctx.setTransform(mm[0], mm[1], mm[2], mm[3], mm[4] + config.TRANSFORM_MARGIN, mm[5] + config.TRANSFORM_MARGIN);
 			}
-			this.ctx.restore();
+			draw_ctx.save();
+			draw_ctx.globalAlpha = 1;
+			for (var m = 0; m < marquees.length; m++) {
+				this.draw_marching_ants(marquees[m].data, draw_ctx);
+			}
+			draw_ctx.restore();
 			this.ant_keep_rendering = true;
 		}
 
@@ -580,8 +587,8 @@ class Base_selection_class {
 	 * union silhouette), not each individual region. Subtract regions render
 	 * as their own interior contours.
 	 */
-	draw_marching_ants(data) {
-		var ctx = this.ctx;
+	draw_marching_ants(data, target_ctx = null) {
+		var ctx = target_ctx || this.ctx;
 		var Z = config.ZOOM || 1;
 
 		var contours = this.get_union_contours(data);
