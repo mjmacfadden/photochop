@@ -190,18 +190,29 @@ class Base_tools_class {
 		}
 	}
 
-	get_mouse_coordinates_from_event(event){
-		var mouse_x = event.pageX - this.Base_gui.canvas_offset.x;
-		var mouse_y = event.pageY - this.Base_gui.canvas_offset.y;
+	get_mouse_coordinates_from_event(event) {
+		var canvas_dom = document.getElementById('canvas_minipaint');
+		var mouse_x, mouse_y;
+		if (canvas_dom) {
+			var canvas_rect = canvas_dom.getBoundingClientRect();
+			var client_x = (event.clientX !== undefined)
+				? event.clientX
+				: (event.changedTouches && event.changedTouches[0] ? event.changedTouches[0].clientX : (event.pageX - (window.pageXOffset || window.scrollX || 0)));
+			var client_y = (event.clientY !== undefined)
+				? event.clientY
+				: (event.changedTouches && event.changedTouches[0] ? event.changedTouches[0].clientY : (event.pageY - (window.pageYOffset || window.scrollY || 0)));
+			mouse_x = client_x - canvas_rect.left - (canvas_dom.clientLeft || 0);
+			mouse_y = client_y - canvas_rect.top - (canvas_dom.clientTop || 0);
+		} else {
+			mouse_x = event.pageX - this.Base_gui.canvas_offset.x;
+			mouse_y = event.pageY - this.Base_gui.canvas_offset.y;
+		}
 
 		//adapt coords to ZOOM
 		var global_pos = this.Base_layers.get_world_coords(mouse_x, mouse_y);
-		mouse_x = global_pos.x;
-		mouse_y = global_pos.y;
-
 		return {
-			x: mouse_x,
-			y: mouse_y,
+			x: global_pos.x,
+			y: global_pos.y,
 		};
 	}
 

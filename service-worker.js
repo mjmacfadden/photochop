@@ -1,4 +1,4 @@
-var CACHE_NAME = 'photochop-shell-v1';
+var CACHE_NAME = 'photochop-shell-v2';
 var APP_SHELL = [
 	'./',
 	'./index.html',
@@ -6,6 +6,7 @@ var APP_SHELL = [
 	'./dist/bundle.js',
 	'./images/favicon.png',
 	'./images/photochop_logo.png',
+	'./images/omarchy-logo.svg',
 	'./images/manifest/192x192.png'
 ];
 
