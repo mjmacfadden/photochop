@@ -272,6 +272,9 @@ body .sp-preview{
 	height: 100%;
 	width: auto;
 	vertical-align: middle;
+	/* hidden until the saved logo preference is applied - prevents the default
+	PhotoChop logo flashing before the Omarchy easter-egg logo is swapped in */
+	visibility: hidden;
 }
 .logo:after{
 	display: none;

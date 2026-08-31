@@ -34,6 +34,7 @@ class GUI_shortcuts_class {
 		};
 
 		this.load();
+		this.restore_logo_preference();
 	}
 
 	load() {
@@ -76,6 +77,15 @@ class GUI_shortcuts_class {
 					const isIn = event.code === 'Equal' || event.code === 'NumpadAdd';
 					app.GUI.GUI_preview.zoom(isIn ? 1 : -1);
 				}
+				return;
+			}
+
+			// Ctrl/Cmd + Alt + 4 = Toggle logo easter egg
+			if ((event.ctrlKey || event.metaKey) && event.altKey
+				&& (event.code === 'Digit4' || event.key === '4' || event.keyCode === 52)) {
+				event.preventDefault();
+				event.stopImmediatePropagation();
+				this.toggle_logo();
 				return;
 			}
 
@@ -140,6 +150,17 @@ class GUI_shortcuts_class {
 				event.stopImmediatePropagation();
 				if (app.GUI && app.GUI.GUI_tools && app.GUI.GUI_tools.tools_modules['selection']) {
 					app.GUI.GUI_tools.tools_modules['selection'].object.fill(config.COLOR || '#000000');
+				}
+				return;
+			}
+
+			// Ctrl/Cmd + Shift + V = Paste to Fit
+			if ((event.ctrlKey || event.metaKey) && event.shiftKey && !event.altKey
+				&& event.code === 'KeyV') {
+				event.preventDefault();
+				event.stopImmediatePropagation();
+				if (app.GUI && app.GUI.modules && app.GUI.modules['edit/paste']) {
+					app.GUI.modules['edit/paste'].paste_to_fit();
 				}
 				return;
 			}
@@ -215,6 +236,63 @@ class GUI_shortcuts_class {
 			event.stopImmediatePropagation();
 			app.GUI.GUI_tools.activate_tool(restore_tool);
 		}, true);
+	}
+
+	toggle_logo() {
+		var img = document.querySelector('.logo img, a.logo img');
+		if (img == null) {
+			return;
+		}
+		if (this.logo_omarchy) {
+			//switch back to the original PhotoChop logo
+			img.src = 'images/photochop_logo.png';
+			img.alt = 'PhotoChop';
+			var logoLink = document.querySelector('.logo');
+			if (logoLink) logoLink.title = 'PhotoChop';
+		}
+		else {
+			//easter egg: show the Omarchy logo
+			img.src = 'images/omarchy-logo.svg';
+			img.alt = 'Omarchy';
+			var logoLink = document.querySelector('.logo');
+			if (logoLink) logoLink.title = 'Omarchy';
+		}
+		this.logo_omarchy = !this.logo_omarchy;
+		this.save_logo_preference();
+	}
+
+	save_logo_preference() {
+		try {
+			localStorage.setItem('photochop_logo', this.logo_omarchy ? 'omarchy' : 'photochop');
+		} catch (error) {
+			//localStorage unavailable - ignore
+		}
+	}
+
+	restore_logo_preference() {
+		var saved = null;
+		try {
+			saved = localStorage.getItem('photochop_logo');
+		} catch (error) {
+			//localStorage unavailable - ignore
+			saved = null;
+		}
+
+		var show_omarchy = (saved == 'omarchy');
+		this.logo_omarchy = show_omarchy;
+
+		var img = document.querySelector('.logo img, a.logo img');
+		if (img != null) {
+			if (show_omarchy) {
+				img.src = 'images/omarchy-logo.svg';
+				img.alt = 'Omarchy';
+				var logoLink = document.querySelector('.logo');
+				if (logoLink) logoLink.title = 'Omarchy';
+			}
+			//reveal the logo (CSS keeps it hidden until the preference is applied,
+			//so the default PhotoChop logo never flashes when Omarchy is selected)
+			img.style.visibility = 'visible';
+		}
 	}
 
 	adjust_brush_size(delta) {

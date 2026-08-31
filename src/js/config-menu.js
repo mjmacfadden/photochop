@@ -137,14 +137,19 @@ const menuDefinition = [
 				shortcut: 'Ctrl + J',
 				target: 'layer/new.new_selection'
 			},
-			{
-				name: 'Paste',
-				shortcut: 'Ctrl + V',
-				target: 'edit/paste.paste'
-			},
-			{
-				divider: true
-			},
+		{
+			name: 'Paste',
+			shortcut: 'Ctrl + V',
+			target: 'edit/paste.paste'
+		},
+		{
+			name: 'Paste to Fit',
+			shortcut: 'Ctrl + Shift + V',
+			target: 'edit/paste.paste_to_fit'
+		},
+		{
+			divider: true
+		},
 			{
 				name: 'Select All',
 				shortcut: 'Ctrl + A',
