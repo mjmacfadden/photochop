@@ -18,6 +18,7 @@ class BulgePinch_class extends Base_tools_class {
 		this.tmpCanvas = null;
 		this.tmpCanvasCtx = null;
 		this.started = false;
+		this.selection_snapshot = null;
 	}
 
 	load() {
@@ -53,9 +54,11 @@ class BulgePinch_class extends Base_tools_class {
 		this.tmpCanvas.width = config.layer.width_original;
 		this.tmpCanvas.height = config.layer.height_original;
 		this.tmpCanvasCtx.drawImage(config.layer.link, 0, 0);
+		this.selection_snapshot = this.copy_layer_snapshot();
 
 		//apply
 		this.bulgePinch_general(mouse, params.power, params.radius, params.bulge);
+		this.constrain_edit_to_selection(this.tmpCanvas, this.selection_snapshot);
 
 		//register tmp canvas for faster redraw
 		config.layer.link_canvas = this.tmpCanvas;
@@ -67,6 +70,7 @@ class BulgePinch_class extends Base_tools_class {
 			return;
 		}
 		delete config.layer.link_canvas;
+		this.constrain_edit_to_selection(this.tmpCanvas, this.selection_snapshot);
 
 		app.State.do_action(
 			new app.Actions.Bundle_action('bulge_pinch_tool', 'Bulge/Pinch Tool', [
@@ -79,6 +83,7 @@ class BulgePinch_class extends Base_tools_class {
 		this.tmpCanvas.height = 1;
 		this.tmpCanvas = null;
 		this.tmpCanvasCtx = null;
+		this.selection_snapshot = null;
 	}
 
 	bulgePinch_general(mouse, power, radius, bulge) {

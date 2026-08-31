@@ -7,5 +7,6 @@ export default {
 	State: null,
 	FileOpen: null,
 	FileSave: null,
+	Documents: null,
 	Actions: null
 };

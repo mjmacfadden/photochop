@@ -1,4 +1,6 @@
 import Helper_class from './helpers.js';
+import config from './../config.js';
+import Edit_paste_class from './../modules/edit/paste.js';
 
 /**
  * image pasting into canvas
@@ -82,14 +84,24 @@ class Clipboard_class {
 		if (!window.Clipboard) {
 			this.pasteCatcher.innerHTML = '';
 		}
+
+		// If we have an in-app copy, prefer the internal clipboard so
+		// non-rectangular shapes, positions, and transparent alphas are 100% preserved
+		if (config._internal_clipboard != null && config._internal_clipboard_fresh) {
+			config._internal_clipboard_fresh = false;
+			new Edit_paste_class().paste_internal();
+			if (e.preventDefault) e.preventDefault();
+			return;
+		}
+
 		if (e.clipboardData) {
 			var items = e.clipboardData.items;
 			if (items) {
 				this.paste_mode = 'auto';
-				//access data directly
+				var found_image = false;
 				for (var i = 0; i < items.length; i++) {
 					if (items[i].type.indexOf("image") !== -1) {
-						//image
+						found_image = true;
 						var blob = items[i].getAsFile();
 						var URLObj = window.URL || window.webkitURL;
 						var source = URLObj.createObjectURL(blob);
@@ -97,11 +109,18 @@ class Clipboard_class {
 					}
 				}
 				e.preventDefault();
+				if (!found_image && config._internal_clipboard != null) {
+					new Edit_paste_class().paste_internal();
+				}
 			}
 			else {
 				//wait for DOMSubtreeModified event
 				//https://bugzilla.mozilla.org/show_bug.cgi?id=891247
 			}
+		}
+		else if (config._internal_clipboard != null) {
+			new Edit_paste_class().paste_internal();
+			if (e.preventDefault) e.preventDefault();
 		}
 	}
 

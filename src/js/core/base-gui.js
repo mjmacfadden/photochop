@@ -11,6 +11,7 @@ import GUI_colors_class from './gui/gui-colors.js';
 import GUI_layers_class from './gui/gui-layers.js';
 import GUI_information_class from './gui/gui-information.js';
 import GUI_details_class from './gui/gui-details.js';
+import GUI_adjustments_class from './gui/gui-adjustments.js';
 import GUI_menu_class from './gui/gui-menu.js';
 import Tools_translate_class from './../modules/tools/translate.js';
 import Tools_settings_class from './../modules/tools/settings.js';
@@ -63,6 +64,7 @@ class Base_gui_class {
 		this.GUI_layers = new GUI_layers_class(this);
 		this.GUI_information = new GUI_information_class(this);
 		this.GUI_details = new GUI_details_class(this);
+		this.GUI_adjustments = new GUI_adjustments_class(this);
 		this.GUI_menu = new GUI_menu_class();
 		this.Tools_translate = new Tools_translate_class();
 		this.Tools_settings = new Tools_settings_class();
@@ -130,12 +132,36 @@ class Base_gui_class {
 			config.guides_enabled = Boolean(guides_cookie);
 		}
 
-		//preview panel visibility
-		var preview_cookie = this.Helper.getCookie('preview_panel');
-		if (preview_cookie != null && preview_cookie == 0) {
-			var preview_node = document.querySelector('.sidebar_right .preview.block');
-			if (preview_node != null) {
-				preview_node.classList.add('hidden');
+		// panel visibility defaults
+		const panelDefaults = {
+			preview: 0,
+			details: 0,
+			colors: 1,
+			adjustments: 1,
+			layers: 1
+		};
+
+		const panelSelectors = {
+			preview: '.sidebar_right .preview.block',
+			details: '.sidebar_right .details.block',
+			colors: '.sidebar_right .colors.block',
+			adjustments: '.sidebar_right .adjustments.block',
+			layers: '.sidebar_right .layers.block'
+		};
+
+		for (const [panel, defaultState] of Object.entries(panelDefaults)) {
+			let saved = this.Helper.getCookie('panel_visible_' + panel);
+			if (panel === 'preview' && saved == null) {
+				saved = this.Helper.getCookie('preview_panel');
+			}
+			const isVisible = saved != null ? parseInt(saved, 10) === 1 : defaultState === 1;
+			const el = document.querySelector(panelSelectors[panel]);
+			if (el) {
+				if (isVisible) {
+					el.classList.remove('hidden');
+				} else {
+					el.classList.add('hidden');
+				}
 			}
 		}
 	}
@@ -151,6 +177,7 @@ class Base_gui_class {
 		this.GUI_layers.render_main_layers();
 		this.GUI_information.render_main_information();
 		this.GUI_details.render_main_details();
+		this.GUI_adjustments.render_main_adjustments();
 		this.GUI_menu.render_main();
 		this.load_saved_changes();
 
@@ -159,13 +186,16 @@ class Base_gui_class {
 	}
 
 	init_service_worker() {
-		/*if ('serviceWorker' in navigator) {
-			navigator.serviceWorker.register('./service-worker.js').then(function(reg) {
-				//Successfully registered service worker
-			}).catch(function(err) {
-				console.warn('Error registering service worker', err);
-			});
-		}*/
+		if (!('serviceWorker' in navigator))
+			return;
+		var is_local = location.hostname === 'localhost' || location.hostname === '127.0.0.1';
+		if (location.protocol !== 'https:' && !is_local)
+			return;
+		if (is_local && !new URLSearchParams(location.search).has('serviceWorker'))
+			return;
+		navigator.serviceWorker.register('./service-worker.js', { updateViaCache: 'none' }).catch(function (error) {
+			console.warn('Service worker registration failed:', error);
+		});
 	}
 
 	set_events() {
@@ -302,10 +332,15 @@ class Base_gui_class {
 				continue;
 
 			var target = document.getElementById(targets[i].dataset.target);
+			if (!target) continue;
 			var saved = this.Helper.getCookie(targets[i].dataset.target);
-			if (saved === 0) {
-				targets[i].classList.toggle('toggled');
+			var should_hide = (saved === 0);
+			if (should_hide) {
+				targets[i].classList.add('toggled');
 				target.classList.add('hidden');
+			} else {
+				targets[i].classList.remove('toggled');
+				target.classList.remove('hidden');
 			}
 		}
 	}

@@ -2,25 +2,33 @@ import app from './../app.js';
 import config from './../config.js';
 import Base_tools_class from './../core/base-tools.js';
 import Base_layers_class from './../core/base-layers.js';
+import Helper_class from './../libs/helpers.js';
 import Mask_class from './../modules/mask/mask.js';
+import Layer_raster_class from './../modules/layer/raster.js';
 
 class Pencil_class extends Base_tools_class {
 
 	constructor(ctx) {
 		super();
 		this.Base_layers = new Base_layers_class();
+		this.Helper = new Helper_class();
 		this.Mask = new Mask_class();
+		this.Layer_raster = new Layer_raster_class();
 		this.name = 'pencil';
-		this.layer = {};
-		this.params_hash = false;
 		this.pressure_supported = false;
-		this.pointer_pressure = 0; // has range [0 - 1]
+		this.pointer_pressure = 0; // range [0 - 1]
+		this.tmpCanvas = null;
+		this.tmpCanvasCtx = null;
+		this.selection_snapshot = null;
+		this.started = false;
+		this.last_x = null;
+		this.last_y = null;
+		this.last_size = null;
 	}
 
 	load() {
 		var _this = this;
 
-		//pointer events
 		document.addEventListener('pointerdown', function (event) {
 			_this.pointerdown(event);
 		});
@@ -31,15 +39,17 @@ class Pencil_class extends Base_tools_class {
 		this.default_events();
 	}
 
-	dragMove(event) {
+	default_dragMove(event, is_touch) {
 		if (config.TOOL.name != this.name)
 			return;
-		this.mousemove(event);
+		this.mousemove(event, is_touch);
+
+		var mouse = this.get_mouse_info(event);
+		var params = this.getParams();
+		this.show_mouse_cursor(mouse.x, mouse.y, params.size || 1, 'rect');
 	}
 
 	pointerdown(e) {
-		// Devices that don't actually support pen pressure can give 0.5 as a false reading.
-		// It is highly unlikely a real pen will read exactly 0.5 at the start of a stroke.
 		if (e.pressure && e.pressure !== 0 && e.pressure !== 0.5 && e.pressure <= 1) {
 			this.pressure_supported = true;
 			this.pointer_pressure = e.pressure;
@@ -49,278 +59,246 @@ class Pencil_class extends Base_tools_class {
 	}
 
 	pointermove(e) {
-		// Pressure of exactly 1 seems to be an input error, sometimes I see it when lifting the pen
-		// off the screen when pressure reading should be near 0.
 		if (this.pressure_supported && e.pressure < 1) {
 			this.pointer_pressure = e.pressure;
 		}
 	}
 
-	mousedown(e) {
-		var mouse = this.get_mouse_info(e);
-		if (mouse.click_valid == false)
-			return;
+	ensure_raster_layer() {
+		if (config.layer == null || config.layers.length === 0) {
+			var new_layer = {
+				name: 'Layer ' + (app.Layers ? app.Layers.auto_increment : 1),
+				type: 'image',
+				link: document.createElement('canvas'),
+				data: null,
+				width: config.WIDTH,
+				height: config.HEIGHT,
+				width_original: config.WIDTH,
+				height_original: config.HEIGHT,
+				x: 0,
+				y: 0,
+			};
+			new_layer.link.width = config.WIDTH;
+			new_layer.link.height = config.HEIGHT;
+			app.State.do_action(new app.Actions.Insert_layer_action(new_layer, false));
+			return config.layer;
+		}
 
-		if (config.mask_active === true && config.layer.mask != null) {
+		if (config.layer.type !== 'image') {
+			this.Layer_raster.raster();
+		}
+
+		return config.layer;
+	}
+
+	get_layer_local_coords(world_x, world_y, layer) {
+		var lx = (layer.x != null) ? layer.x : 0;
+		var ly = (layer.y != null) ? layer.y : 0;
+		var lw = (layer.width != null && layer.width > 0) ? layer.width : (config.WIDTH || 1);
+		var lh = (layer.height != null && layer.height > 0) ? layer.height : (config.HEIGHT || 1);
+		var lwo = layer.width_original || lw;
+		var lho = layer.height_original || lh;
+		var rot = layer.rotate || 0;
+
+		var px = world_x;
+		var py = world_y;
+
+		if (rot !== 0) {
+			var rad = -rot * Math.PI / 180;
+			var cx = lx + lw / 2;
+			var cy = ly + lh / 2;
+			var cos = Math.cos(rad);
+			var sin = Math.sin(rad);
+			px = cx + (world_x - cx) * cos - (world_y - cy) * sin;
+			py = cy + (world_x - cx) * sin + (world_y - cy) * cos;
+		}
+
+		var local_x = (px - lx) * (lwo / lw);
+		var local_y = (py - ly) * (lho / lh);
+
+		return { x: local_x, y: local_y };
+	}
+
+	mousedown(e) {
+		this.started = false;
+		var mouse = this.get_mouse_info(e);
+		if (mouse.click_valid == false) {
+			return;
+		}
+
+		if (config.mask_active === true && config.layer && config.layer.mask != null) {
+			this.started = true;
 			this.Mask.brush(this, e, 'start');
 			return;
 		}
 
-		var params_hash = this.get_params_hash();
-		var opacity = Math.round(config.ALPHA / 255 * 100);
-		
-		if (config.layer.type != this.name || params_hash != this.params_hash) {
-			//register new object - current layer is not ours or params changed
-			var clip_mask = null;
-			if (this.Base_layers.Base_selection != null) {
-				clip_mask = this.Base_layers.Base_selection.get_selection_clip_mask();
-			}
-			this.layer = {
-				type: this.name,
-				data: [],
-				opacity: opacity,
-				params: this.clone(this.getParams()),
-				status: 'draft',
-				render_function: [this.name, 'render'],
-				x: 0,
-				y: 0,
-				width: config.WIDTH,
-				height: config.HEIGHT,
-				mask: clip_mask,
-				hide_selection_if_active: true,
-				rotate: null,
-				is_vector: true,
-				color: config.COLOR
-			};
-			app.State.do_action(
-				new app.Actions.Bundle_action('new_pencil_layer', 'New Pencil Layer', [
-					new app.Actions.Insert_layer_action(this.layer)
-				])
-			);
-			this.params_hash = params_hash;
+		var layer = this.ensure_raster_layer();
+		if (!layer || layer.type !== 'image') {
+			return;
 		}
-		else {
-			//continue adding layer data, just register break
-			const new_data = JSON.parse(JSON.stringify(config.layer.data));
-			new_data.push(null);
-			app.State.do_action(
-				new app.Actions.Bundle_action('update_pencil_layer', 'Update Pencil Layer', [
-					new app.Actions.Update_layer_action(config.layer.id, {
-						data: new_data
-					})
-				])
-			);
+
+		this.started = true;
+
+		var lw = layer.width_original || layer.width || config.WIDTH;
+		var lh = layer.height_original || layer.height || config.HEIGHT;
+
+		this.tmpCanvas = document.createElement('canvas');
+		this.tmpCanvas.width = lw;
+		this.tmpCanvas.height = lh;
+		this.tmpCanvasCtx = this.tmpCanvas.getContext('2d');
+
+		var src = layer.link_canvas || layer.link;
+		if (src) {
+			this.tmpCanvasCtx.drawImage(src, 0, 0, lw, lh);
 		}
+		this.selection_snapshot = this.copy_layer_snapshot();
+
+		var point = this.get_layer_local_coords(mouse.x, mouse.y, layer);
+		var params = this.getParams();
+		var size = params.size || 1;
+		if (params.pressure && this.pressure_supported) {
+			size = size * (this.pointer_pressure || 0.5) * 2;
+		}
+
+		var scale = (layer.width_original || layer.width || 1) / (layer.width || 1);
+		var localSize = Math.max(1, Math.round(size * scale));
+		var color = config.COLOR;
+		var toolOpacity = (params.opacity != null) ? params.opacity / 100 : 1;
+		var alpha = ((config.ALPHA != null) ? config.ALPHA / 255 : 1) * toolOpacity;
+
+		this.paint_dab(this.tmpCanvasCtx, point.x, point.y, localSize, color, alpha);
+		this.constrain_edit_to_selection(this.tmpCanvas, this.selection_snapshot);
+
+		config.layer.link_canvas = this.tmpCanvas;
+		this.Base_layers.render_interactive_layer(config.layer.id);
+		this.Base_layers.render();
+
+		this.last_x = point.x;
+		this.last_y = point.y;
+		this.last_size = localSize;
 	}
 
-	mousemove(e) {
+	mousemove(e, is_touch) {
+		if (this.started == false) return;
 		var mouse = this.get_mouse_info(e);
-		var params = this.getParams();
-		if (mouse.is_drag == false)
-			return;
-		if (mouse.click_valid == false) {
-			return;
-		}
+		if (mouse.is_drag == false || mouse.click_valid == false) return;
 
-		if (config.mask_active === true && config.layer.mask != null) {
+		if (config.mask_active === true && config.layer && config.layer.mask != null) {
 			this.Mask.brush(this, e, 'move');
 			return;
 		}
 
-		//detect line size
-		var size = params.size;
-		var new_size = size;
+		var layer = config.layer;
+		if (!layer || layer.type !== 'image' || !this.tmpCanvasCtx) return;
 
-		if (params.pressure == true && this.pressure_supported) {
-			new_size = size * this.pointer_pressure * 2;
+		var point = this.get_layer_local_coords(mouse.x, mouse.y, layer);
+		if (point.x === this.last_x && point.y === this.last_y) return;
+
+		var params = this.getParams();
+		var size = params.size || 1;
+		if (params.pressure && this.pressure_supported) {
+			size = size * (this.pointer_pressure || 0.5) * 2;
 		}
 
-		//more data
-		config.layer.data.push([
-			Math.ceil(mouse.x - config.layer.x),
-			Math.ceil(mouse.y - config.layer.y),
-			new_size
-		]);
+		var scale = (layer.width_original || layer.width || 1) / (layer.width || 1);
+		var localSize = Math.max(1, Math.round(size * scale));
+		var color = config.COLOR;
+		var toolOpacity = (params.opacity != null) ? params.opacity / 100 : 1;
+		var alpha = ((config.ALPHA != null) ? config.ALPHA / 255 : 1) * toolOpacity;
+
+		this.paint_stroke_segment(
+			this.tmpCanvasCtx,
+			this.last_x, this.last_y, this.last_size,
+			point.x, point.y, localSize,
+			color, alpha
+		);
+
+		this.constrain_edit_to_selection(this.tmpCanvas, this.selection_snapshot);
+		this.Base_layers.render_interactive_layer(config.layer.id);
 		this.Base_layers.render();
+
+		this.last_x = point.x;
+		this.last_y = point.y;
+		this.last_size = localSize;
 	}
 
 	mouseup(e) {
-		if (config.mask_active === true && config.layer.mask != null) {
+		if (this.started == false) return;
+
+		if (config.mask_active === true && config.layer && config.layer.mask != null) {
 			this.Mask.brush(this, e, 'end');
+			this.started = false;
 			return;
 		}
 
-		var mouse = this.get_mouse_info(e);
-		var params = this.getParams();
-		if (mouse.click_valid == false) {
-			config.layer.status = null;
-			return;
-		}
-
-		//detect line size
-		var size = params.size;
-		var new_size = size;
-
-		if (params.pressure == true && this.pressure_supported) {
-			new_size = size * this.pointer_pressure * 2;
-		}
-
-		//more data
-		config.layer.data.push([
-			Math.ceil(mouse.x - config.layer.x),
-			Math.ceil(mouse.y - config.layer.y),
-			new_size
-		]);
-
-		this.check_dimensions();
-
-		config.layer.status = null;
-		this.Base_layers.render();
-	}
-
-	render(ctx, layer) {
-		this.render_aliased(ctx, layer);
-	}
-	
-	/**
-	 * draw without antialiasing, sharp, ugly mode.
-	 *
-	 * @param {object} ctx
-	 * @param {object} layer
-	 */
-	render_aliased(ctx, layer) {
-		if (layer.data.length == 0)
-			return;
-
-		var params = layer.params;
-		var data = layer.data;
-		var n = data.length;
-		var size = params.size;
-
-		//set styles
-		ctx.fillStyle = layer.color;
-		ctx.strokeStyle = layer.color;
-		ctx.translate(layer.x, layer.y);
-
-		//draw
-		ctx.beginPath();
-		ctx.moveTo(data[0][0], data[0][1]);
-		for (var i = 1; i < n; i++) {
-			if (data[i] === null) {
-				//break
-				ctx.beginPath();
-			}
-			else {
-				//line
-				size = data[i][2];
-				if(size == undefined){
-					size = 1;
-				}
-
-				if (data[i - 1] == null) {
-					//exception - point
-					ctx.fillRect(
-						data[i][0] - Math.floor(size / 2) - 1,
-						data[i][1] - Math.floor(size / 2) - 1,
-						size,
-						size
-					);
-				}
-				else {
-					//lines
-					ctx.beginPath();
-					this.draw_simple_line(
-						ctx,
-						data[i - 1][0],
-						data[i - 1][1],
-						data[i][0],
-						data[i][1],
-						size
-					);
-				}
-			}
-		}
-		if (n == 1 || data[1] == null) {
-			//point
-			ctx.beginPath();
-			ctx.fillRect(
-				data[0][0] - Math.floor(size / 2) - 1,
-				data[0][1] - Math.floor(size / 2) - 1,
-				size,
-				size
+		if (this.tmpCanvas && config.layer && config.layer.type === 'image') {
+			app.State.do_action(
+				new app.Actions.Bundle_action('pencil_stroke', 'Pencil Stroke', [
+					new app.Actions.Update_layer_image_action(this.tmpCanvas, config.layer.id)
+				])
 			);
 		}
 
-		ctx.translate(-layer.x, -layer.y);
+		this.tmpCanvas = null;
+		this.tmpCanvasCtx = null;
+		this.selection_snapshot = null;
+		this.started = false;
+		this.last_x = null;
+		this.last_y = null;
 	}
 
-	/**
-	 * draws line without aliasing
-	 *
-	 * @param {object} ctx
-	 * @param {int} from_x
-	 * @param {int} from_y
-	 * @param {int} to_x
-	 * @param {int} to_y
-	 * @param {int} size
-	 */
-	draw_simple_line(ctx, from_x, from_y, to_x, to_y, size) {
-		var dist_x = from_x - to_x;
-		var dist_y = from_y - to_y;
-		var distance = Math.sqrt((dist_x * dist_x) + (dist_y * dist_y));
-		var radiance = Math.atan2(dist_y, dist_x);
+	paint_dab(ctx, x, y, size, color, alpha) {
+		ctx.save();
+		ctx.fillStyle = color;
+		ctx.globalAlpha = alpha;
+		ctx.imageSmoothingEnabled = false;
+		var s = Math.max(1, Math.round(size));
+		var sh = Math.floor(s / 2);
+		ctx.fillRect(Math.round(x - sh), Math.round(y - sh), s, s);
+		ctx.restore();
+	}
 
-		for (var j = 0; j < distance; j++) {
-			var x_tmp = Math.round(to_x + Math.cos(radiance) * j) - Math.floor(size / 2) - 1;
-			var y_tmp = Math.round(to_y + Math.sin(radiance) * j) - Math.floor(size / 2) - 1;
+	paint_stroke_segment(ctx, x0, y0, s0, x1, y1, s1, color, alpha) {
+		var dx = x1 - x0;
+		var dy = y1 - y0;
+		var dist = Math.sqrt(dx * dx + dy * dy);
+		var s = Math.max(1, Math.round(s1));
+		var sh = Math.floor(s / 2);
+		var steps = Math.max(1, Math.ceil(dist / Math.max(1, s * 0.5)));
 
-			ctx.fillRect(x_tmp, y_tmp, size, size);
+		ctx.save();
+		ctx.fillStyle = color;
+		ctx.globalAlpha = alpha;
+		ctx.imageSmoothingEnabled = false;
+		for (var i = 0; i <= steps; i++) {
+			var t = i / steps;
+			var px = x0 + dx * t;
+			var py = y0 + dy * t;
+			ctx.fillRect(Math.round(px - sh), Math.round(py - sh), s, s);
 		}
+		ctx.restore();
 	}
 
-	/**
-	 * recalculate layer x, y, width and height values.
-	 */
-	check_dimensions() {
-		if(config.layer.data.length == 0)
+	// Backwards compatibility for legacy vector pencil layers in saved files
+	render(ctx, layer) {
+		if (!layer.data || layer.data.length == 0)
 			return;
+		var params = layer.params || {};
+		ctx.save();
+		ctx.fillStyle = layer.color || '#000000';
+		ctx.strokeStyle = layer.color || '#000000';
+		ctx.lineWidth = params.size || 1;
+		ctx.imageSmoothingEnabled = false;
+		ctx.translate(layer.x || 0, layer.y || 0);
 
-		//find bounds
-		var data = JSON.parse(JSON.stringify(config.layer.data)); // Deep copy for history
-		var min_x = data[0][0];
-		var min_y = data[0][1];
-		var max_x = data[0][0];
-		var max_y = data[0][1];
-		for(var i in data){
-			if(data[i] === null)
-				continue;
-			min_x = Math.min(min_x, data[i][0]);
-			min_y = Math.min(min_y, data[i][1]);
-			max_x = Math.max(max_x, data[i][0]);
-			max_y = Math.max(max_y, data[i][1]);
-		}
-
-		//move current data
-		for(var i in data){
-			if(data[i] === null)
-				continue;
-			data[i][0] = data[i][0] - min_x;
-			data[i][1] = data[i][1] - min_y;
-		}
-
-		//change layers bounds
-		app.State.do_action(
-			new app.Actions.Update_layer_action(config.layer.id, {
-				x: config.layer.x + min_x,
-				y: config.layer.y + min_y,
-				width: max_x - min_x,
-				height: max_y - min_y,
-				data
-			}),
-			{
-				merge_with_history: ['new_pencil_layer', 'update_pencil_layer']
+		var data = layer.data;
+		for (var i = 0; i < data.length; i++) {
+			if (data[i] !== null) {
+				var size = data[i][2] || params.size || 1;
+				ctx.fillRect(data[i][0] - Math.floor(size / 2), data[i][1] - Math.floor(size / 2), size, size);
 			}
-		);
+		}
+		ctx.restore();
 	}
 
 }

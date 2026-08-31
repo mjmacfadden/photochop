@@ -53,6 +53,7 @@ class Ellipse_class extends Base_tools_class {
 			y: mouse_y,
 			color: null,
 			is_vector: true,
+			mask: this.selection_clip_mask(),
 		};
 		if (params.circle == true) {
 			//disable rotate

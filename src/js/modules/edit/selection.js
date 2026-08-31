@@ -11,10 +11,6 @@ class Edit_selection_class {
 	}
 
 	select_all() {
-		if (config.layer.type != 'image') {
-			alertify.error('This layer must contain an image. Please convert it to raster to apply this tool.');
-			return;
-		}
 		this.Selection.select_all();
 	}
 
@@ -24,6 +20,14 @@ class Edit_selection_class {
 
 	delete() {
 		this.Selection.delete_selection();
+	}
+
+	fill_foreground() {
+		this.Selection.fill(config.COLOR || '#000000');
+	}
+
+	fill_background() {
+		this.Selection.fill(config.COLOR_BG || '#ffffff');
 	}
 }
 

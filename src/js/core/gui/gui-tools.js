@@ -676,12 +676,24 @@ class GUI_tools_class {
 					option.name = values[j];
 					option.value = values[j];
 					option.text = values[j];
+					if (k === 'font' && values[j] && !values[j].includes('...')) {
+						option.style.fontFamily = `"${values[j]}", sans-serif`;
+						option.style.fontSize = '15px';
+						option.style.padding = '3px 6px';
+					}
 					selectList.appendChild(option);
+				}
+				if (k === 'font' && item.value && !item.value.includes('...')) {
+					selectList.style.fontFamily = `"${item.value}", sans-serif`;
 				}
 				//event
 				selectList.addEventListener('change', (event) => {
 					const actionData = this.action_data();
 					actionData.attributes[event.target.id].value = event.target.value;
+
+					if (event.target.id === 'font' && event.target.value && !event.target.value.includes('...')) {
+						event.target.style.fontFamily = `"${event.target.value}", sans-serif`;
+					}
 
 					if (actionData.on_update != undefined) {
 						//send event

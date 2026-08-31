@@ -7,8 +7,6 @@ import Dialog_class from './../../libs/popup.js';
 import alertify from './../../../../node_modules/alertifyjs/build/alertify.min.js';
 import canvasToBlob from './../../../../node_modules/blueimp-canvas-to-blob/js/canvas-to-blob.min.js';
 import filesaver from './../../../../node_modules/file-saver/dist/FileSaver.min.js';
-import GIF from './../../../../node_modules/gif.js.optimized/';
-import CanvasToTIFF from './../../libs/canvastotiff.js';
 import Tools_settings_class from "../tools/settings";
 
 var instance = null;
@@ -55,13 +53,13 @@ class File_save_class {
 			if (this.Helper.is_input(event.target))
 				return;
 
-			if (code == "s") {
+			if (code == "s" && (event.ctrlKey || event.metaKey)) {
 				if(event.shiftKey){
-					//export
+					//save as
 					this.save();
 				}
 				else{
-					//save
+					//export
 					this.export();
 				}
 				event.preventDefault();
@@ -441,7 +439,7 @@ class File_save_class {
 	 * @param {object} user_response parameters
 	 * @param {boolean} autoname if use name from layer, false by default
 	 */
-	save_action(user_response, autoname) {
+	async save_action(user_response, autoname) {
 		var fname = user_response.name;
 		if(autoname === true && user_response.layers == 'Selected'){
 			fname = config.layer.name;
@@ -573,6 +571,7 @@ class File_save_class {
 			if (this.Helper.strpos(fname, '.tiff') == false)
 				fname = fname + ".tiff";
 			var data_header = "image/tiff";
+			var { default: CanvasToTIFF } = await import(/* webpackChunkName: "tiff-export" */ './../../libs/canvastotiff.js');
 
 			CanvasToTIFF.toBlob(canvas, function(blob) {
 				filesaver.saveAs(blob, fname);
@@ -591,6 +590,7 @@ class File_save_class {
 		}
 		else if (type == 'GIF') {
 			//gif
+			var { default: GIF } = await import(/* webpackChunkName: "gif-export" */ './../../../../node_modules/gif.js.optimized/');
 			var cores = navigator.hardwareConcurrency || 4;
 			var gif_settings = {
 				workers: cores,
@@ -623,6 +623,10 @@ class File_save_class {
 			gif.on('finished', function (blob) {
 				filesaver.saveAs(blob, fname);
 			});
+		}
+
+		if (app.Documents && fname) {
+			app.Documents.update_active_title(fname);
 		}
 	}
 	
@@ -700,25 +704,41 @@ class File_save_class {
 		//image data
 		export_data.data = [];
 		for (var i in config.layers) {
-			if (config.layers[i].type != 'image')
+			var layerObj = config.layers[i];
+			if (layerObj.type != 'image')
 				continue;
 
-			var canvas = document.createElement('canvas');
-			canvas.width = config.layers[i].width_original;
-			canvas.height = config.layers[i].height_original;
-			this.disable_canvas_smooth(canvas.getContext("2d"));
+			var imgSource = layerObj.link_canvas || layerObj.link;
+			if (imgSource && (imgSource instanceof HTMLCanvasElement || imgSource instanceof HTMLImageElement || imgSource instanceof ImageBitmap)) {
+				try {
+					var canvas = document.createElement('canvas');
+					canvas.width = layerObj.width_original || config.WIDTH;
+					canvas.height = layerObj.height_original || config.HEIGHT;
+					this.disable_canvas_smooth(canvas.getContext("2d"));
 
-			canvas.getContext('2d').drawImage(config.layers[i].link, 0, 0);
+					canvas.getContext('2d').drawImage(imgSource, 0, 0);
 
-			var data_tmp = canvas.toDataURL("image/png");
-			export_data.data.push(
-				{
-					id: config.layers[i].id,
-					data: data_tmp,
+					var data_tmp = canvas.toDataURL("image/png");
+					export_data.data.push({
+						id: layerObj.id,
+						data: data_tmp,
+					});
+					canvas.width = 1;
+					canvas.height = 1;
+				} catch (e) {
+					if (layerObj.data) {
+						export_data.data.push({
+							id: layerObj.id,
+							data: layerObj.data,
+						});
+					}
 				}
-			);
-			canvas.width = 1;
-			canvas.height = 1;
+			} else if (layerObj.data) {
+				export_data.data.push({
+					id: layerObj.id,
+					data: layerObj.data,
+				});
+			}
 		}
 
 		return JSON.stringify(export_data, null, "\t");

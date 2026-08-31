@@ -9,6 +9,8 @@ class Image_histogram_class {
 		this.POP = new Dialog_class();
 		this.Base_layers = new Base_layers_class();
 		this.Helper = new Helper_class();
+		this.worker = null;
+		this.request_id = 0;
 	}
 
 	histogram() {
@@ -34,12 +36,15 @@ class Image_histogram_class {
 		this.histogram_onload({});
 	}
 
-	histogram_onload(params) {
+	async histogram_onload(params) {
 		//get canvas from layer
 		var canvas = this.Base_layers.convert_layer_to_canvas(config.layer.id);
 		var ctx = canvas.getContext("2d");
 		var img = ctx.getImageData(0, 0, canvas.width, canvas.height);
-		var imgData = img.data;
+		var request_id = ++this.request_id;
+		var result = await this.calculate_histogram(img.data);
+		if (request_id !== this.request_id)
+			return;
 
 		var channel = 0;
 		if (params.channel == 'Red')
@@ -49,30 +54,9 @@ class Image_histogram_class {
 		else if (params.channel == 'Blue')
 			channel = 3;
 
-		var hist_data = [[], [], [], []]; //grey, red, green, blue
-		var total = imgData.length / 4;
-		var sum = 0;
-		var grey;
-
-		for (var i = 0; i < imgData.length; i += 4) {
-			//collect grey
-			grey = Math.round((imgData[i] + imgData[i + 1] + imgData[i + 2]) / 3);
-			sum = sum + imgData[i] + imgData[i + 1] + imgData[i + 2];
-			if (hist_data[0][grey] == undefined)
-				hist_data[0][grey] = 1;
-			else
-				hist_data[0][grey]++;
-
-			//collect colors
-			for (var c = 0; c < 3; c++) {
-				if (c + 1 != channel)
-					continue;
-				if (hist_data[c + 1][imgData[i + c]] == undefined)
-					hist_data[c + 1][imgData[i + c]] = 1;
-				else
-					hist_data[c + 1][imgData[i + c]]++;
-			}
-		}
+		var hist_data = result.histogram;
+		var total = result.total;
+		var sum = result.sum;
 
 		var c = document.getElementById("c_h").getContext("2d");
 		c.rect(0, 0, 256, 100);
@@ -115,6 +99,38 @@ class Image_histogram_class {
 
 		canvas.width = 1;
 		canvas.height = 1;
+	}
+
+	calculate_histogram(pixels) {
+		if (typeof Worker === 'undefined') {
+			return Promise.resolve(this.calculate_histogram_locally(pixels));
+		}
+		if (this.worker == null) {
+			this.worker = new Worker(new URL('./../../workers/histogram-worker.js', import.meta.url));
+		}
+		return new Promise((resolve, reject) => {
+			this.worker.onmessage = function (event) {
+				resolve(event.data);
+			};
+			this.worker.onerror = reject;
+			this.worker.postMessage({ pixels: pixels.buffer }, [pixels.buffer]);
+		});
+	}
+
+	calculate_histogram_locally(pixels) {
+		var histogram = [new Array(256).fill(0), new Array(256).fill(0), new Array(256).fill(0), new Array(256).fill(0)];
+		var sum = 0;
+		for (var index = 0; index < pixels.length; index += 4) {
+			var red = pixels[index];
+			var green = pixels[index + 1];
+			var blue = pixels[index + 2];
+			histogram[0][Math.round((red + green + blue) / 3)]++;
+			histogram[1][red]++;
+			histogram[2][green]++;
+			histogram[3][blue]++;
+			sum += red + green + blue;
+		}
+		return { histogram: histogram, total: pixels.length / 4, sum: sum };
 	}
 
 }

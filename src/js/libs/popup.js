@@ -182,6 +182,12 @@ class Dialog_class {
 			if (code == "Escape") {
 				//escape
 				this.hide(false);
+			} else if (code == "Enter" || event.key == "Enter") {
+				if (!this.active) return;
+				if (event.target && event.target.tagName === 'TEXTAREA') return;
+				if (event.target && event.target.hasAttribute('data-prevent-submission')) return;
+				event.preventDefault();
+				this.save();
 			}
 		}, false);
 
@@ -272,7 +278,11 @@ class Dialog_class {
 		var params = this.get_params();
 
 		if (this.onfinish) {
-			this.onfinish(params);
+			try {
+				this.onfinish(params);
+			} catch (e) {
+				console.error('Error in popup onfinish handler:', e);
+			}
 		}
 
 		this.hide(true);
@@ -281,8 +291,12 @@ class Dialog_class {
 	//"Cancel" pressed
 	cancel() {
 		if (this.oncancel) {
-			var params = this.get_params();
-			this.oncancel(params);
+			try {
+				var params = this.get_params();
+				this.oncancel(params);
+			} catch (e) {
+				console.error('Error in popup oncancel handler:', e);
+			}
 		}
 	}
 
@@ -387,11 +401,14 @@ class Dialog_class {
 
 		this.el.style.display = "block";
 		if (this.className) {
-			this.el.classList.add(this.className);
+			this.className.trim().split(/\s+/).forEach((cls) => {
+				if (cls) this.el.classList.add(cls);
+			});
 		}
 
-		//replace color inputs
+		//replace color inputs (except in layer_style_dialog where native color inputs are preferred)
 		this.el.querySelectorAll('input[type="color"]').forEach((colorInput) => {
+			if (colorInput.closest('.layer_style_dialog')) return;
 			const id = colorInput.getAttribute('id');
 			colorInput.removeAttribute('id');
 			$(colorInput)
@@ -411,20 +428,23 @@ class Dialog_class {
 		this.el.querySelector('[data-id="popup_close"]').addEventListener('click', (event) => {
 			this.hide(false);
 		});
-		var targets = this.el.querySelectorAll('input');
+		var targets = this.el.querySelectorAll('input, select');
 		for (var i = 0; i < targets.length; i++) {
+			targets[i].addEventListener('keydown', (event) => {
+				if (event.key == 'Enter' || event.code == 'Enter') {
+					if (event.target.hasAttribute('data-prevent-submission') || event.target.tagName === 'TEXTAREA') {
+						return;
+					}
+					event.preventDefault();
+					this.save();
+				}
+			});
 			targets[i].addEventListener('keyup', (event) => {
 				this.onkeyup(event);
 			});
 		}
 
-		//onload
-		if (this.onload) {
-			var params = this.get_params();
-			this.onload(params, this);
-		}
-
-		//load preview
+		//load preview before onload so layer_active_small is ready for on_load handler
 		if (this.preview !== false) {
 			//get canvas from layer
 			var canvas = this.Base_layers.convert_layer_to_canvas();
@@ -438,16 +458,21 @@ class Dialog_class {
 			pop_pre.fill();
 			this.draw_background(pop_pre, this.width_mini, this.height_mini, 10);
 
-			pop_pre.scale(this.width_mini / canvas.width, this.height_mini / canvas.height);
-			pop_pre.drawImage(canvas, 0, 0);
-			pop_pre.scale(1, 1);
+			if (canvas.width > 0 && canvas.height > 0) {
+				pop_pre.scale(this.width_mini / canvas.width, this.height_mini / canvas.height);
+				pop_pre.drawImage(canvas, 0, 0);
+				pop_pre.setTransform(1, 0, 0, 1, 0, 0);
+			}
 
 			//prepare temp canvas for faster repaint
-			this.layer_active_small.width = POP.width_mini;
-			this.layer_active_small.height = POP.height_mini;
-			this.layer_active_small_ctx.scale(this.width_mini / canvas.width, this.height_mini / canvas.height);
-			this.layer_active_small_ctx.drawImage(canvas, 0, 0);
-			this.layer_active_small_ctx.scale(1, 1);
+			this.layer_active_small.width = this.width_mini;
+			this.layer_active_small.height = this.height_mini;
+			this.layer_active_small_ctx.clearRect(0, 0, this.width_mini, this.height_mini);
+			if (canvas.width > 0 && canvas.height > 0) {
+				this.layer_active_small_ctx.scale(this.width_mini / canvas.width, this.height_mini / canvas.height);
+				this.layer_active_small_ctx.drawImage(canvas, 0, 0);
+				this.layer_active_small_ctx.setTransform(1, 0, 0, 1, 0, 0);
+			}
 
 			//draw right background
 			var canvas_right_back = this.el.querySelector('[data-id="pop_post_back"]').getContext("2d");
@@ -462,6 +487,12 @@ class Dialog_class {
 
 			//prepare temp canvas
 			this.preview_handler();
+		}
+
+		//onload
+		if (this.onload) {
+			var params = this.get_params();
+			this.onload(params, this);
 		}
 
 		//call translation again to translate popup

@@ -4,6 +4,7 @@ import Base_tools_class from './../core/base-tools.js';
 import Base_layers_class from './../core/base-layers.js';
 import Base_selection_class from './../core/base-selection.js';
 import GUI_tools_class from './../core/gui/gui-tools.js';
+import Layer_raster_class from './../modules/layer/raster.js';
 import Helper_class from './../libs/helpers.js';
 import alertify from './../../../node_modules/alertifyjs/build/alertify.min.js';
 
@@ -23,6 +24,7 @@ class Selection_class extends Base_tools_class {
 		var _this = this;
 
 		this.Base_layers = new Base_layers_class();
+		this.Layer_raster = new Layer_raster_class();
 		this.Helper = new Helper_class();
 		this.ctx = ctx;
 		this.name = 'selection';
@@ -100,28 +102,42 @@ class Selection_class extends Base_tools_class {
 
 		document.addEventListener('keydown', (e) => {
 			var code = e.keyCode;
+			var key = e.key;
 			if (this.Helper.is_input(e.target))
 				return;
 
-			if (code == 27) {
+			if (code == 27 || key === 'Escape') {
 				//escape - clear the (persistent) selection
 				if (this.selection.width != null && this.selection.height != null) {
 					this.clear_selection();
 				}
 			}
-			if (code == 46) {
-				//delete - delete the selected area
+			if (e.altKey && !e.ctrlKey && !e.metaKey && (code == 46 || code == 8 || key === 'Delete' || key === 'Backspace')) {
+				//Alt/Option + Delete/Backspace - fill with foreground color
+				e.preventDefault();
+				this.fill(config.COLOR || '#000000');
+				return;
+			}
+			if ((e.ctrlKey || e.metaKey) && !e.altKey && (code == 46 || code == 8 || key === 'Delete' || key === 'Backspace')) {
+				//Ctrl/Cmd + Delete/Backspace - fill with background color
+				e.preventDefault();
+				this.fill(config.COLOR_BG || '#ffffff');
+				return;
+			}
+			if (!e.altKey && !e.ctrlKey && !e.metaKey && (code == 46 || code == 8 || key === 'Delete' || key === 'Backspace')) {
+				//delete / backspace - delete the selected area on the active layer
 				if (this.selection.width != null && this.selection.height != null) {
+					e.preventDefault();
 					this.delete_selection();
 				}
 			}
-			if (code == 65 && (e.ctrlKey == true || e.metaKey)) {
-				//A
+			if ((code == 65 || key === 'a' || key === 'A') && (e.ctrlKey == true || e.metaKey)) {
+				//Ctrl+A / Cmd+A - select all
 				e.preventDefault();
 				this.select_all();
 			}
-			if (code == 68 && (e.ctrlKey == true || e.metaKey)) {
-				//Ctrl+D - deselect
+			if ((code == 68 || key === 'd' || key === 'D') && (e.ctrlKey == true || e.metaKey)) {
+				//Ctrl+D / Cmd+D - deselect
 				e.preventDefault();
 				this.clear_selection();
 			}
@@ -211,7 +227,20 @@ class Selection_class extends Base_tools_class {
 
 			this.mousedown_selection = JSON.parse(JSON.stringify(this.selection));
 
-			if (this.get_shape() == 'lasso') {
+			if (mode != null && this.selection.width != null && this.selection.height != null) {
+				// Keep existing committed selection intact and initialize live active drag region
+				this.selection.regions = committed.length ? committed : null;
+				this.selection.active_region = {
+					shape: this.get_shape(),
+					x: mouse.x,
+					y: mouse.y,
+					width: 0,
+					height: 0,
+					path: this.get_shape() == 'lasso' ? [[mouse.x, mouse.y]] : null,
+					mode: mode,
+				};
+			}
+			else if (this.get_shape() == 'lasso') {
 				this.selection = {
 					x: mouse.x,
 					y: mouse.y,
@@ -281,7 +310,9 @@ class Selection_class extends Base_tools_class {
 
 			if (this.get_shape() == 'lasso') {
 				//lasso - collect freehand points
-				var points = this.selection.path;
+				var points = (this.selection.active_region && this.selection.active_region.path)
+					? this.selection.active_region.path
+					: (this.selection.path || [[mouse.click_x, mouse.click_y]]);
 				var last = points[points.length - 1];
 				var dx = mouse.x - last[0];
 				var dy = mouse.y - last[1];
@@ -289,47 +320,62 @@ class Selection_class extends Base_tools_class {
 					points.push([mouse.x, mouse.y]);
 				}
 				//track bounding box
-				this.selection.x = Math.min(this.selection.x, mouse.x);
-				this.selection.y = Math.min(this.selection.y, mouse.y);
-				var max_x = Math.max(this.selection.x + this.selection.width, mouse.x);
-				var max_y = Math.max(this.selection.y + this.selection.height, mouse.y);
-				this.selection.width = max_x - this.selection.x;
-				this.selection.height = max_y - this.selection.y;
+				var min_x = Infinity, min_y = Infinity, max_x = -Infinity, max_y = -Infinity;
+				for (var p = 0; p < points.length; p++) {
+					min_x = Math.min(min_x, points[p][0]);
+					min_y = Math.min(min_y, points[p][1]);
+					max_x = Math.max(max_x, points[p][0]);
+					max_y = Math.max(max_y, points[p][1]);
+				}
 				this.selection.active_region = {
 					shape: 'lasso',
-					x: this.selection.x,
-					y: this.selection.y,
-					width: this.selection.width,
-					height: this.selection.height,
+					x: min_x,
+					y: min_y,
+					width: max_x - min_x,
+					height: max_y - min_y,
 					path: points,
 					mode: this.mode,
 				};
+				if (this.mode == null) {
+					this.selection.x = min_x;
+					this.selection.y = min_y;
+					this.selection.width = max_x - min_x;
+					this.selection.height = max_y - min_y;
+					this.selection.path = points;
+				}
 				return;
 			}
 
 			//rect / ellipse - grow from click point
-			var w = Math.round(mouse.x - mouse.click_x);
-			var h = Math.round(mouse.y - mouse.click_y);
+			var start_x = (this.selection_coords_from != null) ? this.selection_coords_from.x : mouse.click_x;
+			var start_y = (this.selection_coords_from != null) ? this.selection_coords_from.y : mouse.click_y;
+			var w = Math.round(mouse.x - start_x);
+			var h = Math.round(mouse.y - start_y);
 
 			if (this.shift_key && this.mode != 'add' && this.mode != 'intersect') {
 				//constrain to square / circle
 				var size = Math.max(Math.abs(w), Math.abs(h));
-				this.selection.width = w < 0 ? -size : size;
-				this.selection.height = h < 0 ? -size : size;
+				w = w < 0 ? -size : size;
+				h = h < 0 ? -size : size;
 			}
-			else {
-				this.selection.width = w;
-				this.selection.height = h;
-			}
+
 			this.selection.active_region = {
 				shape: this.get_shape(),
-				x: this.selection.x,
-				y: this.selection.y,
-				width: this.selection.width,
-				height: this.selection.height,
+				x: start_x,
+				y: start_y,
+				width: w,
+				height: h,
 				path: null,
 				mode: this.mode,
 			};
+
+			if (this.mode == null) {
+				this.selection.x = start_x;
+				this.selection.y = start_y;
+				this.selection.width = w;
+				this.selection.height = h;
+				this.selection.shape = this.get_shape();
+			}
 		}
 	}
 
@@ -373,11 +419,11 @@ class Selection_class extends Base_tools_class {
 
 		var shape = this.get_shape();
 		var region = null;
+		var active_reg = this.selection.active_region;
 
 		if (shape == 'lasso') {
-			var path = this.selection.path;
-			if (path == null || path.length < 3
-				|| this.selection.width < 2 || this.selection.height < 2) {
+			var path = (active_reg && active_reg.path) ? active_reg.path : this.selection.path;
+			if (path == null || path.length < 3) {
 				//too small - cancel
 				if (was_combining) {
 					this.restore_snapshot();
@@ -389,19 +435,21 @@ class Selection_class extends Base_tools_class {
 			}
 			region = {
 				shape: 'lasso',
-				x: Math.round(this.selection.x),
-				y: Math.round(this.selection.y),
-				width: Math.round(this.selection.width),
-				height: Math.round(this.selection.height),
+				x: Math.round(active_reg ? active_reg.x : this.selection.x),
+				y: Math.round(active_reg ? active_reg.y : this.selection.y),
+				width: Math.round(active_reg ? active_reg.width : this.selection.width),
+				height: Math.round(active_reg ? active_reg.height : this.selection.height),
 				path: path,
 				mode: mode || 'add',
 			};
 		}
 		else {
-			var width = this.selection.width;
-			var height = this.selection.height;
+			var width = active_reg ? active_reg.width : this.selection.width;
+			var height = active_reg ? active_reg.height : this.selection.height;
+			var x = active_reg ? active_reg.x : this.selection.x;
+			var y = active_reg ? active_reg.y : this.selection.y;
 
-			if (width == 0 || height == 0) {
+			if (width == 0 || height == 0 || width == null || height == null) {
 				//cancelled - nothing dragged
 				if (was_combining) {
 					this.restore_snapshot();
@@ -412,13 +460,7 @@ class Selection_class extends Base_tools_class {
 				return;
 			}
 
-			if (width == null || height == null) {
-				return;
-			}
-
 			//make sure coords are not negative
-			var x = this.selection.x;
-			var y = this.selection.y;
 			if (width < 0) {
 				x = x + width;
 			}
@@ -436,13 +478,6 @@ class Selection_class extends Base_tools_class {
 			};
 		}
 
-		//store the new region as the active selection geometry
-		this.selection.x = region.x;
-		this.selection.y = region.y;
-		this.selection.width = region.width;
-		this.selection.height = region.height;
-		this.selection.shape = region.shape;
-		this.selection.path = region.path;
 		this.selection.active_region = null;
 
 		if (was_combining) {
@@ -453,10 +488,30 @@ class Selection_class extends Base_tools_class {
 			}
 			committed.push(region);
 			this.selection.regions = committed;
+
+			// Recompute bounding box across all regions
+			var min_x = Infinity, min_y = Infinity, max_x = -Infinity, max_y = -Infinity;
+			for (var r = 0; r < committed.length; r++) {
+				var cr = committed[r];
+				min_x = Math.min(min_x, cr.x);
+				min_y = Math.min(min_y, cr.y);
+				max_x = Math.max(max_x, cr.x + cr.width);
+				max_y = Math.max(max_y, cr.y + cr.height);
+			}
+			if (min_x !== Infinity) {
+				this.selection.x = min_x;
+				this.selection.y = min_y;
+				this.selection.width = max_x - min_x;
+				this.selection.height = max_y - min_y;
+			}
 		}
 		else {
-			//fresh selection replaces anything before it - bake any pending
-			//selection-clip masks so the old constraint becomes permanent
+			this.selection.x = region.x;
+			this.selection.y = region.y;
+			this.selection.width = region.width;
+			this.selection.height = region.height;
+			this.selection.shape = region.shape;
+			this.selection.path = region.path;
 			this.Base_selection.bake_selection_clips();
 			this.selection.regions = null;
 		}
@@ -614,6 +669,9 @@ class Selection_class extends Base_tools_class {
 		//select-all replaces the current marquee - bake pending clips first
 		this.Base_selection.bake_selection_clips();
 
+		this.selection.active_region = null;
+		this.selection.regions = null;
+
 		if (config.TOOL.name != this.name) {
 			actions.push(
 				new app.Actions.Activate_tool_action(this.name)
@@ -621,7 +679,7 @@ class Selection_class extends Base_tools_class {
 		}
 		actions.push(
 			new app.Actions.Set_selection_action(0, 0, config.WIDTH, config.HEIGHT, this.selection,
-				{ shape: 'rect', path: null, regions: null })
+				{ shape: 'rect', path: null, regions: null, active_region: null })
 		);
 		app.State.do_action(
 			new app.Actions.Bundle_action('select_all', 'Select All', actions)
@@ -682,13 +740,21 @@ class Selection_class extends Base_tools_class {
 	}
 
 	delete_selection() {
-		var layer = config.layer;
+		if (!config.layer) {
+			alertify.error('No layer selected.');
+			return;
+		}
 
-		//the delete clears the selection afterwards - bake clips first
+		//the delete clears the selection on the layer - bake clips first
 		this.Base_selection.bake_selection_clips();
 
-		if (config.layer.type != 'image') {
-			alertify.error('This layer must contain an image. Please convert it to raster to apply this tool.');
+		if (config.layer.type !== 'image') {
+			this.Layer_raster.raster();
+		}
+
+		var layer = config.layer;
+		if (!layer || layer.type !== 'image') {
+			alertify.error('Unable to delete selection on this layer.');
 			return;
 		}
 
@@ -700,12 +766,14 @@ class Selection_class extends Base_tools_class {
 
 		this.init_tmp_canvas();
 
-		var ow = layer.width_original;
-		var oh = layer.height_original;
+		var ow = layer.width_original || layer.width || config.WIDTH;
+		var oh = layer.height_original || layer.height || config.HEIGHT;
 		var lw = layer.width || ow;
 		var lh = layer.height || oh;
 		var ratio_w = lw / ow;
 		var ratio_h = lh / oh;
+		var is_locked = (layer.locked === true);
+		var bgColor = config.COLOR_BG || '#ffffff';
 
 		var simple = (regions.length == 1);
 		for (var i = 0; i < regions.length; i++) {
@@ -718,50 +786,186 @@ class Selection_class extends Base_tools_class {
 		if (simple) {
 			var selection = regions[0];
 			var shape = selection.shape || 'rect';
+			var sx = selection.width < 0 ? selection.x + selection.width : selection.x;
+			var sy = selection.height < 0 ? selection.y + selection.height : selection.y;
+			var sw = Math.abs(selection.width);
+			var sh = Math.abs(selection.height);
+
+			var mouse_x = (sx - (layer.x || 0)) / ratio_w;
+			var mouse_y = (sy - (layer.y || 0)) / ratio_h;
+			var draw_w = sw / ratio_w;
+			var draw_h = sh / ratio_h;
+
 			if (shape == 'rect') {
-				//rectangle - simple clear
-				var mouse_x = (selection.x - layer.x) / ratio_w;
-				var mouse_y = (selection.y - layer.y) / ratio_h;
-				this.tmpCanvasCtx.clearRect(mouse_x, mouse_y, selection.width / ratio_w, selection.height / ratio_h);
+				//rectangle - clear or fill with background color
+				if (is_locked) {
+					this.tmpCanvasCtx.fillStyle = bgColor;
+					this.tmpCanvasCtx.fillRect(mouse_x, mouse_y, draw_w, draw_h);
+				} else {
+					this.tmpCanvasCtx.clearRect(mouse_x, mouse_y, draw_w, draw_h);
+				}
 			}
 			else {
 				//ellipse / lasso - clear only inside the shape
 				this.tmpCanvasCtx.save();
-				this.tmpCanvasCtx.translate(-layer.x, -layer.y);
+				this.tmpCanvasCtx.translate(-(layer.x || 0) / ratio_w, -(layer.y || 0) / ratio_h);
 				this.tmpCanvasCtx.scale(1 / ratio_w, 1 / ratio_h);
 				this.build_selection_path(this.tmpCanvasCtx, selection);
-				this.tmpCanvasCtx.clip();
-				this.tmpCanvasCtx.clearRect(0, 0, ow, oh);
+				if (is_locked) {
+					this.tmpCanvasCtx.fillStyle = bgColor;
+					this.tmpCanvasCtx.fill();
+				} else {
+					this.tmpCanvasCtx.globalCompositeOperation = 'destination-out';
+					this.tmpCanvasCtx.fillStyle = '#000000';
+					this.tmpCanvasCtx.fill();
+				}
 				this.tmpCanvasCtx.restore();
 			}
 		}
 		else {
 			//multi-region or composed selection - raster mask clears add-union minus subtract
 			var mask = this.create_selection_mask_canvas(ow, oh, layer);
-			this.tmpCanvasCtx.globalCompositeOperation = 'destination-out';
-			this.tmpCanvasCtx.drawImage(mask, 0, 0);
-			this.tmpCanvasCtx.globalCompositeOperation = 'source-over';
+			this.tmpCanvasCtx.save();
+			if (is_locked) {
+				this.tmpCanvasCtx.drawImage(mask, 0, 0);
+				this.tmpCanvasCtx.globalCompositeOperation = 'source-in';
+				this.tmpCanvasCtx.fillStyle = bgColor;
+				this.tmpCanvasCtx.fillRect(0, 0, ow, oh);
+			} else {
+				this.tmpCanvasCtx.globalCompositeOperation = 'destination-out';
+				this.tmpCanvasCtx.drawImage(mask, 0, 0);
+			}
+			this.tmpCanvasCtx.restore();
 			mask.width = 1;
 			mask.height = 1;
 		}
 
 		app.State.do_action(
 			new app.Actions.Bundle_action('delete_selection', 'Delete Selection', [
-				new app.Actions.Update_layer_image_action(this.tmpCanvas),
-				new app.Actions.Reset_selection_action(this.selection)
+				new app.Actions.Update_layer_image_action(this.tmpCanvas, layer.id)
 			])
 		);
 
 		this.reset_tmp_canvas();
-		delete config.layer.link_canvas;
+		config.need_render = true;
 	}
 
 	init_tmp_canvas() {
+		var layer = config.layer;
+		var lw = layer.width_original || layer.width || config.WIDTH;
+		var lh = layer.height_original || layer.height || config.HEIGHT;
 		this.tmpCanvas = document.createElement('canvas');
+		this.tmpCanvas.width = lw;
+		this.tmpCanvas.height = lh;
 		this.tmpCanvasCtx = this.tmpCanvas.getContext("2d");
-		this.tmpCanvas.width = config.layer.width_original;
-		this.tmpCanvas.height = config.layer.height_original;
-		this.tmpCanvasCtx.drawImage(config.layer.link, 0, 0);
+		var src = layer.link_canvas || layer.link;
+		if (src) {
+			this.tmpCanvasCtx.drawImage(src, 0, 0, lw, lh);
+		}
+	}
+
+	fill(color) {
+		if (!config.layer) {
+			var new_layer = {
+				name: 'Layer 1',
+				type: 'image',
+				link: document.createElement('canvas'),
+				width: config.WIDTH,
+				height: config.HEIGHT,
+				width_original: config.WIDTH,
+				height_original: config.HEIGHT,
+				x: 0,
+				y: 0,
+			};
+			new_layer.link.width = config.WIDTH;
+			new_layer.link.height = config.HEIGHT;
+			app.State.do_action(new app.Actions.Insert_layer_action(new_layer, false));
+		}
+
+		if (config.layer.type !== 'image') {
+			this.Layer_raster.raster();
+		}
+
+		var layer = config.layer;
+		if (!layer || layer.type !== 'image') {
+			alertify.error('Unable to fill this layer.');
+			return;
+		}
+
+		this.init_tmp_canvas();
+
+		var ow = layer.width_original || layer.width || config.WIDTH;
+		var oh = layer.height_original || layer.height || config.HEIGHT;
+		var lw = layer.width || ow;
+		var lh = layer.height || oh;
+		var ratio_w = lw / ow;
+		var ratio_h = lh / oh;
+
+		var regions = this.get_regions(this.selection);
+		var has_selection = regions && regions.length > 0 && this.selection.width != null && this.selection.height != null && this.selection.width !== 0 && this.selection.height !== 0;
+
+		if (has_selection) {
+			var simple = (regions.length == 1);
+			for (var i = 0; i < regions.length; i++) {
+				if (regions[i].mode != 'add' && regions[i].mode != null) {
+					simple = false;
+					break;
+				}
+			}
+
+			if (simple) {
+				var selection = regions[0];
+				var shape = selection.shape || 'rect';
+				var sx = selection.width < 0 ? selection.x + selection.width : selection.x;
+				var sy = selection.height < 0 ? selection.y + selection.height : selection.y;
+				var sw = Math.abs(selection.width);
+				var sh = Math.abs(selection.height);
+
+				var mouse_x = (sx - (layer.x || 0)) / ratio_w;
+				var mouse_y = (sy - (layer.y || 0)) / ratio_h;
+				var draw_w = sw / ratio_w;
+				var draw_h = sh / ratio_h;
+
+				if (shape == 'rect') {
+					this.tmpCanvasCtx.fillStyle = color;
+					this.tmpCanvasCtx.fillRect(mouse_x, mouse_y, draw_w, draw_h);
+				}
+				else {
+					this.tmpCanvasCtx.save();
+					this.tmpCanvasCtx.translate(-(layer.x || 0) / ratio_w, -(layer.y || 0) / ratio_h);
+					this.tmpCanvasCtx.scale(1 / ratio_w, 1 / ratio_h);
+					this.build_selection_path(this.tmpCanvasCtx, selection);
+					this.tmpCanvasCtx.fillStyle = color;
+					this.tmpCanvasCtx.fill();
+					this.tmpCanvasCtx.restore();
+				}
+			}
+			else {
+				var mask = this.create_selection_mask_canvas(ow, oh, layer);
+				this.tmpCanvasCtx.save();
+				this.tmpCanvasCtx.drawImage(mask, 0, 0);
+				this.tmpCanvasCtx.globalCompositeOperation = 'source-in';
+				this.tmpCanvasCtx.fillStyle = color;
+				this.tmpCanvasCtx.fillRect(0, 0, ow, oh);
+				this.tmpCanvasCtx.restore();
+				mask.width = 1;
+				mask.height = 1;
+			}
+		}
+		else {
+			// Fill entire layer
+			this.tmpCanvasCtx.fillStyle = color;
+			this.tmpCanvasCtx.fillRect(0, 0, ow, oh);
+		}
+
+		app.State.do_action(
+			new app.Actions.Bundle_action('fill_layer', 'Fill', [
+				new app.Actions.Update_layer_image_action(this.tmpCanvas, layer.id)
+			])
+		);
+
+		this.reset_tmp_canvas();
+		config.need_render = true;
 	}
 
 	/**

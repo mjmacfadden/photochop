@@ -35,7 +35,7 @@ export class Delete_layer_mask_action extends Base_action {
 		}
 
 		app.GUI.GUI_layers.render_layers();
-		config.need_render = true;
+		app.Layers.notify_mask_changed(this.layer_id);
 	}
 
 	async undo() {
@@ -50,7 +50,7 @@ export class Delete_layer_mask_action extends Base_action {
 		}
 		this.reference_layer = null;
 		app.GUI.GUI_layers.render_layers();
-		config.need_render = true;
+		app.Layers.notify_mask_changed(this.layer_id);
 	}
 
 	free() {

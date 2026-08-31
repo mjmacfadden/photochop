@@ -51,7 +51,8 @@ class Rectangle_class extends Base_tools_class {
 			x: Math.round(mouse_x),
 			y: Math.round(mouse_y),
 			color: null,
-			is_vector: true
+			is_vector: true,
+			mask: this.selection_clip_mask(),
 		};
 		app.State.do_action(
 			new app.Actions.Bundle_action('new_rectangle_layer', 'New Rectangle Layer', [

@@ -103,6 +103,7 @@ class Polygon_class extends Base_tools_class {
 				is_vector: true,
 				color: null,
 				status: 'draft',
+				mask: this.selection_clip_mask(),
 			};
 			app.State.do_action(
 				new app.Actions.Bundle_action('new_polygon_layer', 'New Polygon Layer', [

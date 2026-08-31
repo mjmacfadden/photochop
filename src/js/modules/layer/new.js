@@ -11,25 +11,10 @@ class Layer_new_class {
 
 	constructor() {
 		this.Base_layers = new Base_layers_class();
-		this.Selection = new Selection_class();
+		this.Selection = new Selection_class(this.Base_layers.ctx);
 		this.Base_selection = new Base_selection_class(this.Base_layers.ctx);
 		this.GUI_tools = new GUI_tools_class();
 		this.Helper = new Helper_class();
-
-		this.set_events();
-	}
-
-	set_events() {
-		document.addEventListener('keydown', (event) => {
-			var code = event.keyCode;
-			if (this.Helper.is_input(event.target))
-				return;
-
-			if (code == 78 && event.ctrlKey != true && event.metaKey != true) {
-				//N
-				this.new();
-			}
-		}, false);
 	}
 
 	new() {
@@ -39,78 +24,26 @@ class Layer_new_class {
 	}
 
 	new_selection() {
-		var selection = this.Base_selection.get_selection();
-		var layer = config.layer;
-
-		if (selection.width === null || config.layer.type != 'image') {
-			alertify.error('Empty selection or type not image.');
-			return;
-		}
-		if (config.TOOL.name != 'selection') {
-			alertify.error('Empty selection or type not image.');
+		var extracted = this.Base_layers.Base_selection.extract_selection_image(config.layer);
+		if (extracted == null) {
+			alertify.error('Nothing is selected.');
 			return;
 		}
 
-		//if image was stretched
-		var width_ratio = (layer.width / layer.width_original);
-		var height_ratio = (layer.height / layer.height_original);
-		
-		var left = selection.x - layer.x;
-		var top = selection.y - layer.y;
-		
-		//remember original world-space geometry before adaptation (selection.width/height get adapted below)
-		var world_sel = {
-			x: selection.x,
-			y: selection.y,
-			width: selection.width,
-			height: selection.height,
-			shape: selection.shape || 'rect',
-			path: selection.path || null,
-		};
-		
-		//adapt to origin size
-		selection.width = selection.width / width_ratio;
-		selection.height = selection.height / height_ratio;
-		
-		//create new layer
-		var canvas = document.createElement('canvas');
-		var cw = Math.max(1, Math.round(selection.width));
-		var ch = Math.max(1, Math.round(selection.height));
-		var ctx = canvas.getContext("2d");
-		canvas.width = cw;
-		canvas.height = ch;
-		
-		ctx.translate(-left / width_ratio, -top / height_ratio);
-		ctx.drawImage(config.layer.link, 0, 0);
-		ctx.translate(0, 0);
-
-		//ellipse / lasso - crop only inside the selection shape
-		if (world_sel.shape != 'rect') {
-			ctx.save();
-			ctx.translate(-world_sel.x, -world_sel.y);
-			ctx.scale(1 / width_ratio, 1 / height_ratio);
-			this.Selection.build_selection_path(ctx, world_sel);
-			ctx.clip();
-			ctx.clearRect(0, 0, cw, ch);
-			ctx.restore();
-		}
-
-		//register it
 		var params = {
-			x: Math.round(selection.x),
-			y: Math.round(selection.y),
-			width: Math.round(selection.width * width_ratio),
-			height: Math.round(selection.height * height_ratio),
-			width_original: Math.round(selection.width),
-			height_original: Math.round(selection.height),
+			name: (config.layer && config.layer.name ? config.layer.name + ' copy' : 'Selection'),
 			type: 'image',
-			data: canvas.toDataURL("image/png"),
+			data: extracted.canvas.toDataURL('image/png'),
+			x: extracted.x,
+			y: extracted.y,
+			width: extracted.width,
+			height: extracted.height,
+			width_original: extracted.width,
+			height_original: extracted.height,
 		};
 		app.State.do_action(
-			new app.Actions.Bundle_action('new_layer', 'New Layer', [
+			new app.Actions.Bundle_action('new_layer', 'Layer Via Copy', [
 				new app.Actions.Insert_layer_action(params, false),
-				...this.Selection.on_leave(),
-				new app.Actions.Activate_tool_action('select')
 			])
 		);
 	}

@@ -3,6 +3,7 @@ import config from './../../config.js';
 import Base_layers_class from './../../core/base-layers.js';
 import Helper_class from './../../libs/helpers.js';
 import Mask_class from './../../modules/mask/mask.js';
+import Layer_new_class from './new.js';
 
 var instance = null;
 
@@ -18,6 +19,7 @@ class Layer_duplicate_class {
 		this.Base_layers = new Base_layers_class();
 		this.Helper = new Helper_class();
 		this.Mask = new Mask_class();
+		this.Layer_new = new Layer_new_class();
 
 		this.set_events();
 	}
@@ -37,6 +39,12 @@ class Layer_duplicate_class {
 	}
 
 	duplicate() {
+		if (this.Base_layers.Base_selection != null
+			&& this.Base_layers.Base_selection.has_committed_selection()) {
+			this.Layer_new.new_selection();
+			return;
+		}
+
 		var params = JSON.parse(JSON.stringify(config.layer));
 		delete params.id;
 		delete params.order;

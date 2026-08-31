@@ -20,9 +20,22 @@ config.safe_search_can_be_disabled = true;
 config.google_webfonts_key = 'AIzaSyBES3AipG'+'YVYNLtS,Vk-hJ11bbhJ9sTpRbA'.replace(',', '');
 config.layers = [];
 config.layer = null;
-config.need_render = false;
+var need_render = false;
+Object.defineProperty(config, 'need_render', {
+	get: function () {
+		return need_render;
+	},
+	set: function (value) {
+		need_render = value === true;
+		if (need_render && window.Layers && typeof window.Layers.request_render === 'function') {
+			window.Layers.request_render();
+		}
+	}
+});
 config.need_render_changed_params = false; // Set specifically when param change in layer details triggered render
 config.mask_active = false; // True when the active layer's mask is the editing target
+config._internal_clipboard = null; // {data_url, x, y, width, height} last copied selection/layer
+config._clipboard_position = null;
 config.mouse = {};
 config.mouse_lock = null;
 config.swatches = {
@@ -131,6 +144,13 @@ config.TOOLS = [
 		name: 'brush',
 		attributes: {
 			size: 13,
+			opacity: {
+				value: 100,
+				min: 1,
+				max: 100,
+				step: 1,
+				slider: true,
+			},
 			hardness: {
 				value: 100,
 				min: 0,
@@ -163,6 +183,13 @@ config.TOOLS = [
 		visible: false,
 		attributes: {
 			size: 1,
+			opacity: {
+				value: 100,
+				min: 1,
+				max: 100,
+				step: 1,
+				slider: true,
+			},
 			pressure: false,
 		},
 	},
@@ -174,15 +201,27 @@ config.TOOLS = [
 	},
 	{
 		name: 'erase',
-		on_update: 'on_params_update',
 		attributes: {
 			size: 30,
-			circle: true,
-			strict: true,
-			erase_to: {
-				value: 'Transparent',
-				values: ['Transparent', 'Background Color'],
+			opacity: {
+				value: 100,
+				min: 1,
+				max: 100,
+				step: 1,
+				slider: true,
 			},
+			hardness: {
+				value: 100,
+				min: 0,
+				max: 100,
+				step: 1,
+				slider: true,
+			},
+			erase_to: {
+				value: 'Auto',
+				values: ['Auto', 'Transparent', 'Background Color'],
+			},
+			pressure: false,
 		},
 	},
 	{

@@ -571,6 +571,19 @@ class Helper_class {
 		return false;
 	}
 
+	is_mac() {
+		return /(Mac|iPhone|iPod|iPad)/i.test(navigator.platform || navigator.userAgent || '');
+	}
+
+	format_shortcut(shortcut) {
+		if (!shortcut) return '';
+		if (this.is_mac()) {
+			return shortcut.replace(/\bCtrl\b/gi, 'Cmd');
+		} else {
+			return shortcut.replace(/\b(Cmd|Command)\b/gi, 'Ctrl');
+		}
+	}
+
 	// Credit: https://stackoverflow.com/questions/27078285/simple-throttle-in-js
 	throttle(func, wait, options) {
 		var context, args, result;

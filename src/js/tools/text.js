@@ -2031,6 +2031,7 @@ class Text_class extends Base_tools_class {
 		this.mousedownY = 0;
 		this.mousedownBounds = {};
 		this.is_fonts_loaded = false;
+		this.preload_fonts();
 		if (ctx) {
 			this.selection = {
 				x: null,
@@ -2457,6 +2458,27 @@ class Text_class extends Base_tools_class {
 		this.creating = false;
 	}
 
+
+	preload_fonts() {
+		if (this.fonts_preloaded) return;
+		this.fonts_preloaded = true;
+		const systemFonts = ["Arial", "Courier", "Impact", "Helvetica", "Monospace", "Tahoma", "Times New Roman", "Verdana"];
+		const googleFonts = config.FONTS ? config.FONTS.filter(f => !systemFonts.includes(f)) : [];
+		if (googleFonts.length > 0) {
+			try {
+				WebFont.load({
+					google: {
+						families: googleFonts
+					},
+					fontactive: (family) => {
+						fontLoadMap.set(family, true);
+					}
+				});
+			} catch (e) {
+				console.warn('Could not preload web fonts', e);
+			}
+		}
+	}
 
 	doubleClick(event) {
 		if (document.activeElement === this.textarea) {

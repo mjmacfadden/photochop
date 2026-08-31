@@ -6,6 +6,7 @@
 import config from './../../config.js';
 import menuDefinition from './../../config-menu.js';
 import Tools_translate_class from './../../modules/tools/translate.js';
+import Helper_class from './../../libs/helpers.js';
 
 /**
  * class responsible for rendering main menu
@@ -21,6 +22,7 @@ class GUI_menu_class {
 		this.dropdownStack = [];
 
 		this.Tools_translate = new Tools_translate_class();
+		this.Helper = new Helper_class();
 	}
 
 	render_main() {
@@ -88,6 +90,15 @@ class GUI_menu_class {
 				</li>
 			`.trim();
 		} else {
+			let isChecked = false;
+			if (typeof definition.check === 'function') {
+				try {
+					isChecked = !!definition.check();
+				} catch (e) {}
+			} else if (typeof definition.check === 'boolean') {
+				isChecked = definition.check;
+			}
+
 			return `
 				<li>
 					<a id="main_menu_${ level }_${ index }" role="menuitem" tabindex="-1" aria-haspopup="${ (!!definition.children) + '' }"
@@ -96,8 +107,9 @@ class GUI_menu_class {
 						data-level="${ level }" data-index="${ index }">
 						<span class="name"><span class="trn">${ definition.name }</span>${ definition.ellipsis ? ' ...' : '' }</span>
 						${ !!definition.shortcut ? `
-							<span class="shortcut"><span class="sr_only">Shortcut Key:</span> ${ definition.shortcut }</span>
+							<span class="shortcut"><span class="sr_only">Shortcut Key:</span> ${ this.Helper.format_shortcut(definition.shortcut) }</span>
 						` : `` }
+						${ isChecked ? `<span class="menu_check">✓</span>` : `` }
 					</a>
 				</li>
 			`.trim();

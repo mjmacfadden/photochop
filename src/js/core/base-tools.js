@@ -125,7 +125,16 @@ class Base_tools_class {
 
 		var eventType = event.type;
 
-		if (event.target.id != 'canvas_minipaint' && event.target.id != 'main_wrapper') {
+		const isInsideCanvas = !!(event.target && (
+			event.target.id === 'canvas_minipaint' ||
+			event.target.id === 'canvas_overlay' ||
+			event.target.id === 'mouse' ||
+			event.target.id === 'canvas_wrapper' ||
+			event.target.id === 'main_wrapper' ||
+			(event.target.closest && event.target.closest('#main_wrapper') != null)
+		));
+
+		if (!isInsideCanvas) {
 			//outside canvas
 			this.mouse_valid = false;
 		}
@@ -134,13 +143,13 @@ class Base_tools_class {
 		}
 
 		if (eventType === 'mousedown' || eventType === 'touchstart') {
-			if ((event.target.id != 'canvas_minipaint' && event.target.id != 'main_wrapper') || (event.which != 1 && eventType !== 'touchstart')) {
+			if (!isInsideCanvas || (event.which != 1 && eventType !== 'touchstart')) {
 				this.mouse_click_valid = false;
 			}
 			else {
 				this.mouse_click_valid = true;
 			}
-			this.mouse_valid = true;
+			this.mouse_valid = isInsideCanvas;
 		}
 
 		if (event.changedTouches) {
@@ -242,6 +251,33 @@ class Base_tools_class {
 		return JSON.parse(JSON.stringify(object));
 	}
 
+	copy_layer_snapshot() {
+		var src = config.layer.link_canvas || config.layer.link;
+		if (src == null)
+			return null;
+		var canvas = document.createElement('canvas');
+		canvas.width = config.layer.width_original || src.width || 1;
+		canvas.height = config.layer.height_original || src.height || 1;
+		canvas.getContext('2d').drawImage(src, 0, 0);
+		return canvas;
+	}
+
+	constrain_edit_to_selection(editedCanvas, originalCanvas) {
+		if (editedCanvas == null || originalCanvas == null)
+			return;
+		if (this.Base_layers == null || this.Base_layers.Base_selection == null)
+			return;
+		this.Base_layers.Base_selection.restore_outside_selection(
+			editedCanvas, originalCanvas, config.layer
+		);
+	}
+
+	selection_clip_mask() {
+		if (this.Base_layers == null || this.Base_layers.Base_selection == null)
+			return null;
+		return this.Base_layers.Base_selection.get_selection_clip_mask();
+	}
+
 	/**
 	 * customized mouse cursor
 	 *
@@ -251,28 +287,28 @@ class Base_tools_class {
 	 * @param {string} type circle, rect
 	 */
 	show_mouse_cursor(x, y, size, type) {
+		var element = document.getElementById('mouse');
+		if (!element) return;
+
+		if (config.mouse && config.mouse.valid === false) {
+			element.className = '';
+			return;
+		}
 
 		//fix coordinates, because of scroll
 		var start_pos = this.Base_layers.get_world_coords(0, 0);
 		x = x - start_pos.x;
 		y = y - start_pos.y;
 
-		var element = document.getElementById('mouse');
-		size = size * config.ZOOM;
+		var display_size = Math.max(2, Math.round((size || 1) * config.ZOOM));
 		x = x * config.ZOOM;
 		y = y * config.ZOOM;
 
-		if (size < 5) {
-			//too small
-			element.className = '';
-			return;
-		}
+		element.style.width = display_size + 'px';
+		element.style.height = display_size + 'px';
 
-		element.style.width = size + 'px';
-		element.style.height = size + 'px';
-
-		element.style.left = x - Math.ceil(size / 2) + 'px';
-		element.style.top = y - Math.ceil(size / 2) + 'px';
+		element.style.left = Math.round(x - display_size / 2) + 'px';
+		element.style.top = Math.round(y - display_size / 2) + 'px';
 
 		//add style
 		element.className = '';
@@ -421,7 +457,8 @@ class Base_tools_class {
 			x: Math.round(mouse_x),
 			y: Math.round(mouse_y),
 			color: null,
-			is_vector: true
+			is_vector: true,
+			mask: this.selection_clip_mask(),
 		};
 		app.State.do_action(
 			new app.Actions.Bundle_action('new_'+this.name+'_layer', 'New '+this.Helper.ucfirst(this.name)+' Layer', [

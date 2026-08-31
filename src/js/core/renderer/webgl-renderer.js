@@ -158,9 +158,14 @@ class WebGL_renderer_class {
 			var filters = layer.filters;
 			if (filters && filters.length) {
 				for (var f = 0; f < filters.length; f++) {
-					if (filters[f] && filters[f].id !== disabled_filter_id) {
-						return false;
+					var filter = filters[f];
+					if (!filter || filter.disabled === true || filter.visible === false) continue;
+					if (Array.isArray(disabled_filter_id)) {
+						if (disabled_filter_id.includes(filter.id) || disabled_filter_id.includes(filter.name)) continue;
+					} else if (filter.id === disabled_filter_id || filter.name === disabled_filter_id) {
+						continue;
 					}
+					return false;
 				}
 			}
 
@@ -544,6 +549,26 @@ class WebGL_renderer_class {
 		}
 	}
 
+	on_mask_changed(layerId) {
+		this.on_layer_data_changed(layerId);
+	}
+
+	/**
+	 * Invalidate all cached textures (e.g. when switching documents).
+	 */
+	clear_texture_cache() {
+		if (this.gl) {
+			var gl = this.gl;
+			for (var id in this.textureCache) {
+				var entry = this.textureCache[id];
+				if (entry && entry.texture) {
+					gl.deleteTexture(entry.texture);
+				}
+			}
+		}
+		this.textureCache = {};
+	}
+
 	/**
 	 * Release all GPU resources.
 	 */
@@ -603,12 +628,23 @@ class WebGL_renderer_class {
 
 		// Check if we need to re-upload
 		// render_function layers (brush, text, etc.) change content every frame
-		// without dimension changes, so never cache them
+		// without dimension changes, so never cache them.
+		// Layers with active link_canvas (live raster brush/pencil strokes, erase, etc.)
+		// change contents every frame during active editing, so upload dynamically.
 		if (cached &&
 			!layer.render_function &&
+			!layer.link_canvas &&
 			cached.width === srcWidth &&
 			cached.height === srcHeight) {
 			// Reuse existing texture
+			return cached;
+		}
+
+		if (cached && layer.link_canvas && cached.width === srcWidth && cached.height === srcHeight) {
+			gl.activeTexture(gl.TEXTURE0);
+			gl.bindTexture(gl.TEXTURE_2D, cached.texture);
+			gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, false);
+			gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, source);
 			return cached;
 		}
 

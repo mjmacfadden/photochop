@@ -8,9 +8,12 @@
 	<meta name="keywords" content="photo, image, picture, transparent, layers, free, edit, html5, canvas, javascript, online, photoshop, effects, sharpen, blur, magic eraser tool, clone tool" />
 	<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1.0, user-scalable=0" />
 	<link rel="icon" sizes="192x192" href="images/favicon.png">
+	<link rel="manifest" href="manifest.json">
+	<link rel="stylesheet" href="dist/styles.css">
+	<meta name="theme-color" content="#2f6fae">
 	<meta itemprop="name" content="PhotoChop" />
 	<meta itemprop="description" content="PhotoChop is a free online image editor using HTML5." />
-	<script src="dist/bundle.js"></script>
+	<script src="dist/bundle.js" defer></script>
 </head>
 <body>
 	<div class="wrapper">
@@ -30,6 +33,7 @@
 
 		<div class="middle_area" id="middle_area">
 
+			<div class="document_tabs" id="document_tabs"></div>
 			<canvas class="ruler_left" id="ruler_left"></canvas>
 			<canvas class="ruler_top" id="ruler_top"></canvas>
 
@@ -48,7 +52,7 @@
 		</div>
 
 		<div class="sidebar_right">
-			<div class="preview block">
+			<div class="preview block hidden">
 				<h2 class="trn toggle" data-target="toggle_preview">Preview</h2>
 				<div id="toggle_preview"></div>
 			</div>
@@ -58,9 +62,14 @@
 				<div class="content" id="toggle_colors"></div>
 			</div>
 			
-			<div class="details block" id="details_base">
+			<div class="details block hidden" id="details_base">
 				<h2 class="trn toggle toggle-full" data-target="toggle_details">Layer details</h2>
 				<div class="content details-content" id="toggle_details"></div>
+			</div>
+
+			<div class="adjustments block" id="adjustments_base">
+				<h2 class="trn toggle" data-target="toggle_adjustments">Adjustments</h2>
+				<div class="content" id="toggle_adjustments"></div>
 			</div>
 			
 			<div class="layers block">
@@ -72,6 +81,9 @@
 	<div class="status_bar" id="status_bar">
 		<div class="status_left" id="status_info"></div>
 		<div class="status_right">
+			<button type="button" class="status_btn" id="status_layer_fx" title="Add a layer style">
+				<span class="status_fx_text">fx</span>
+			</button>
 			<button type="button" class="status_btn" id="status_new_layer" title="New Layer">
 				<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
 					<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
