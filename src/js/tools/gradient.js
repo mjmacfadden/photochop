@@ -18,7 +18,7 @@ class Gradient_class extends Base_tools_class {
 	}
 
 	load() {
-		this.default_events();
+		// Event routing is handled centrally by Base_tools_class
 	}
 
 	mousedown(e) {

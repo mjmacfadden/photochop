@@ -1,12 +1,12 @@
 {
-	"name": "PhotoChop",
-	"short_name": "PhotoChop",
+	"name": "Vantage Point",
+	"short_name": "Vantage Point",
 	"start_url": "./",
 	"display": "standalone",
 	"orientation": "landscape",
 	"background_color": "#ffffff",
 	"theme_color": "#2f6fae",
-	"description": "PhotoChop is a browser-based image editor.",
+	"description": "Vantage Point is a browser-based image editor.",
 	"icons": [
 		{
 			"src": "images/manifest/192x192.png",

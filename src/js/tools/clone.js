@@ -15,199 +15,138 @@ class Clone_class extends Base_tools_class {
 		this.name = 'clone';
 		this.tmpCanvas = null;
 		this.tmpCanvasCtx = null;
+		this.sourceCanvas = null;
 		this.started = false;
+		this.sampling = false;
 		this.clone_coords = null;
-		this.pressTimer = null;
 		this.selection_snapshot = null;
+		this.last_mouse_x = null;
+		this.last_mouse_y = null;
 	}
 
 	load() {
-		var _this = this;
-		var is_touch = false;
-
-		//mouse events
-		document.addEventListener('mousedown', function (event) {
-			if(is_touch)
-				return;
-			_this.dragStart(event);
-		});
-		document.addEventListener('mousemove', function (event) {
-			if(is_touch)
-				return;
-			_this.dragMove(event);
-		});
-		document.addEventListener('mouseup', function (event) {
-			if(is_touch)
-				return;
-			_this.dragEnd(event);
-		});
-
-		// collect touch events
-		document.addEventListener('touchstart', function (event) {
-			is_touch = true;
-			_this.dragStart(event);
-		});
-		document.addEventListener('touchmove', function (event) {
-			_this.dragMove(event);
-		});
-		document.addEventListener('touchend', function (event) {
-			_this.dragEnd(event);
-		});
-
-		document.addEventListener('contextmenu', function (event) {
-			_this.mouseRightClick(event);
-		});
+		// Event routing is handled centrally by Base_tools_class
 	}
 
 	dragStart(event) {
-		var _this = this;
-		if (config.TOOL.name != _this.name)
+		if (config.TOOL.name != this.name)
 			return;
-		_this.mousedown(event);
-
-		var mouse = this.get_mouse_info(event);
-		if (mouse.click_valid == true) {
-			this.pressTimer = window.setTimeout(function() {
-				//long press success
-				_this.mouseLongClick();
-			}, 2000);
-		}
+		this.mousedown(event);
 	}
 
 	dragMove(event) {
-		var _this = this;
-		if (config.TOOL.name != _this.name)
+		if (config.TOOL.name != this.name)
 			return;
-		_this.mousemove(event);
-
-		//mouse cursor
-		var mouse = _this.get_mouse_info(event);
-		var params = _this.getParams();
-		_this.show_mouse_cursor(mouse.x, mouse.y, params.size, 'circle');
-
-		clearTimeout(this.pressTimer);
+		this.mousemove(event);
 	}
 
 	dragEnd(event) {
-		var _this = this;
-		if (config.TOOL.name != _this.name)
+		if (config.TOOL.name != this.name)
 			return;
-		_this.mouseup(event);
+		this.mouseup(event);
+	}
 
-		clearTimeout(this.pressTimer);
+	keydown(event) {
+		if (event.key === 'Alt' || event.altKey) {
+			this.update_cursor(true);
+		}
+	}
+
+	keyup(event) {
+		if (event.key === 'Alt' || !event.altKey) {
+			this.update_cursor(false);
+		}
+	}
+
+	update_cursor(is_alt) {
+		if (config.mouse && config.mouse.x != null && config.mouse.valid !== false) {
+			var params = this.getParams();
+			this.show_mouse_cursor(config.mouse.x, config.mouse.y, params.size, is_alt ? 'crosshair' : 'circle');
+		}
 	}
 
 	on_params_update() {
 		var params = this.getParams();
 		var strict_element = document.getElementById('strict');
+		if (strict_element) {
+			if (params.circle == false) {
+				strict_element.style.display = 'none';
+			} else {
+				strict_element.style.display = 'block';
+			}
+		}
+	}
 
-		if (params.circle == false) {
-			//hide strict controls
-			strict_element.style.display = 'none';
-		}
-		else {
-			//show strict controls
-			strict_element.style.display = 'block';
-		}
+	sample_source(e) {
+		var mouse = this.get_mouse_info(e);
+
+		this.clone_coords = {
+			x: mouse.x,
+			y: mouse.y,
+		};
+		alertify.success('Source coordinates saved.');
+		return true;
 	}
 
 	mouseRightClick(e) {
 		if (config.TOOL.name != this.name)
 			return;
-		var mouse = this.get_mouse_info(e);
-		var params = this.getParams();
-
-		if (e.which == 3 && mouse.valid == true) {
-			e.preventDefault();
-		}
-		if (params.source_layer.value == 'Previous' && config.layer.type === null) {
-			this.Layer_raster.raster();
-		}
-		if (config.layer.type != 'image') {
-			alertify.error('This layer must contain an image. Please convert it to raster to apply this tool.');
-			return;
-		}
-		if (config.layer.rotate || 0 > 0) {
-			alertify.error('Erase on rotate object is disabled. Please rasterize first.');
-			return;
-		}
-		if (e.which == 3 && mouse.valid == true) {
-			//right click - save coords
-
-			var mouse_x = this.adaptSize(mouse.x, 'width');
-			var mouse_y = this.adaptSize(mouse.y, 'height');
-
-			this.clone_coords = {
-				x: mouse_x,
-				y: mouse_y,
-			};
-			alertify.success('Source coordinates saved.');
-		}
+		if (e && typeof e.preventDefault === 'function') e.preventDefault();
+		this.sample_source(e);
 	}
 
-	mouseLongClick(){
-		var params = this.getParams();
-		var mouse = this.get_mouse_info();
-
-		if (params.source_layer.value == 'Previous' && config.layer.type === null) {
-			this.Layer_raster.raster();
-		}
-		if (config.layer.type != 'image') {
-			alertify.error('This layer must contain an image. Please convert it to raster to apply this tool.');
-			return;
-		}
-		if (config.layer.rotate || 0 > 0) {
-			alertify.error('Erase on rotate object is disabled. Please rasterize first.');
-			return;
-		}
-
-		var mouse_x = this.adaptSize(mouse.x, 'width');
-		var mouse_y = this.adaptSize(mouse.y, 'height');
-
-		this.clone_coords = {
-			x: mouse_x,
-			y: mouse_y,
-		};
-		alertify.success('Source coordinates saved.');
+	mouseLongClick() {
+		this.sample_source();
 	}
 
 	mousedown(e) {
-		this.started = false;
 		var mouse = this.get_mouse_info(e);
-		var params = this.getParams();
-		var layer = config.layer;
-		var previous_layer = this.Base_layers.find_previous(config.layer.id);
+
+		var is_alt = (e && e.altKey)
+			|| (app.GUI && app.GUI.GUI_shortcuts && app.GUI.GUI_shortcuts.is_alt_down)
+			|| (e && (e.button === 2 || e.which === 3));
+
+		if (is_alt) {
+			this.sampling = true;
+			this.sample_source(e);
+			return;
+		}
+
+		this.sampling = false;
 
 		if (mouse.click_valid == false) {
 			return;
 		}
 
-		if (params.source_layer.value == 'Previous' && config.layer.type === null) {
+		if (this.clone_coords === null) {
+			alertify.error('Source is empty. Hold Alt/Option and click to set the clone source.');
+			return;
+		}
+
+		if (!config.layer) {
+			alertify.error('Please select a layer to paint on.');
+			return;
+		}
+
+		if (config.layer.type === 'adjustment') {
+			alertify.error('Cannot paint directly on an adjustment layer.');
+			return;
+		}
+
+		if (config.layer.type !== 'image') {
 			this.Layer_raster.raster();
 		}
-		if (config.layer.type != 'image') {
-			alertify.error('This layer must contain an image. Please convert it to raster to apply this tool.');
+
+		var layer = config.layer;
+		var src = layer.link_canvas || layer.link;
+		if (!src) {
+			alertify.error('Layer image is not ready.');
 			return;
 		}
-		if (config.layer.rotate || 0 > 0) {
-			alertify.error('Erase on rotate object is disabled. Please rasterize first.');
-			return;
-		}
-		if (this.clone_coords === null) {
-			alertify.error('Source is empty, right click on image or use long press to save source position.');
-			return;
-		}
-		if (layer.width != layer.width_original || layer.height != layer.height_original) {
-			alertify.error('Clone tool disabled for resized image. Please rasterize first.');
-			return;
-		}
-		if (params.source_layer.value == 'Previous' &&
-			(previous_layer.width != previous_layer.width_original
-				|| previous_layer.height != previous_layer.height_original)) {
-			alertify.error('Clone tool disabled for resized image. Please rasterize first.');
-			return;
-		}
-		if (params.source_layer.value == 'Previous') {
+
+		var params = this.getParams();
+		var previous_layer = this.Base_layers.find_previous(config.layer.id);
+		if (params.source_layer && params.source_layer.value == 'Previous') {
 			if (previous_layer == null) {
 				alertify.error('Can not find previous layer.');
 				return;
@@ -217,28 +156,57 @@ class Clone_class extends Base_tools_class {
 				return;
 			}
 		}
-		this.started = true;
 
-		//get canvas from layer
+		var lw = (layer.width != null && layer.width > 0) ? layer.width : (config.WIDTH || 1);
+		var lh = (layer.height != null && layer.height > 0) ? layer.height : (config.HEIGHT || 1);
+		var lwo = layer.width_original || lw;
+		var lho = layer.height_original || lh;
+
+		this.started = true;
+		this.last_mouse_x = mouse.x;
+		this.last_mouse_y = mouse.y;
+
+		// Snapshot composite canvas for 'All Layers' mode
+		if (params.source_layer && params.source_layer.value === 'All Layers') {
+			this.sourceCanvas = document.createElement('canvas');
+			this.sourceCanvas.width = config.WIDTH;
+			this.sourceCanvas.height = config.HEIGHT;
+			var main_canvas = document.getElementById('canvas_minipaint');
+			if (main_canvas) {
+				this.sourceCanvas.getContext('2d').drawImage(main_canvas, 0, 0);
+			}
+		}
+
+		// get canvas from layer
 		this.tmpCanvas = document.createElement('canvas');
 		this.tmpCanvasCtx = this.tmpCanvas.getContext("2d");
-		this.tmpCanvas.width = config.layer.width_original;
-		this.tmpCanvas.height = config.layer.height_original;
-		this.tmpCanvasCtx.drawImage(config.layer.link, 0, 0);
+		this.tmpCanvas.width = lwo;
+		this.tmpCanvas.height = lho;
+		this.tmpCanvasCtx.drawImage(src, 0, 0, lwo, lho);
 		this.selection_snapshot = this.copy_layer_snapshot();
 
-		//clone
+		// clone first stamp
 		this.clone_general(this.tmpCanvas, this.tmpCanvas, 'click', mouse);
 		this.constrain_edit_to_selection(this.tmpCanvas, this.selection_snapshot);
 
-		//register tmp canvas for progress redraw
+		// register tmp canvas for progress redraw
 		config.layer.link_canvas = this.tmpCanvas;
-		config.need_render = true;
+		if (this.Base_layers.render_interactive_layer) {
+			this.Base_layers.render_interactive_layer(config.layer.id);
+		}
+		this.Base_layers.render();
 	}
 
 	mousemove(e) {
+		if (this.sampling) {
+			return;
+		}
+
 		var mouse = this.get_mouse_info(e);
 		var params = this.getParams();
+
+		var is_alt = (e && e.altKey) || (app.GUI && app.GUI.GUI_shortcuts && app.GUI.GUI_shortcuts.is_alt_down);
+		this.show_mouse_cursor(mouse.x, mouse.y, params.size, is_alt ? 'crosshair' : 'circle');
 
 		if (mouse.is_drag == false)
 			return;
@@ -249,15 +217,43 @@ class Clone_class extends Base_tools_class {
 			return;
 		}
 
-		//clone
-		this.clone_general(this.tmpCanvas, this.tmpCanvas, 'move', mouse);
+		var size = Math.max(1, params.size || 30);
+		var step = Math.max(1, size / 4);
+
+		if (this.last_mouse_x != null && this.last_mouse_y != null) {
+			var dist = Math.hypot(mouse.x - this.last_mouse_x, mouse.y - this.last_mouse_y);
+			var steps = Math.ceil(dist / step);
+			for (var s = 1; s <= steps; s++) {
+				var t = s / steps;
+				var inter_mouse = {
+					x: this.last_mouse_x + (mouse.x - this.last_mouse_x) * t,
+					y: this.last_mouse_y + (mouse.y - this.last_mouse_y) * t,
+					click_x: mouse.click_x,
+					click_y: mouse.click_y
+				};
+				this.clone_general(this.tmpCanvas, this.tmpCanvas, 'move', inter_mouse);
+			}
+		} else {
+			this.clone_general(this.tmpCanvas, this.tmpCanvas, 'move', mouse);
+		}
+
+		this.last_mouse_x = mouse.x;
+		this.last_mouse_y = mouse.y;
+
 		this.constrain_edit_to_selection(this.tmpCanvas, this.selection_snapshot);
 
-		//draw draft preview
-		config.need_render = true;
+		// draw draft preview
+		if (this.Base_layers.render_interactive_layer) {
+			this.Base_layers.render_interactive_layer(config.layer.id);
+		}
+		this.Base_layers.render();
 	}
 
 	mouseup(e) {
+		if (this.sampling) {
+			this.sampling = false;
+			return;
+		}
 		if (this.started == false) {
 			return;
 		}
@@ -270,62 +266,88 @@ class Clone_class extends Base_tools_class {
 			])
 		);
 
-		//decrease memory
+		// decrease memory
 		this.tmpCanvas.width = 1;
 		this.tmpCanvas.height = 1;
 		this.tmpCanvas = null;
 		this.tmpCanvasCtx = null;
+		this.sourceCanvas = null;
 		this.selection_snapshot = null;
+		this.started = false;
+		this.last_mouse_x = null;
+		this.last_mouse_y = null;
 	}
 
 	clone_general(canvas_from, canvas_to, type, mouse) {
 		var params = this.getParams();
+		if (!this.clone_coords) return;
 
-		var mouse_x = Math.round(mouse.x) - config.layer.x;
-		var mouse_y = Math.round(mouse.y) - config.layer.y;
+		var layer = config.layer;
+		if (!layer) return;
+
+		var lw = (layer.width != null && layer.width > 0) ? layer.width : (config.WIDTH || 1);
+		var lh = (layer.height != null && layer.height > 0) ? layer.height : (config.HEIGHT || 1);
+		var lwo = layer.width_original || lw;
+		var lho = layer.height_original || lh;
+		var scale_x = lwo / lw;
+		var scale_y = lho / lh;
+
+		var mouse_x = (mouse.x - (layer.x || 0)) * scale_x;
+		var mouse_y = (mouse.y - (layer.y || 0)) * scale_y;
 		var half = Math.round(params.size / 2);
 
-		//adapt to origin size
-		mouse_x = this.adaptSize(mouse_x, 'width');
-		mouse_y = this.adaptSize(mouse_y, 'height');
-
-		//convert float coords to integers
-		mouse_x = Math.round(mouse_x);
-		mouse_y = Math.round(mouse_y);
-
-		//create source canvas
 		var canvas_source = document.createElement("canvas");
 		var ctx_source = canvas_source.getContext("2d");
-		var w = Math.ceil(params.size);
-		var h = Math.ceil(params.size);
+		var w = Math.max(1, Math.ceil(params.size));
+		var h = Math.max(1, Math.ceil(params.size));
 		canvas_source.width = w;
 		canvas_source.height = h;
 
-		//add data
-		var x_from = Math.round(this.clone_coords.x - (mouse.click_x - mouse_x));
-		var y_from = Math.round(this.clone_coords.y - (mouse.click_y - mouse_y));
+		// Calculate source sample position in document coordinates
+		var src_doc_x = this.clone_coords.x + (mouse.x - mouse.click_x);
+		var src_doc_y = this.clone_coords.y + (mouse.y - mouse.click_y);
+
+		var x_from, y_from;
+		if (params.source_layer && params.source_layer.value === 'All Layers' && this.sourceCanvas) {
+			ctx_source.drawImage(this.sourceCanvas, -(src_doc_x - half), -(src_doc_y - half));
+		}
+		else if (params.source_layer && params.source_layer.value === 'Previous') {
+			var previous_layer = this.Base_layers.find_previous(layer.id);
+			if (!previous_layer) return;
+
+			var plw = (previous_layer.width != null && previous_layer.width > 0) ? previous_layer.width : (config.WIDTH || 1);
+			var plh = (previous_layer.height != null && previous_layer.height > 0) ? previous_layer.height : (config.HEIGHT || 1);
+			var plwo = previous_layer.width_original || plw;
+			var plho = previous_layer.height_original || plh;
+			var p_scale_x = plwo / plw;
+			var p_scale_y = plho / plh;
+
+			x_from = (src_doc_x - (previous_layer.x || 0)) * p_scale_x;
+			y_from = (src_doc_y - (previous_layer.y || 0)) * p_scale_y;
+
+			var prev_source = previous_layer.link_canvas || previous_layer.link;
+			if (prev_source) {
+				ctx_source.drawImage(prev_source, -(x_from - half), -(y_from - half));
+			}
+		}
+		else {
+			x_from = (src_doc_x - (layer.x || 0)) * scale_x;
+			y_from = (src_doc_y - (layer.y || 0)) * scale_y;
+
+			ctx_source.drawImage(canvas_from, -(x_from - half), -(y_from - half));
+		}
+
 		if (params.anti_aliasing == false) {
 			ctx_source.arc(half, half, half, 0, Math.PI * 2, false);
 			ctx_source.clip();
 		}
-		if (params.source_layer.value == 'Previous') {
-			var previous_layer = this.Base_layers.find_previous(config.layer.id);
 
-			x_from = Math.round(this.clone_coords.x - (mouse.click_x - mouse_x)) - previous_layer.x + config.layer.x;
-			y_from = Math.round(this.clone_coords.y - (mouse.click_y - mouse_y)) - previous_layer.y + config.layer.y;
-
-			ctx_source.drawImage(previous_layer.link, x_from - half, y_from - half, w, h, 0, 0, w, h);
-		}
-		else {
-			ctx_source.drawImage(canvas_from, x_from - half, y_from - half, w, h, 0, 0, w, h);
-		}
-
-		//apply anti aliasing
+		// apply anti aliasing
 		if (params.anti_aliasing == true) {
 			var gradient = ctx_source.createRadialGradient(half, half, 0, half, half, half + 1);
 			gradient.addColorStop(0, 'white');
 			gradient.addColorStop(0.3, 'white');
-			gradient.addColorStop(1, 'transparent');
+			gradient.addColorStop(1, 'rgba(255, 255, 255, 0)');
 			ctx_source.fillStyle = gradient;
 
 			ctx_source.globalCompositeOperation = 'destination-in';
@@ -333,7 +355,7 @@ class Clone_class extends Base_tools_class {
 			ctx_source.globalCompositeOperation = 'source-over';
 		}
 
-		//finish
+		// finish
 		canvas_to.getContext("2d").drawImage(canvas_source, mouse_x - half, mouse_y - half);
 	}
 

@@ -17,6 +17,7 @@ class GUI_shortcuts_class {
 		this.is_meta_down = false;
 		this.is_ctrl_down = false;
 		this.is_alt_down = false;
+		this.is_shift_down = false;
 
 		this.keymap = {
 			'v': 'select',
@@ -27,7 +28,7 @@ class GUI_shortcuts_class {
 			't': 'text',
 			'c': 'crop',
 			's': 'clone',
-			'l': 'blur',
+			'l': 'lasso',
 			'n': 'pencil',
 			'm': 'selection',
 			'u': 'sharpen',
@@ -61,6 +62,15 @@ class GUI_shortcuts_class {
 			}
 			if (key === 'Alt' || key === 'AltGraph' || code === 'AltLeft' || code === 'AltRight' || event.keyCode === 18) {
 				this.is_alt_down = isDown;
+				if (config.TOOL && config.TOOL.name === 'clone' && app.GUI && app.GUI.GUI_tools) {
+					const cloneTool = app.GUI.GUI_tools.tools_modules['clone']?.object;
+					if (cloneTool && typeof cloneTool.update_cursor === 'function') {
+						cloneTool.update_cursor(isDown);
+					}
+				}
+			}
+			if (key === 'Shift' || code === 'ShiftLeft' || code === 'ShiftRight' || event.keyCode === 16) {
+				this.is_shift_down = isDown;
 			}
 		};
 		window.addEventListener('keydown', (event) => updateModifierState(event, true), { capture: true, passive: true });
@@ -69,10 +79,67 @@ class GUI_shortcuts_class {
 			this.is_meta_down = false;
 			this.is_ctrl_down = false;
 			this.is_alt_down = false;
+			this.is_shift_down = false;
 		});
 
 		document.addEventListener('keydown', (event) => {
 			if (this.Helper.is_input(event.target)) return;
+
+			// If Text Tool is active and a text layer is selected, disable tool keybindings
+			const isTextToolActive = config.TOOL && config.TOOL.name === 'text';
+			const isTextLayer = config.layer && config.layer.type === 'text';
+			if (isTextToolActive && isTextLayer) {
+				if (!event.ctrlKey && !event.metaKey) {
+					const textTool = (app.GUI && app.GUI.GUI_tools && app.GUI.GUI_tools.tools_modules['text'])
+						? app.GUI.GUI_tools.tools_modules['text'].object
+						: null;
+					if (textTool) {
+						if (event.key === 'Escape') {
+							event.preventDefault();
+							event.stopImmediatePropagation();
+							if (textTool.textarea) textTool.textarea.blur();
+							if (app.GUI && app.GUI.GUI_tools) {
+								app.GUI.GUI_tools.activate_tool('select');
+							}
+							return;
+						}
+						if (textTool.focus_textarea) {
+							textTool.focus_textarea();
+						} else if (textTool.textarea && document.activeElement !== textTool.textarea) {
+							textTool.textarea.focus({ preventScroll: true });
+						}
+						// If textarea was not already focused when key was pressed, forward characters directly
+						if (document.activeElement !== textTool.textarea) {
+							const editor = textTool.get_editor(config.layer);
+							if (editor) {
+								if (event.key.length === 1 && !event.altKey) {
+									editor.insert_text_at_current_position(event.key);
+									textTool.Base_layers.render();
+									textTool.extend_fixed_bounds(config.layer, editor);
+									event.preventDefault();
+								} else if (event.key === 'Backspace') {
+									editor.delete_character_at_current_position(false);
+									textTool.Base_layers.render();
+									textTool.extend_fixed_bounds(config.layer, editor);
+									event.preventDefault();
+								} else if (event.key === 'Delete') {
+									editor.delete_character_at_current_position(true);
+									textTool.Base_layers.render();
+									textTool.extend_fixed_bounds(config.layer, editor);
+									event.preventDefault();
+								} else if (event.key === 'Enter') {
+									editor.insert_text_at_current_position('\n');
+									textTool.Base_layers.render();
+									textTool.extend_fixed_bounds(config.layer, editor);
+									event.preventDefault();
+								}
+							}
+						}
+					}
+					// Return early to ensure single-key tool shortcuts (B, V, E, C, etc.) are completely disabled!
+					return;
+				}
+			}
 
 			// Prevent browser Alt/Option key from stealing focus / hiding cursor
 			if (event.key === 'Alt' || event.key === 'AltGraph' || event.code === 'AltLeft' || event.code === 'AltRight' || event.keyCode === 18) {
@@ -245,7 +312,30 @@ class GUI_shortcuts_class {
 			if (this.keymap[key]) {
 				event.preventDefault();
 				event.stopImmediatePropagation();
-				app.GUI.GUI_tools.activate_tool(this.keymap[key]);
+				var targetTool = this.keymap[key];
+				if (targetTool === 'lasso') {
+					if (app.GUI && app.GUI.GUI_tools) {
+						app.GUI.GUI_tools.update_tool_shape('selection', 'lasso');
+					}
+				} else if (targetTool === 'selection') {
+					if (app.GUI && app.GUI.GUI_tools) {
+						var selDef = null;
+						for (var si in config.TOOLS) {
+							if (config.TOOLS[si].name === 'selection') {
+								selDef = config.TOOLS[si];
+								break;
+							}
+						}
+						var activeShape = (selDef && selDef.tool_group) ? selDef.tool_group.active_shape : 'rect';
+						if (activeShape === 'lasso') {
+							app.GUI.GUI_tools.update_tool_shape('selection', 'rect');
+						} else {
+							app.GUI.GUI_tools.activate_tool('selection');
+						}
+					}
+				} else {
+					app.GUI.GUI_tools.activate_tool(targetTool);
+				}
 			}
 
 			// [ and ] = Decrease/Increase brush size
@@ -285,15 +375,15 @@ class GUI_shortcuts_class {
 			return;
 		}
 		if (this.logo_omarchy) {
-			//switch back to the original PhotoChop logo
-			img.src = 'images/photochop_logo.png';
-			img.alt = 'PhotoChop';
+			//switch back to the original Vantage Point logo
+			img.src = 'images/vantage_logo.png';
+			img.alt = 'Vantage Point';
 			var logoLink = document.querySelector('.logo');
-			if (logoLink) logoLink.title = 'PhotoChop';
+			if (logoLink) logoLink.title = 'Vantage Point';
 		}
 		else {
 			//easter egg: show the Omarchy logo
-			img.src = 'images/omarchy-logo.svg';
+			img.src = 'images/omarchy-logo.png';
 			img.alt = 'Omarchy';
 			var logoLink = document.querySelector('.logo');
 			if (logoLink) logoLink.title = 'Omarchy';
@@ -304,7 +394,7 @@ class GUI_shortcuts_class {
 
 	save_logo_preference() {
 		try {
-			localStorage.setItem('photochop_logo', this.logo_omarchy ? 'omarchy' : 'photochop');
+			localStorage.setItem('photochop_logo', this.logo_omarchy ? 'omarchy' : 'vantage');
 		} catch (error) {
 			//localStorage unavailable - ignore
 		}
@@ -313,6 +403,8 @@ class GUI_shortcuts_class {
 	restore_logo_preference() {
 		window.togglePhotoChopLogo = () => this.toggle_logo();
 		window.PhotoChop_toggle_logo = () => this.toggle_logo();
+		window.toggleVantageLogo = () => this.toggle_logo();
+		window.toggleVantagePointLogo = () => this.toggle_logo();
 
 		var saved = null;
 		try {
@@ -328,13 +420,18 @@ class GUI_shortcuts_class {
 		var img = document.querySelector('.logo img, a.logo img');
 		if (img != null) {
 			if (show_omarchy) {
-				img.src = 'images/omarchy-logo.svg';
+				img.src = 'images/omarchy-logo.png';
 				img.alt = 'Omarchy';
 				var logoLink = document.querySelector('.logo');
 				if (logoLink) logoLink.title = 'Omarchy';
+			} else {
+				img.src = 'images/vantage_logo.png';
+				img.alt = 'Vantage Point';
+				var logoLink = document.querySelector('.logo');
+				if (logoLink) logoLink.title = 'Vantage Point';
 			}
 			//reveal the logo (CSS keeps it hidden until the preference is applied,
-			//so the default PhotoChop logo never flashes when Omarchy is selected)
+			//so the default logo never flashes when Omarchy is selected)
 			img.style.visibility = 'visible';
 		}
 

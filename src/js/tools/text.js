@@ -1772,7 +1772,7 @@ class Text_editor_class {
 									}
 								}
 							}
-							if (isLetterSelected && this.editingCtx === ctx) {
+							if (isLetterSelected && (!this.Base_layers || ctx !== this.Base_layers.ctx_preview)) {
 								const letterStartX = isHorizontalTextDirection ? textDirectionOffset : lineStart;
 								const letterStartY = isHorizontalTextDirection ? lineStart : textDirectionOffset;
 								const letterSizeX = isHorizontalTextDirection ? letterWidth : letterHeight;
@@ -1821,7 +1821,7 @@ class Text_editor_class {
 					}
 
 					// Draw cursor
-					if (this.selection.isCursorVisible /*&& this.selection.isBlinkVisible*/ && cursorStartX && this.editingCtx == ctx) {
+					if (this.selection.isCursorVisible && cursorStartX && (!this.Base_layers || ctx !== this.Base_layers.ctx_preview)) {
 						ctx.lineCap = 'butt';
 						ctx.strokeStyle = '#55555577';
 						ctx.lineWidth = 3;
@@ -2058,7 +2058,7 @@ class Text_class extends Base_tools_class {
 			this.textarea.setAttribute('autocapitalize', 'off');
 			this.textarea.setAttribute('autocomplete', 'off');
 			this.textarea.setAttribute('spellcheck', 'false');
-			this.textarea.style = `position: absolute; top: 0; left: 0; padding: 0; width: 1px; height: 1px; background: transparent; border: none; outline: none; color: transparent; opacity: 0.01; pointer-events: none;`;
+			this.textarea.style = `position: fixed; top: -100px; left: -100px; padding: 0; width: 10px; height: 10px; background: transparent; border: none; outline: none; color: transparent; opacity: 0.01; pointer-events: none;`;
 			document.body.appendChild(this.textarea);
 
 			this.textarea.addEventListener('focus', () => {
@@ -2069,12 +2069,16 @@ class Text_class extends Base_tools_class {
 				}
 			}, true);
 
-			this.textarea.addEventListener('blur', () => {
+			this.textarea.addEventListener('blur', (e) => {
+				if (e.relatedTarget && e.relatedTarget.closest && e.relatedTarget.closest('#main_wrapper')) {
+					this.focus_textarea();
+					return;
+				}
 				this.focused = false;
 				let editor = this.get_editor(this.layer);
-				if (editor) {
+				if (editor && this.layer && this.layer.id != null) {
 					let value = JSON.stringify(editor.document.lines);
-					if (this.focusedValue !== value) {
+					if (this.focusedValue != null && this.focusedValue !== value) {
 						this.layer.data = JSON.parse(this.focusedValue);
 						app.State.do_action(
 							new app.Actions.Update_layer_action(this.layer.id, { data: JSON.parse(value) })
@@ -2235,40 +2239,46 @@ class Text_class extends Base_tools_class {
 		this.mousemove(event);
 	}
 
-	dragEnd(event) {
+	async dragEnd(event) {
 		if (config.TOOL.name != this.name)
 			return;
-		this.mouseup(event);
+		await this.mouseup(event);
 	}
 
 	load() {
-		// Mouse events
-		document.addEventListener('mousedown', (event) => {
-			this.dragStart(event);
-		});
-		document.addEventListener('mousemove', (event) => {
-			this.dragMove(event);
-		});
-		document.addEventListener('mouseup', (event) => {
-			this.dragEnd(event);
-		});
-		document.addEventListener('dblclick', (event) => {
-			this.doubleClick(event);
-		});
+		// Event routing is handled centrally by Base_tools_class
+	}
 
-		// Touch events
-		document.addEventListener('touchstart', (event) => {
-			this.dragStart(event);
-		});
-		document.addEventListener('touchmove', (event) => {
-			this.dragMove(event);
-		});
-		document.addEventListener('touchend', (event) => {
-			this.dragEnd(event);
-		});
+	focus_textarea() {
+		if (!this.textarea) return;
+		this.focused = true;
+		try {
+			this.textarea.focus({ preventScroll: true });
+		} catch (e) {
+			this.textarea.focus();
+		}
+		setTimeout(() => {
+			if (this.textarea && (this.focused || (config.TOOL && config.TOOL.name === 'text'))) {
+				this.focused = true;
+				try {
+					this.textarea.focus({ preventScroll: true });
+				} catch (e) {
+					this.textarea.focus();
+				}
+				if (config.layer && config.layer.type === 'text') {
+					this.Base_layers.render();
+				}
+			}
+		}, 0);
 	}
 
 	mousedown(e) {
+		if (e && e.target && e.target.closest && e.target.closest('#main_wrapper')) {
+			if (e.preventDefault && typeof e.preventDefault === 'function') {
+				e.preventDefault();
+			}
+		}
+
 		var mouse = this.get_mouse_info(e);
 		if (mouse.click_valid == false)
 			return;
@@ -2279,13 +2289,13 @@ class Text_class extends Base_tools_class {
 
 		this.mousedownX = mouse.x;
 		this.mousedownY = mouse.y;
-		this.mousedownBounds = {
+		this.mousedownBounds = (config.layer && config.layer.params) ? {
 			x: config.layer.x,
 			y: config.layer.y,
 			width: config.layer.width,
 			height: config.layer.height,
 			boundary: config.layer.params.boundary
-		};
+		} : null;
 
 		if (this.Base_selection.mouse_lock !== null) {
 			this.resizing = true;
@@ -2297,7 +2307,10 @@ class Text_class extends Base_tools_class {
 			this.selecting = true;
 			this.layer = existingLayer;
 			const editor = this.get_editor(this.layer);
-			editor.trigger_cursor_start(this.layer, -1 + mouse.x - this.layer.x, mouse.y - this.layer.y);
+			if (editor) {
+				editor.trigger_cursor_start(this.layer, -1 + mouse.x - this.layer.x, mouse.y - this.layer.y);
+				this.focusedValue = JSON.stringify(editor.document.lines);
+			}
 			app.State.do_action(
 				new app.Actions.Bundle_action('select_text_layer', 'Select Text Layer', [
 					new app.Actions.Select_layer_action(existingLayer.id),
@@ -2332,6 +2345,10 @@ class Text_class extends Base_tools_class {
 				])
 			);
 			this.layer = config.layer;
+			const editor = this.get_editor(this.layer);
+			if (editor) {
+				this.focusedValue = JSON.stringify(editor.document.lines);
+			}
 		}
 	}
 
@@ -2344,12 +2361,14 @@ class Text_class extends Base_tools_class {
 		}
 
 		if (this.resizing) {
-			config.layer.x = this.selection.x;
-			config.layer.y = this.selection.y;
-			config.layer.width = this.selection.width;
-			config.layer.height = this.selection.height;
-			if (config.layer.params.boundary === 'dynamic') {
-				config.layer.params.boundary = 'box';
+			if (config.layer) {
+				config.layer.x = this.selection.x;
+				config.layer.y = this.selection.y;
+				config.layer.width = this.selection.width;
+				config.layer.height = this.selection.height;
+				if (config.layer.params && config.layer.params.boundary === 'dynamic') {
+					config.layer.params.boundary = 'box';
+				}
 			}
 		}
 		else if (this.creating) {
@@ -2357,20 +2376,25 @@ class Text_class extends Base_tools_class {
 			const height = Math.abs(mouse.y - this.mousedownY);
 
 			//more data
-			if (config.layer.params.boundary === 'dynamic') {
+			if (config.layer && config.layer.params && config.layer.params.boundary === 'dynamic') {
 				config.layer.params.boundary = 'box';
 			}
-			config.layer.x = Math.min(mouse.x, this.mousedownX);
-			config.layer.y = Math.min(mouse.y, this.mousedownY);
-			config.layer.width = width;
-			config.layer.height = height;
+			if (config.layer) {
+				config.layer.x = Math.min(mouse.x, this.mousedownX);
+				config.layer.y = Math.min(mouse.y, this.mousedownY);
+				config.layer.width = width;
+				config.layer.height = height;
+			}
 		} else {
-			this.get_editor(this.layer).trigger_cursor_move(this.layer, -1 + mouse.x - this.layer.x, mouse.y - this.layer.y);
+			const editor = this.get_editor(this.layer);
+			if (editor && this.layer) {
+				editor.trigger_cursor_move(this.layer, -1 + mouse.x - this.layer.x, mouse.y - this.layer.y);
+			}
 		}
 		this.Base_layers.render();
 	}
 
-	mouseup(e) {
+	async mouseup(e) {
 		var mouse = this.get_mouse_info(e);
 		if (mouse.click_valid == false) {
 			return;
@@ -2378,25 +2402,27 @@ class Text_class extends Base_tools_class {
 		const editor = this.get_editor(this.layer);
 
 		if (this.resizing) {
-			config.layer.x = this.mousedownBounds.x;
-			config.layer.y = this.mousedownBounds.y;
-			config.layer.width = this.mousedownBounds.width;
-			config.layer.height = this.mousedownBounds.height;
-			const new_params = JSON.parse(JSON.stringify(config.layer.params));
-			new_params.boundary = config.layer.params.boundary;
-			config.layer.params.boundary = this.mousedownBounds.boundary;
-			app.State.do_action(
-				new app.Actions.Bundle_action('resize_text_layer', 'Resize Text Layer', [
-					new app.Actions.Update_layer_action(config.layer.id, {
-						x: this.selection.x,
-						y: this.selection.y,
-						width: this.selection.width,
-						height: this.selection.height,
-						params: new_params
-					}),
-					new app.Actions.Set_selection_action(this.selection.x, this.selection.y, this.selection.width, this.selection.height)
-				])
-			);
+			if (this.mousedownBounds && config.layer && config.layer.params) {
+				config.layer.x = this.mousedownBounds.x;
+				config.layer.y = this.mousedownBounds.y;
+				config.layer.width = this.mousedownBounds.width;
+				config.layer.height = this.mousedownBounds.height;
+				const new_params = JSON.parse(JSON.stringify(config.layer.params));
+				new_params.boundary = config.layer.params.boundary;
+				config.layer.params.boundary = this.mousedownBounds.boundary;
+				await app.State.do_action(
+					new app.Actions.Bundle_action('resize_text_layer', 'Resize Text Layer', [
+						new app.Actions.Update_layer_action(config.layer.id, {
+							x: this.selection.x,
+							y: this.selection.y,
+							width: this.selection.width,
+							height: this.selection.height,
+							params: new_params
+						}),
+						new app.Actions.Set_selection_action(this.selection.x, this.selection.y, this.selection.width, this.selection.height)
+					])
+				);
+			}
 		}
 		else if (this.creating) {
 			let width = Math.abs(mouse.x - this.mousedownX);
@@ -2407,49 +2433,60 @@ class Text_class extends Base_tools_class {
 				width = 1;
 				height = 1;
 			}
-			app.State.do_action(
-				new app.Actions.Bundle_action('resize_text_layer', 'Resize Text Layer', [
-					new app.Actions.Update_layer_action(config.layer.id, {
-						x: Math.min(mouse.x, this.mousedownX),
-						y: Math.min(mouse.y, this.mousedownY),
-						width,
-						height
-					})
-				]),
-				{ merge_with_history: 'new_text_layer' }
-			);
-			this.textarea.focus();
+			if (config.layer) {
+				await app.State.do_action(
+					new app.Actions.Bundle_action('resize_text_layer', 'Resize Text Layer', [
+						new app.Actions.Update_layer_action(config.layer.id, {
+							x: Math.min(mouse.x, this.mousedownX),
+							y: Math.min(mouse.y, this.mousedownY),
+							width,
+							height
+						})
+					]),
+					{ merge_with_history: 'new_text_layer' }
+				);
+			}
+			this.focus_textarea();
 		}
 		else if (this.selecting) {
-			editor.trigger_cursor_end();
-			this.textarea.focus();
+			if (editor) {
+				editor.trigger_cursor_end();
+			}
+			this.focus_textarea();
 			
-			if (editor.selection.is_empty() && editor.document.queuedMetaChanges) {
-				let meta = {};
-				const existingMeta = editor.document.get_meta_range(editor.selection.start.line, editor.selection.start.character, editor.selection.end.line, editor.selection.end.character);
-				for (let metaKey in existingMeta) {
-					meta[metaKey] = editor.document.queuedMetaChanges[metaKey] != null ? editor.document.queuedMetaChanges[metaKey] : existingMeta[metaKey][0];
+			if (editor) {
+				if (editor.selection.is_empty() && editor.document.queuedMetaChanges) {
+					let meta = {};
+					const existingMeta = editor.document.get_meta_range(editor.selection.start.line, editor.selection.start.character, editor.selection.end.line, editor.selection.end.character);
+					for (let metaKey in existingMeta) {
+						meta[metaKey] = editor.document.queuedMetaChanges[metaKey] != null ? editor.document.queuedMetaChanges[metaKey] : existingMeta[metaKey][0];
+					}
+				} else {
+					editor.document.queuedMetaChanges = null;
+					this.update_tool_attributes(this.layer, editor);
 				}
-			} else {
-				editor.document.queuedMetaChanges = null;
-				this.update_tool_attributes(this.layer, editor);
 			}
 		}
 
 		// Resize layer based on text boundaries.
-		this.extend_fixed_bounds(this.layer, editor);
+		if (editor && this.layer) {
+			this.extend_fixed_bounds(this.layer, editor);
+		}
 		this.Base_layers.render();
 
 		// Center layer on mouse if not click & drag
-		if (this.creating && config.layer.params.boundary === 'dynamic') {
-			requestAnimationFrame(() => {
-				app.State.do_action(
-					new app.Actions.Update_layer_action(config.layer.id, {
-						x: config.layer.x - config.layer.width / 2,
-						y: config.layer.y - config.layer.height / 2
-					}),
-					{ merge_with_history: 'new_text_layer' }
-				);
+		if (this.creating && config.layer && config.layer.params && config.layer.params.boundary === 'dynamic') {
+			requestAnimationFrame(async () => {
+				if (config.layer && config.layer.params) {
+					await app.State.do_action(
+						new app.Actions.Update_layer_action(config.layer.id, {
+							x: config.layer.x - config.layer.width / 2,
+							y: config.layer.y - config.layer.height / 2
+						}),
+						{ merge_with_history: 'new_text_layer' }
+					);
+					this.focus_textarea();
+				}
 			});
 		}
 
@@ -2480,18 +2517,23 @@ class Text_class extends Base_tools_class {
 		}
 	}
 
-	doubleClick(event) {
-		if (document.activeElement === this.textarea) {
+	dblclick(event) {
+		if (this.textarea && (document.activeElement === this.textarea || this.focused)) {
 			const editor = this.get_editor(this.layer);
-			if (editor.selection.is_empty()) {
+			if (editor && editor.selection.is_empty()) {
 				const position = editor.selection.get_position();
 				const wordStart = editor.document.get_word_start_position(position.line, position.character, true);
 				const wordEnd = editor.document.get_word_end_position(position.line, position.character, true);
 				editor.selection.set_position(wordStart.line, wordStart.character);
 				editor.selection.set_position(wordEnd.line, wordEnd.character, true);
 				this.update_tool_attributes(this.layer, editor);
+				this.focus_textarea();
 			}
 		}
+	}
+
+	doubleClick(event) {
+		this.dblclick(event);
 	}
 
 	on_params_update(param) {
@@ -2625,7 +2667,7 @@ class Text_class extends Base_tools_class {
 			this.selection.width = layer.width;
 			this.selection.height = layer.height;
 			this.selection.rotate = layer.rotate;
-		} else if (config.layer.type !== 'text') {
+		} else if (!isActiveLayerAndTextTool) {
 			this.selection.x = -100000;
 			this.selection.y = -100000;
 			this.selection.width = 0;
@@ -2634,6 +2676,7 @@ class Text_class extends Base_tools_class {
 	}
 
 	get_editor(layer) {
+		if (!layer) return null;
 		let editor = layerEditors.get(layer);
 		if (!editor) {
 			editor = new Text_editor_class();
@@ -2723,15 +2766,17 @@ class Text_class extends Base_tools_class {
 		}
 		if (layer._needs_update_data) {
 			delete layer._needs_update_data;
-			editor.hasValueChanged = true;
-			editor.set_lines(JSON.parse(JSON.stringify(layer.data)));
+			if (layer.data) {
+				editor.hasValueChanged = true;
+				editor.set_lines(JSON.parse(JSON.stringify(layer.data)));
+			}
 		}
 		return editor;
 	}
 
 	get_text_layer_at_mouse(e) {
 		const layers_sorted = this.Base_layers.get_sorted_layers();
-		if (config.layer.type === 'text') {
+		if (config.layer && config.layer.type === 'text') {
 			layers_sorted.unshift(config.layer);
 		}
 		const mouse = this.get_mouse_info(e);

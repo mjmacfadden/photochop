@@ -667,15 +667,17 @@ class File_save_class {
 		var today = yyyy + '-' + mm + '-' + dd;
 
 		//data
+		//data
 		var export_data = {};
 		export_data.info = {
 			width: config.WIDTH,
 			height: config.HEIGHT,
-			about: 'Image data with multi-layers. Can be opened using PhotoChop',
+			about: 'Image data with multi-layers. Can be opened using Vantage Point',
 			date: today,
 			version: VERSION,
-			layer_active: config.layer.id,
+			layer_active: config.layer ? config.layer.id : 1,
 			guides: config.guides,
+			transparency: config.TRANSPARENCY !== false,
 		};
 
 		//fonts
@@ -686,8 +688,8 @@ class File_save_class {
 		for (var i in config.layers) {
 			var layer = {};
 			for (var j in config.layers[i]) {
-				if (j[0] == '_' || j == 'link_canvas') {
-					//private data
+				if (j[0] == '_' || j == 'link_canvas' || j == 'link') {
+					//private data / DOM elements
 					continue;
 				}
 				if (j == 'mask' && config.layers[i].mask != null) {
@@ -701,19 +703,16 @@ class File_save_class {
 			export_data.layers.push(layer);
 		}
 
-		//image data
+		//image / raster data
 		export_data.data = [];
 		for (var i in config.layers) {
 			var layerObj = config.layers[i];
-			if (layerObj.type != 'image')
-				continue;
-
 			var imgSource = layerObj.link_canvas || layerObj.link;
 			if (imgSource && (imgSource instanceof HTMLCanvasElement || imgSource instanceof HTMLImageElement || imgSource instanceof ImageBitmap)) {
 				try {
 					var canvas = document.createElement('canvas');
-					canvas.width = layerObj.width_original || config.WIDTH;
-					canvas.height = layerObj.height_original || config.HEIGHT;
+					canvas.width = layerObj.width_original || layerObj.width || config.WIDTH;
+					canvas.height = layerObj.height_original || layerObj.height || config.HEIGHT;
 					this.disable_canvas_smooth(canvas.getContext("2d"));
 
 					canvas.getContext('2d').drawImage(imgSource, 0, 0);
@@ -733,7 +732,7 @@ class File_save_class {
 						});
 					}
 				}
-			} else if (layerObj.data) {
+			} else if (layerObj.data && typeof layerObj.data === 'string') {
 				export_data.data.push({
 					id: layerObj.id,
 					data: layerObj.data,

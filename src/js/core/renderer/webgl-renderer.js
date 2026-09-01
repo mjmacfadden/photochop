@@ -482,44 +482,48 @@ class WebGL_renderer_class {
 
 		// Render layers bottom to top
 		for (var i = layers.length - 1; i >= 0; i--) {
-			var layer = layers[i];
+			try {
+				var layer = layers[i];
 
-			// Skip hidden or empty layers
-			if (layer.visible === false || layer.type == null) continue;
+				// Skip hidden or empty layers
+				if (layer.visible === false || layer.type == null) continue;
 
-			// Get or create the layer texture
-			var texInfo = this._get_or_create_texture(layer);
-			if (!texInfo) continue;
+				// Get or create the layer texture
+				var texInfo = this._get_or_create_texture(layer);
+				if (!texInfo) continue;
 
-			// Bind layer texture
-			gl.activeTexture(gl.TEXTURE0);
-			gl.bindTexture(gl.TEXTURE_2D, texInfo.texture);
-			gl.uniform1i(this.uniforms.u_layerTexture, 0);
+				// Bind layer texture
+				gl.activeTexture(gl.TEXTURE0);
+				gl.bindTexture(gl.TEXTURE_2D, texInfo.texture);
+				gl.uniform1i(this.uniforms.u_layerTexture, 0);
 
-			// Set opacity
-			gl.uniform1f(this.uniforms.u_opacity, (layer.opacity || 100) / 100);
+				// Set opacity
+				gl.uniform1f(this.uniforms.u_opacity, (layer.opacity || 100) / 100);
 
-			// Set destination rectangle: [x, y, width, height] in document pixels.
-			// Expand by pad so the padded texture maps correctly.
-			var pad = texInfo.pad || 0;
-			gl.uniform4f(this.uniforms.u_dstRect,
-				(layer.x || 0) - pad, (layer.y || 0) - pad,
-				(layer.width || 0) + pad * 2, (layer.height || 0) + pad * 2
-			);
+				// Set destination rectangle: [x, y, width, height] in document pixels.
+				// Expand by pad so the padded texture maps correctly.
+				var pad = texInfo.pad || 0;
+				gl.uniform4f(this.uniforms.u_dstRect,
+					(layer.x || 0) - pad, (layer.y || 0) - pad,
+					(layer.width || 0) + pad * 2, (layer.height || 0) + pad * 2
+				);
 
-			// Set rotation (convert degrees to radians).
-			// Rotation is applied in Y-down document space (same convention as
-			// Canvas 2D ctx.rotate), so no negation is needed even though the
-			// vertex shader flips Y for clip space.
-			gl.uniform1f(this.uniforms.u_rotation,
-				(layer.rotate || 0) * Math.PI / 180
-			);
+				// Set rotation (convert degrees to radians).
+				// Rotation is applied in Y-down document space (same convention as
+				// Canvas 2D ctx.rotate), so no negation is needed even though the
+				// vertex shader flips Y for clip space.
+				gl.uniform1f(this.uniforms.u_rotation,
+					(layer.rotate || 0) * Math.PI / 180
+				);
 
-			// Set blend mode
-			this._set_blend_mode(layer.composition);
+				// Set blend mode
+				this._set_blend_mode(layer.composition);
 
-			// Draw the quad
-			gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+				// Draw the quad
+				gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+			} catch (err) {
+				console.warn('WebGL render error on layer', layers[i] ? layers[i].id : i, err);
+			}
 		}
 	}
 
@@ -625,10 +629,20 @@ class WebGL_renderer_class {
 		var source = this._get_layer_source(layer);
 		if (!source) return null;
 
-		var srcWidth = source.width || layer.width;
-		var srcHeight = source.height || layer.height;
+		if (source instanceof HTMLImageElement) {
+			if (!source.complete || source.naturalWidth <= 0 || source.naturalHeight <= 0) {
+				return null;
+			}
+		} else if (source instanceof HTMLCanvasElement) {
+			if (source.width <= 0 || source.height <= 0) {
+				return null;
+			}
+		}
 
-		if (srcWidth <= 0 || srcHeight <= 0) return null;
+		var srcWidth = source.naturalWidth || source.width || layer.width;
+		var srcHeight = source.naturalHeight || source.height || layer.height;
+
+		if (!srcWidth || !srcHeight || srcWidth <= 0 || srcHeight <= 0 || isNaN(srcWidth) || isNaN(srcHeight)) return null;
 
 		// Check if we need to re-upload
 		// render_function layers (brush, text, etc.) change content every frame
@@ -645,11 +659,15 @@ class WebGL_renderer_class {
 		}
 
 		if (cached && layer.link_canvas && cached.width === srcWidth && cached.height === srcHeight) {
-			gl.activeTexture(gl.TEXTURE0);
-			gl.bindTexture(gl.TEXTURE_2D, cached.texture);
-			gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, false);
-			gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, source);
-			return cached;
+			try {
+				gl.activeTexture(gl.TEXTURE0);
+				gl.bindTexture(gl.TEXTURE_2D, cached.texture);
+				gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, false);
+				gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, source);
+				return cached;
+			} catch (e) {
+				return null;
+			}
 		}
 
 		// Delete old texture if not reusing (dimensions changed or content changed)
@@ -663,8 +681,13 @@ class WebGL_renderer_class {
 		gl.bindTexture(gl.TEXTURE_2D, texture);
 
 		// Upload pixel data from canvas or image
-		gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, false);
-		gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, source);
+		try {
+			gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, false);
+			gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, source);
+		} catch (e) {
+			gl.deleteTexture(texture);
+			return null;
+		}
 
 		// Set texture parameters
 		gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
@@ -719,14 +742,17 @@ class WebGL_renderer_class {
 
 			// Pad the canvas to prevent clipping from line caps, joins, and
 			// anti-aliasing halos at the edges of the stroke bounding box.
-			var brushSize = (layer.params && layer.params.size) || 0;
-			var pad = Math.ceil(brushSize / 2) + 1;
+			var rawBrushSize = (layer.params && layer.params.size != null) ? parseFloat(layer.params.size) : 0;
+			var brushSize = (!isNaN(rawBrushSize) && rawBrushSize > 0) ? rawBrushSize : 0;
+			var pad = Math.max(1, Math.ceil(brushSize / 2) + 1);
 
 			var w = Math.max(1, Math.round(layer.width || 1));
 			var h = Math.max(1, Math.round(layer.height || 1));
+			if (isNaN(w) || w <= 0) w = 1;
+			if (isNaN(h) || h <= 0) h = 1;
 			var canvas = document.createElement('canvas');
-			canvas.width = (w + pad * 2) * SUPER;
-			canvas.height = (h + pad * 2) * SUPER;
+			canvas.width = Math.max(1, Math.round((w + pad * 2) * SUPER));
+			canvas.height = Math.max(1, Math.round((h + pad * 2) * SUPER));
 			var ctx = canvas.getContext('2d');
 
 			try {

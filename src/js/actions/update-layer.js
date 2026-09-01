@@ -74,7 +74,7 @@ export class Update_layer_action extends Base_action {
 			}
 		}
 
-		if (this.reference_layer.type === 'text') {
+		if (this.reference_layer.type === 'text' && ('data' in this.settings)) {
 			this.reference_layer._needs_update_data = true;
 		}
 		if (this.settings.params || this.settings.width || this.settings.height) {
@@ -102,7 +102,7 @@ export class Update_layer_action extends Base_action {
 				delete this.reference_layer.mask._alpha_source;
 				this.old_mask = null;
 			}
-			if (this.reference_layer.type === 'text') {
+			if (this.reference_layer.type === 'text' && ('data' in this.old_settings)) {
 				this.reference_layer._needs_update_data = true;
 			}
 			if (this.old_settings.params || this.old_settings.width || this.old_settings.height) {

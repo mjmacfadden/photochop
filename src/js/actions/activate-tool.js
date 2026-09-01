@@ -96,6 +96,15 @@ export class Activate_tool_action extends Base_action {
 			} else {
 				this.hide_brush_cursor();
 			}
+
+			if (key === 'text') {
+				const textTool = (app.GUI && app.GUI.GUI_tools && app.GUI.GUI_tools.tools_modules['text']) ? app.GUI.GUI_tools.tools_modules['text'].object : null;
+				if (textTool && config.layer && config.layer.type === 'text') {
+					if (textTool.focus_textarea) {
+						textTool.focus_textarea();
+					}
+				}
+			}
 		}
 
 		//send activate event to new tool

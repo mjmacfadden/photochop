@@ -29,53 +29,28 @@ class Erase_class extends Base_tools_class {
 	}
 
 	load() {
-		this.default_events();
-
-		document.addEventListener('pointerdown', (e) => {
-			if (e.pressure !== undefined && e.pressure > 0) {
-				this.pointer_pressure = e.pressure;
-				this.pressure_supported = true;
-			}
-		});
-		document.addEventListener('pointermove', (e) => {
-			if (e.pressure !== undefined && e.pressure > 0) {
-				this.pointer_pressure = e.pressure;
-				this.pressure_supported = true;
-			}
-		});
-	}
-
-	default_dragMove(event, is_touch) {
-		if (config.TOOL.name != this.name)
-			return;
-		this.mousemove(event, is_touch);
-
-		// Mouse cursor outline
-		var mouse = this.get_mouse_info(event);
-		var params = this.getParams();
-		this.show_mouse_cursor(mouse.x, mouse.y, params.size, 'circle');
+		// Event routing is handled centrally by Base_tools_class
 	}
 
 	/**
 	 * Determines if erasing should paint background color (locked layer or explicitly set)
-	 * or clear to transparency.
 	 */
 	is_erase_to_bg() {
 		var params = this.getParams();
-		if (params.erase_to === 'Background Color')
+		if (params.erase_to === 'Background Color' || params.erase_to_bg === true)
 			return true;
 		if (params.erase_to === 'Transparent')
 			return false;
-		// Auto: if layer is locked (e.g. background layer), default to background color
 		return (config.layer && config.layer.locked === true);
 	}
 
 	ensure_raster_layer() {
-		if (!config.layer) {
+		if (config.layer == null || config.layers.length === 0) {
 			var new_layer = {
-				name: 'Layer 1',
+				name: 'Layer ' + (app.Layers ? app.Layers.auto_increment : 1),
 				type: 'image',
 				link: document.createElement('canvas'),
+				data: null,
 				width: config.WIDTH,
 				height: config.HEIGHT,
 				width_original: config.WIDTH,
@@ -87,6 +62,11 @@ class Erase_class extends Base_tools_class {
 			new_layer.link.height = config.HEIGHT;
 			app.State.do_action(new app.Actions.Insert_layer_action(new_layer, false));
 			return config.layer;
+		}
+
+		if (config.layer.type === 'adjustment') {
+			alertify.error('Cannot erase directly on an adjustment layer. Create a new layer or edit the layer mask.');
+			return null;
 		}
 
 		if (config.layer.type !== 'image') {
@@ -129,6 +109,14 @@ class Erase_class extends Base_tools_class {
 		var mouse = this.get_mouse_info(e);
 		if (mouse.click_valid == false) {
 			return;
+		}
+
+		var p = (e && e.pressure) || (config.mouse && config.mouse.pressure);
+		if (p && p > 0 && p < 1) {
+			this.pressure_supported = true;
+			this.pointer_pressure = p;
+		} else {
+			this.pressure_supported = false;
 		}
 
 		if (config.mask_active === true && config.layer && config.layer.mask != null) {

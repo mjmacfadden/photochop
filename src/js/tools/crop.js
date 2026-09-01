@@ -39,23 +39,12 @@ class Crop_class extends Base_tools_class {
 	}
 
 	load() {
-		this.default_events();
-	}
-
-	default_dragStart(event) {
-		this.is_mousedown_canvas = false;
-		if (config.TOOL.name != this.name)
-			return;
-		if (!event.target.closest('#main_wrapper'))
-			return;
-
-		this.is_mousedown_canvas = true;
-		this.mousedown(event);
+		// Event routing is handled centrally by Base_tools_class
 	}
 
 	mousedown(e) {
 		var mouse = this.get_mouse_info(e);
-		if (this.Base_selection.is_drag == false || mouse.click_valid == false)
+		if (mouse.click_valid == false)
 			return;
 
 		this.mousedown_selection = JSON.parse(JSON.stringify(this.selection));
@@ -70,7 +59,7 @@ class Crop_class extends Base_tools_class {
 
 	mousemove(e) {
 		var mouse = this.get_mouse_info(e);
-		if (this.Base_selection.is_drag == false || mouse.is_drag == false) {
+		if (mouse.is_drag == false) {
 			return;
 		}
 		if (e.type == 'mousedown' && mouse.click_valid == false) {
@@ -109,10 +98,7 @@ class Crop_class extends Base_tools_class {
 	mouseup(e) {
 		var mouse = this.get_mouse_info(e);
 
-		if (!this.Base_selection.is_drag) {
-			return;
-		}
-		if (e.type == 'mousedown' && mouse.click_valid == false) {
+		if (mouse.click_valid == false) {
 			return;
 		}
 

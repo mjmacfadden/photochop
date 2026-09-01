@@ -198,6 +198,10 @@ const menuDefinition = [
 				target: 'view/grid.grid'
 			},
 			{
+				name: 'Transparency Grid',
+				target: 'view/transparency.toggle'
+			},
+			{
 				name: 'Guides',
 				children: [
 					{

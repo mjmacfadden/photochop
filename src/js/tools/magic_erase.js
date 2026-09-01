@@ -22,17 +22,7 @@ class Magic_erase_class extends Base_tools_class {
 	}
 
 	load() {
-		var _this = this;
-
-		//mouse events
-		document.addEventListener('mousedown', function (event) {
-			_this.dragStart(event);
-		});
-
-		// collect touch events
-		document.addEventListener('touchstart', function (event) {
-			_this.dragStart(event);
-		});
+		// Event routing is handled centrally by Base_tools_class
 	}
 
 	mousedown(e) {
