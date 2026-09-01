@@ -531,6 +531,16 @@ class Base_selection_class {
 		return null;
 	}
 
+	static get_marquee_position() {
+		if (app.Layers && app.Layers.Base_selection) {
+			const data = app.Layers.Base_selection.get_selection_data();
+			if (data && data.has_selection && data.x != null) {
+				return data;
+			}
+		}
+		return null;
+	}
+
 	get_selection_data() {
 		if (this.has_selection && this.selection_bounds) {
 			return {

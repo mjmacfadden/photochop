@@ -124,7 +124,7 @@ class Select_tool_class extends Base_tools_class {
 		this.mousemove(event);
 	}
 
-	dragEnd(event) {
+	async dragEnd(event) {
 		var mouse = this.get_mouse_info(event);
 		if (config.TOOL.name != this.name)
 			return;
@@ -132,7 +132,7 @@ class Select_tool_class extends Base_tools_class {
 			return;
 		}
 
-		this.mouseup(event);
+		await this.mouseup(event);
 		this.Base_layers.render();
 	}
 
@@ -229,7 +229,7 @@ class Select_tool_class extends Base_tools_class {
 		}
 	}
 
-	mouseup(e) {
+	async mouseup(e) {
 		var mouse = this.get_mouse_info(e);
 		if (mouse.click_valid == false || config.mouse_lock === true) {
 			return;
@@ -265,7 +265,7 @@ class Select_tool_class extends Base_tools_class {
 						x, y, width, height
 					})
 				);
-				app.State.do_action(
+				await app.State.do_action(
 					new app.Actions.Bundle_action('resize_layer', 'Resize Layer', resize_actions)
 				);
 			}
@@ -275,7 +275,7 @@ class Select_tool_class extends Base_tools_class {
 			if(this.rotate_initial != rotate && rotate !== null){
 				//save state
 				config.layer.rotate = this.rotate_initial;
-				app.State.do_action(
+				await app.State.do_action(
 					new app.Actions.Bundle_action('resize_layer', 'Resize Layer', [
 						new app.Actions.Update_layer_action(config.layer.id, {
 							rotate
@@ -322,7 +322,7 @@ class Select_tool_class extends Base_tools_class {
 						height: this.mousedown_dimensions.height
 					})
 				);
-				app.State.do_action(
+				await app.State.do_action(
 					new app.Actions.Bundle_action('move_layer', 'Move Layer', move_actions)
 				);
 			}

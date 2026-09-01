@@ -116,7 +116,7 @@ class Base_tools_class {
 		if (activeTool) {
 			if (typeof activeTool.dblclick === 'function') {
 				activeTool.dblclick(event);
-			} else if (typeof activeTool.doubleClick === 'function') {
+			} else if (typeof activeTool.doubleClick === 'function' && activeTool.doubleClick !== Base_tools_class.prototype.doubleClick) {
 				activeTool.doubleClick(event);
 			}
 		}

@@ -55,7 +55,15 @@ class Copy_class {
 			this.File_save.fillCanvasBackground(ctx, '#ffffff');
 			ctx.globalCompositeOperation = 'source-over';
 		}
-		var marquee = Base_selection_class.get_marquee_position();
+		var marquee = null;
+		if (typeof Base_selection_class.get_marquee_position === 'function') {
+			marquee = Base_selection_class.get_marquee_position();
+		} else if (app.Layers && app.Layers.Base_selection) {
+			const data = app.Layers.Base_selection.get_selection_data();
+			if (data && data.has_selection && data.x != null) {
+				marquee = data;
+			}
+		}
 		return {
 			canvas: canvas,
 			x: marquee ? marquee.x : (config.layer ? (config.layer.x || 0) : 0),

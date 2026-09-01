@@ -43,19 +43,25 @@ export class Set_selection_action extends Base_action {
 				app.Layers.Base_selection.clear_mask();
 			}
 		} else {
-			this.settings_reference = app.Layers.Base_selection.find_settings('selection');
-			this.old_settings_data = JSON.parse(JSON.stringify(this.settings_reference.data));
-			if (this.x != null)
-				this.settings_reference.data.x = this.x;
-			if (this.y != null)
-				this.settings_reference.data.y = this.y;
-			if (this.width != null)
-				this.settings_reference.data.width = this.width;
-			if (this.height != null)
-				this.settings_reference.data.height = this.height;
-			if (this.extra_data != null) {
-				for (let prop in this.extra_data) {
-					this.settings_reference.data[prop] = this.extra_data[prop];
+			var target_tool = (config.TOOL && config.TOOL.name) ? config.TOOL.name : 'selection';
+			this.settings_reference = app.Layers.Base_selection.find_settings(target_tool);
+			if (!this.settings_reference) {
+				this.settings_reference = app.Layers.Base_selection.find_settings('selection');
+			}
+			if (this.settings_reference && this.settings_reference.data) {
+				this.old_settings_data = JSON.parse(JSON.stringify(this.settings_reference.data));
+				if (this.x != null)
+					this.settings_reference.data.x = this.x;
+				if (this.y != null)
+					this.settings_reference.data.y = this.y;
+				if (this.width != null)
+					this.settings_reference.data.width = this.width;
+				if (this.height != null)
+					this.settings_reference.data.height = this.height;
+				if (this.extra_data != null) {
+					for (let prop in this.extra_data) {
+						this.settings_reference.data[prop] = this.extra_data[prop];
+					}
 				}
 			}
 		}
@@ -72,13 +78,15 @@ export class Set_selection_action extends Base_action {
 				app.Layers.Base_selection.clear_mask();
 			}
 		} else {
-			if (this.old_settings_override) {
-				for (let prop in this.old_settings_override) {
-					this.settings_reference.data[prop] = this.old_settings_override[prop];   
-				}
-			} else if (this.old_settings_data) {
-				for (let prop in this.old_settings_data) {
-					this.settings_reference.data[prop] = this.old_settings_data[prop];   
+			if (this.settings_reference && this.settings_reference.data) {
+				if (this.old_settings_override) {
+					for (let prop in this.old_settings_override) {
+						this.settings_reference.data[prop] = this.old_settings_override[prop];   
+					}
+				} else if (this.old_settings_data) {
+					for (let prop in this.old_settings_data) {
+						this.settings_reference.data[prop] = this.old_settings_data[prop];   
+					}
 				}
 			}
 			this.settings_reference = null;

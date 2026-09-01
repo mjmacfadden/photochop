@@ -79,6 +79,62 @@ class GUI_shortcuts_class {
 		document.addEventListener('keydown', (event) => {
 			if (this.Helper.is_input(event.target)) return;
 
+			// If Text Tool is active and a text layer is selected, disable tool keybindings
+			const isTextToolActive = config.TOOL && config.TOOL.name === 'text';
+			const isTextLayer = config.layer && config.layer.type === 'text';
+			if (isTextToolActive && isTextLayer) {
+				if (!event.ctrlKey && !event.metaKey) {
+					const textTool = (app.GUI && app.GUI.GUI_tools && app.GUI.GUI_tools.tools_modules['text'])
+						? app.GUI.GUI_tools.tools_modules['text'].object
+						: null;
+					if (textTool) {
+						if (event.key === 'Escape') {
+							event.preventDefault();
+							event.stopImmediatePropagation();
+							if (textTool.textarea) textTool.textarea.blur();
+							if (app.GUI && app.GUI.GUI_tools) {
+								app.GUI.GUI_tools.activate_tool('select');
+							}
+							return;
+						}
+						if (textTool.focus_textarea) {
+							textTool.focus_textarea();
+						} else if (textTool.textarea && document.activeElement !== textTool.textarea) {
+							textTool.textarea.focus({ preventScroll: true });
+						}
+						// If textarea was not already focused when key was pressed, forward characters directly
+						if (document.activeElement !== textTool.textarea) {
+							const editor = textTool.get_editor(config.layer);
+							if (editor) {
+								if (event.key.length === 1 && !event.altKey) {
+									editor.insert_text_at_current_position(event.key);
+									textTool.Base_layers.render();
+									textTool.extend_fixed_bounds(config.layer, editor);
+									event.preventDefault();
+								} else if (event.key === 'Backspace') {
+									editor.delete_character_at_current_position(false);
+									textTool.Base_layers.render();
+									textTool.extend_fixed_bounds(config.layer, editor);
+									event.preventDefault();
+								} else if (event.key === 'Delete') {
+									editor.delete_character_at_current_position(true);
+									textTool.Base_layers.render();
+									textTool.extend_fixed_bounds(config.layer, editor);
+									event.preventDefault();
+								} else if (event.key === 'Enter') {
+									editor.insert_text_at_current_position('\n');
+									textTool.Base_layers.render();
+									textTool.extend_fixed_bounds(config.layer, editor);
+									event.preventDefault();
+								}
+							}
+						}
+					}
+					// Return early to ensure single-key tool shortcuts (B, V, E, C, etc.) are completely disabled!
+					return;
+				}
+			}
+
 			// Prevent browser Alt/Option key from stealing focus / hiding cursor
 			if (event.key === 'Alt' || event.key === 'AltGraph' || event.code === 'AltLeft' || event.code === 'AltRight' || event.keyCode === 18) {
 				event.preventDefault();

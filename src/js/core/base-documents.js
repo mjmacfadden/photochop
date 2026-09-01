@@ -128,6 +128,7 @@ class Base_documents_class {
 			transparency: true,
 			is_dirty: options.is_dirty || false,
 			selection: options.selection || null,
+			selection_mask: options.selection_mask || null,
 			Composite_cache: options.Composite_cache || null,
 		};
 	}
@@ -198,6 +199,10 @@ class Base_documents_class {
 			: null;
 		if (selModule && selModule.selection) {
 			doc.selection = JSON.parse(JSON.stringify(selModule.selection));
+		}
+		const baseSel = (app.Layers && app.Layers.Base_selection) ? app.Layers.Base_selection : (selModule ? selModule.Base_selection : null);
+		if (baseSel) {
+			doc.selection_mask = baseSel.has_selection ? baseSel.clone_mask_canvas() : null;
 		}
 	}
 
@@ -275,6 +280,14 @@ class Base_documents_class {
 		const selModule = (app.GUI && app.GUI.GUI_tools && app.GUI.GUI_tools.tools_modules['selection'])
 			? app.GUI.GUI_tools.tools_modules['selection'].object
 			: null;
+		const baseSel = (app.Layers && app.Layers.Base_selection) ? app.Layers.Base_selection : (selModule ? selModule.Base_selection : null);
+		if (baseSel) {
+			if (doc.selection_mask) {
+				baseSel.set_mask_canvas(doc.selection_mask);
+			} else {
+				baseSel.clear_mask();
+			}
+		}
 		if (selModule) {
 			const restoredSel = doc.selection ? JSON.parse(JSON.stringify(doc.selection)) : {
 				x: null,
