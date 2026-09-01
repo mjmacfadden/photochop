@@ -27,41 +27,7 @@ class Pencil_class extends Base_tools_class {
 	}
 
 	load() {
-		var _this = this;
-
-		document.addEventListener('pointerdown', function (event) {
-			_this.pointerdown(event);
-		});
-		document.addEventListener('pointermove', function (event) {
-			_this.pointermove(event);
-		});
-
-		this.default_events();
-	}
-
-	default_dragMove(event, is_touch) {
-		if (config.TOOL.name != this.name)
-			return;
-		this.mousemove(event, is_touch);
-
-		var mouse = this.get_mouse_info(event);
-		var params = this.getParams();
-		this.show_mouse_cursor(mouse.x, mouse.y, params.size || 1, 'rect');
-	}
-
-	pointerdown(e) {
-		if (e.pressure && e.pressure !== 0 && e.pressure !== 0.5 && e.pressure <= 1) {
-			this.pressure_supported = true;
-			this.pointer_pressure = e.pressure;
-		} else {
-			this.pressure_supported = false;
-		}
-	}
-
-	pointermove(e) {
-		if (this.pressure_supported && e.pressure < 1) {
-			this.pointer_pressure = e.pressure;
-		}
+		// Event routing is handled centrally by Base_tools_class
 	}
 
 	ensure_raster_layer() {
@@ -82,6 +48,11 @@ class Pencil_class extends Base_tools_class {
 			new_layer.link.height = config.HEIGHT;
 			app.State.do_action(new app.Actions.Insert_layer_action(new_layer, false));
 			return config.layer;
+		}
+
+		if (config.layer.type === 'adjustment') {
+			alertify.error('Cannot paint directly on an adjustment layer. Create a new layer or edit the layer mask.');
+			return null;
 		}
 
 		if (config.layer.type !== 'image') {
@@ -124,6 +95,14 @@ class Pencil_class extends Base_tools_class {
 		var mouse = this.get_mouse_info(e);
 		if (mouse.click_valid == false) {
 			return;
+		}
+
+		var p = (e && e.pressure) || (config.mouse && config.mouse.pressure);
+		if (p && p > 0 && p < 1) {
+			this.pressure_supported = true;
+			this.pointer_pressure = p;
+		} else {
+			this.pressure_supported = false;
 		}
 
 		if (config.mask_active === true && config.layer && config.layer.mask != null) {

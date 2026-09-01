@@ -25,15 +25,13 @@ class Polygon_class extends Base_tools_class {
 	}
 
 	load() {
-		var _this = this;
-		this.default_events();
-		document.addEventListener('keydown', function (event) {
-			var code = event.code;
-			if (config.TOOL.name == _this.name && code == "Escape") {
-				//escape
-				config.layer.status = null;
-			}
-		});
+		// Event routing is handled centrally by Base_tools_class
+	}
+
+	keydown(event) {
+		if (event.code == "Escape" && config.layer) {
+			config.layer.status = null;
+		}
 	}
 
 	/**

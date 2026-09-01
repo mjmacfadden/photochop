@@ -51,90 +51,55 @@ class Select_tool_class extends Base_tools_class {
 	}
 
 	load() {
-		var _this = this;
+		// Event routing is handled centrally by Base_tools_class
+	}
 
-		//mouse events
-		document.addEventListener('mousedown', function (e) {
-			_this.dragStart(e);
-		});
-		document.addEventListener('mousemove', function (e) {
-			_this.dragMove(e);
-		});
-		document.addEventListener('mouseup', function (e) {
-			_this.dragEnd(e);
-		});
+	keydown(event) {
+		var k = event.key;
 
-		// collect touch events
-		document.addEventListener('touchstart', function (e) {
-			_this.dragStart(e);
-		});
-		document.addEventListener('touchmove', function (e) {
-			_this.dragMove(e);
-		});
-		document.addEventListener('touchend', function (e) {
-			_this.dragEnd(e);
-		});
+		if (k == "ArrowUp") {
+			this.move(0, -1, event);
+		}
+		else if (k == "ArrowDown") {
+			this.move(0, 1, event);
+		}
+		else if (k == "ArrowRight") {
+			this.move(1, 0, event);
+		}
+		else if (k == "ArrowLeft") {
+			this.move(-1, 0, event);
+		}
+		if (k == "Delete") {
+			if (config.layer && config.layer.locked !== true) {
+				app.State.do_action(
+					new app.Actions.Delete_layer_action(config.layer.id)
+				);
+			}
+		}
+	}
 
-		//keyboard actions
-		document.addEventListener('keydown', (event) => {
-			if (config.TOOL.name != this.name)
-				return;
-			if (this.POP.get_active_instances() > 0) {
-				return;
+	keyup(event) {
+		var k = event.key;
+		if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(k)) {
+			if (this.keyboard_move_start_position && config.layer) {
+				let x = config.layer.x;
+				let y = config.layer.y;
+				config.layer.x = this.keyboard_move_start_position.x;
+				config.layer.y = this.keyboard_move_start_position.y;
+				var keyboard_actions = [
+					new app.Actions.Update_layer_action(config.layer.id, { x, y })
+				];
+				keyboard_actions = keyboard_actions.concat(
+					this.Mask.get_linked_mask_actions(config.layer,
+						{ x: this.keyboard_move_start_position.x, y: this.keyboard_move_start_position.y, width: config.layer.width, height: config.layer.height },
+						{ x, y, width: config.layer.width, height: config.layer.height })
+				);
+				app.State.do_action(
+					new app.Actions.Bundle_action('move_layer', 'Move Layer', keyboard_actions)
+				);
+				this.keyboard_move_start_position = null;
 			}
-			if (this.Helper.is_input(event.target))
-				return;
-			var k = event.key;
-
-			if (k == "ArrowUp") {
-				this.move(0, -1, event);
-			}
-			else if (k == "ArrowDown") {
-				this.move(0, 1, event);
-			}
-			else if (k == "ArrowRight") {
-				this.move(1, 0, event);
-			}
-			else if (k == "ArrowLeft") {
-				this.move(-1, 0, event);
-			}
-			if (k == "Delete") {
-				if (config.TOOL.name == this.name && config.layer.locked !== true) {
-					app.State.do_action(
-						new app.Actions.Delete_layer_action(config.layer.id)
-					);
-				}
-			}
-		});
-		document.addEventListener('keyup', (event) => {
-			if (config.TOOL.name != this.name)
-				return;
-			if (this.POP.active == true)
-				return;
-			if (this.Helper.is_input(event.target))
-				return;
-			var k = event.key;
-			if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(k)) {
-				if (this.keyboard_move_start_position) {
-					let x = config.layer.x;
-					let y = config.layer.y;
-					config.layer.x = this.keyboard_move_start_position.x;
-					config.layer.y = this.keyboard_move_start_position.y;
-					var keyboard_actions = [
-						new app.Actions.Update_layer_action(config.layer.id, { x, y })
-					];
-					keyboard_actions = keyboard_actions.concat(
-						this.Mask.get_linked_mask_actions(config.layer,
-							{ x: this.keyboard_move_start_position.x, y: this.keyboard_move_start_position.y, width: config.layer.width, height: config.layer.height },
-							{ x, y, width: config.layer.width, height: config.layer.height })
-					);
-					app.State.do_action(
-						new app.Actions.Bundle_action('move_layer', 'Move Layer', keyboard_actions)
-					);
-					this.keyboard_move_start_position = null;
-				}
-			}
-		});
+		}
 	}
 
 	dragStart(event) {
@@ -177,16 +142,21 @@ class Select_tool_class extends Base_tools_class {
 			return;
 		}
 
-		this.rotate_initial = config.layer.rotate;
+		this.rotate_initial = config.layer ? config.layer.rotate : null;
+
+		// Hit test selection handles and rotation zone first
+		this.Base_selection.selected_object_actions(e);
 
 		if (this.Base_selection.mouse_lock != null) {
 			this.resizing = true;
+			this.moving = false;
 			this.Base_selection.find_settings().keep_ratio = config.layer.type === 'image';
 			if (config.layer.type === 'text' && config.layer.params && config.layer.params.boundary === 'dynamic') {
 				config.layer.params.boundary = 'box';
 			}
 		}
 		else {
+			this.resizing = false;
 			this.moving = true;
 			await this.auto_select_object(e);
 			if (config.layer.locked === true) {
@@ -225,6 +195,9 @@ class Select_tool_class extends Base_tools_class {
 		if (mouse.is_drag == false || mouse.click_valid == false || config.mouse_lock === true) {
 			return;
 		}
+
+		this.Base_selection.selected_object_actions(e);
+
 		if (this.resizing) {
 
 			//also handle rotation
@@ -261,6 +234,9 @@ class Select_tool_class extends Base_tools_class {
 		if (mouse.click_valid == false || config.mouse_lock === true) {
 			return;
 		}
+
+		this.Base_selection.selected_object_actions(e);
+
 		if (this.resizing) {
 			let x = config.layer.x;
 			let y = config.layer.y;
@@ -307,6 +283,7 @@ class Select_tool_class extends Base_tools_class {
 					])
 				);
 			}
+			this.resizing = false;
 		}
 		else if (this.moving) {
 			var new_x = Math.round(mouse.x - mouse.click_x + this.mousedown_dimensions.x);

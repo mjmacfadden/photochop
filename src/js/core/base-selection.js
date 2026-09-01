@@ -72,35 +72,61 @@ class Base_selection_class {
 		// marching ants animation state
 		this.ant_offset = 0;
 		this.ant_keep_rendering = false;
-		// cached union-silhouette contours for the current selection
-		this._ant_cache = { key: null, contours: null };
+
+		// Dedicated selection alpha channel (raster mask canvas)
+		this.mask_canvas = document.createElement('canvas');
+		this.mask_canvas.width = Math.max(1, config.WIDTH || 800);
+		this.mask_canvas.height = Math.max(1, config.HEIGHT || 600);
+		this.mask_ctx = this.mask_canvas.getContext('2d', { willReadFrequently: true });
+		this.has_selection = false;
+		this.selection_bounds = null;
+		this.selection_contours = [];
+		this._preview_contours = null;
+		this._preview_canvas = null;
+		this._preview_lasso_path = null;
 
 		this.events();
 	}
 
 	events() {
-		document.addEventListener('mousedown', (e) => {
+		const handlePointerDown = (e) => {
 			this.is_drag = false;
-			if(this.is_touch == true)
-				return;
+			if (e.pointerType === 'touch')
+				this.is_touch = true;
 			if (!e.target.closest('#main_wrapper'))
 				return;
 			this.is_drag = true;
 			this.selected_object_actions(e);
+		};
+		const handlePointerMove = (e) => {
+			this.selected_object_actions(e);
+		};
+		const handlePointerUp = (e) => {
+			this.selected_object_actions(e);
+		};
+
+		document.addEventListener('pointerdown', handlePointerDown);
+		document.addEventListener('pointermove', handlePointerMove);
+		document.addEventListener('pointerup', handlePointerUp);
+		document.addEventListener('pointercancel', handlePointerUp);
+
+		// Fallback for non-PointerEvent browsers
+		document.addEventListener('mousedown', (e) => {
+			if (window.PointerEvent) return;
+			handlePointerDown(e);
 		});
 		document.addEventListener('mousemove', (e) => {
-			if(this.is_touch == true)
-				return;
-			this.selected_object_actions(e);
+			if (window.PointerEvent) return;
+			handlePointerMove(e);
 		});
 		document.addEventListener('mouseup', (e) => {
-			if(this.is_touch == true)
-				return;
-			this.selected_object_actions(e);
+			if (window.PointerEvent) return;
+			handlePointerUp(e);
 		});
 
-		// touch
+		// touch fallback
 		document.addEventListener('touchstart', (event) => {
+			if (window.PointerEvent) return;
 			this.is_drag = false;
 			this.is_touch = true;
 			if (!event.target.closest('#main_wrapper'))
@@ -109,9 +135,11 @@ class Base_selection_class {
 			this.selected_object_actions(event);
 		});
 		document.addEventListener('touchmove', (event) => {
+			if (window.PointerEvent) return;
 			this.selected_object_actions(event);
-		}, {passive: false});
+		}, { passive: false });
 		document.addEventListener('touchend', (event) => {
+			if (window.PointerEvent) return;
 			this.selected_object_actions(event);
 		});
 
@@ -159,8 +187,8 @@ class Base_selection_class {
 		return settings.data;
 	}
 
-	find_settings() {
-		var current_key = config.TOOL.name;
+	find_settings(custom_key = null) {
+		var current_key = custom_key || (config.TOOL ? config.TOOL.name : 'selection');
 		var settings = null;
 
 		for (var i in settings_all) {
@@ -170,11 +198,13 @@ class Base_selection_class {
 
 		//default
 		if (settings === null) {
-			settings = settings_all['main'];
+			settings = settings_all['selection'] || settings_all['main'];
 		}
 
 		//find data
-		settings.data = (settings.data_function).call();
+		if (settings && typeof settings.data_function === 'function') {
+			settings.data = settings.data_function.call();
+		}
 
 		return settings;
 	}
@@ -199,11 +229,8 @@ class Base_selection_class {
 			overlay_ctx.clearRect(0, 0, overlay_el.width, overlay_el.height);
 		}
 
-		//draw every persistent marching-ants selection - they stay visible
-		//even when another tool (brush, pencil, fill, ...) is active.
-		//drawn on overlay_ctx so marching ants appear above guides (z-index 5 vs 4).
-		var marquees = this.get_marquee_selections();
-		if (marquees.length) {
+		//draw persistent marching-ants selection from selection channel
+		if (this.has_selection || (this._preview_contours != null && this._preview_contours.length > 0) || (this._preview_lasso_path != null && this._preview_lasso_path.length > 1)) {
 			var draw_ctx = this.ctx;
 			if (overlay_ctx != null) {
 				draw_ctx = overlay_ctx;
@@ -212,9 +239,7 @@ class Base_selection_class {
 			}
 			draw_ctx.save();
 			draw_ctx.globalAlpha = 1;
-			for (var m = 0; m < marquees.length; m++) {
-				this.draw_marching_ants(marquees[m].data, draw_ctx);
-			}
+			this.draw_marching_ants(draw_ctx);
 			draw_ctx.restore();
 			this.ant_keep_rendering = true;
 		}
@@ -475,49 +500,7 @@ class Base_selection_class {
 	}
 
 	/**
-	 * flattens a marching-ants selection into a list of regions to draw or
-	 * process. Composed selections return their committed regions (shift/alt
-	 * modes), simple selections fall back to the top-level geometry as a single
-	 * 'add' region. The in-progress drag preview is appended on request.
-	 *
-	 * @param {object} data
-	 * @param {boolean} [includeActive] - also append the current drag preview region
-	 */
-	get_selection_regions(data, includeActive) {
-		var regions = [];
-		if (data == null)
-			return regions;
-
-		if (Array.isArray(data.regions) && data.regions.length > 0) {
-			regions = data.regions.slice();
-			if (includeActive === true && data.active_region != null
-				&& data.active_region.shape !== 'lasso'
-				&& data.active_region.width != null && data.active_region.height != null) {
-				regions.push(data.active_region);
-			}
-		}
-		else if (data.x != null && data.width != null && data.height != null && data.width !== 0 && data.height !== 0) {
-			regions = [{
-				shape: data.shape || 'rect',
-				x: data.x,
-				y: data.y,
-				width: data.width,
-				height: data.height,
-				path: data.path || null,
-				mode: 'add',
-			}];
-		}
-		else if (includeActive === true && data.active_region != null
-			&& data.active_region.shape !== 'lasso'
-			&& data.active_region.width != null && data.active_region.height != null) {
-			regions = [data.active_region];
-		}
-		return regions;
-	}
-
-	/**
-	 * returns {settings, data} pairs for every active marching-ants selection,
-	 * regardless of which tool is currently active.
+	 * returns {settings, data} pairs for active selections (backward compatibility)
 	 */
 	get_marquee_selections() {
 		var list = [];
@@ -525,95 +508,279 @@ class Base_selection_class {
 			var s = settings_all[k];
 			if (s == null || s.marching_ants_mode !== true)
 				continue;
-
 			var data = null;
 			if (s.data_function != null)
 				data = s.data_function.call();
 			if (data == null)
 				continue;
-			if (data.status == 'draft')
-				continue;
-			if (data.hide_selection_if_active === true && data.type == config.TOOL.name)
-				continue;
-			if (data.x == null || data.y == null || data.width == null || data.height == null)
-				continue;
-
 			list.push({ settings: s, data: data });
 		}
 		return list;
 	}
 
-	/**
-	 * Static method to get the current marquee selection position
-	 * without needing an instance. Returns {x, y} or null.
-	 */
-	static get_marquee_position() {
-		for (var k in settings_all) {
-			var s = settings_all[k];
-			if (s == null || s.marching_ants_mode !== true)
-				continue;
-
-			var data = null;
-			if (s.data_function != null)
-				data = s.data_function.call();
-			if (data == null)
-				continue;
-			if (data.status == 'draft')
-				continue;
-			if (data.hide_selection_if_active === true && data.type == config.TOOL.name)
-				continue;
-			if (data.x == null || data.y == null)
-				continue;
-
-			return { x: data.x, y: data.y };
+	get_committed_selection_data() {
+		if (this.has_selection && this.selection_bounds) {
+			return {
+				x: this.selection_bounds.min_x,
+				y: this.selection_bounds.min_y,
+				width: this.selection_bounds.width,
+				height: this.selection_bounds.height,
+				has_selection: true,
+			};
 		}
 		return null;
 	}
 
-	/**
-	 * returns the data object of the active persistent marching-ants selection,
-	 * or null when nothing is selected. Used to constrain layer rendering.
-	 */
-	get_committed_selection_data() {
-		var marquees = this.get_marquee_selections();
-		if (marquees.length > 0)
-			return marquees[0].data;
-		return null;
+	get_selection_data() {
+		if (this.has_selection && this.selection_bounds) {
+			return {
+				x: this.selection_bounds.min_x,
+				y: this.selection_bounds.min_y,
+				width: this.selection_bounds.width,
+				height: this.selection_bounds.height,
+				has_selection: true,
+			};
+		}
+		return {
+			x: null,
+			y: null,
+			width: null,
+			height: null,
+			has_selection: false,
+		};
 	}
 
-	/**
-	 * draws Photoshop-style animated marching ants selection border.
-	 * The ants outline the total perimeter of the composed selection (the
-	 * union silhouette), not each individual region. Subtract regions render
-	 * as their own interior contours.
-	 */
-	draw_marching_ants(data, target_ctx = null) {
+	has_committed_selection() {
+		return this.has_selection;
+	}
+
+	is_marching_ants_active() {
+		return this.has_selection || (this._preview_contours != null && this._preview_contours.length > 0) || (this._preview_lasso_path != null && this._preview_lasso_path.length > 1);
+	}
+
+	point_inside_selection(x, y) {
+		if (!this.has_selection || !this.selection_bounds)
+			return false;
+		var bx = Math.round(x);
+		var by = Math.round(y);
+		if (bx < this.selection_bounds.min_x || bx > this.selection_bounds.max_x ||
+			by < this.selection_bounds.min_y || by > this.selection_bounds.max_y) {
+			return false;
+		}
+		if (bx < 0 || by < 0 || bx >= this.mask_canvas.width || by >= this.mask_canvas.height) {
+			return false;
+		}
+		var pixel = this.mask_ctx.getImageData(bx, by, 1, 1).data;
+		return pixel[3] > 127 || pixel[0] > 127;
+	}
+
+	translate_selection(dx, dy) {
+		if (!this.has_selection) return;
+		var W = this.mask_canvas.width;
+		var H = this.mask_canvas.height;
+		var temp = document.createElement('canvas');
+		temp.width = W;
+		temp.height = H;
+		temp.getContext('2d').drawImage(this.mask_canvas, 0, 0);
+
+		this.mask_ctx.clearRect(0, 0, W, H);
+		this.mask_ctx.drawImage(temp, dx, dy);
+		this.update_mask_state();
+		config.need_render = true;
+	}
+
+	apply_shape_to_mask(shape, x, y, width, height, path, mode = null, targetCtx = this.mask_ctx) {
+		if (mode == null || mode === 'replace') {
+			targetCtx.clearRect(0, 0, this.mask_canvas.width, this.mask_canvas.height);
+			targetCtx.globalCompositeOperation = 'source-over';
+		}
+		else if (mode === 'add') {
+			targetCtx.globalCompositeOperation = 'source-over';
+		}
+		else if (mode === 'subtract') {
+			targetCtx.globalCompositeOperation = 'destination-out';
+		}
+		else if (mode === 'intersect') {
+			targetCtx.globalCompositeOperation = 'destination-in';
+		}
+
+		targetCtx.beginPath();
+		this._build_shape_path(targetCtx, { shape, x, y, width, height, path });
+		targetCtx.fillStyle = '#ffffff';
+		targetCtx.fill();
+		targetCtx.globalCompositeOperation = 'source-over';
+	}
+
+	compute_preview_contours(shape, x, y, width, height, path, mode = null) {
+		if (!this._preview_canvas) {
+			this._preview_canvas = document.createElement('canvas');
+		}
+		var W = Math.max(1, config.WIDTH || 800);
+		var H = Math.max(1, config.HEIGHT || 600);
+		if (this._preview_canvas.width !== W || this._preview_canvas.height !== H) {
+			this._preview_canvas.width = W;
+			this._preview_canvas.height = H;
+		}
+		var pctx = this._preview_canvas.getContext('2d', { willReadFrequently: true });
+		pctx.clearRect(0, 0, W, H);
+
+		if (mode != null && this.has_selection) {
+			pctx.drawImage(this.mask_canvas, 0, 0);
+		}
+
+		this.apply_shape_to_mask(shape, x, y, width, height, path, mode, pctx);
+		this._preview_contours = this._trace_mask_contours(this._preview_canvas);
+		config.need_render = true;
+	}
+
+	update_mask_state() {
+		var contours = this._trace_mask_contours(this.mask_canvas);
+		if (!contours || contours.length === 0) {
+			this.has_selection = false;
+			this.selection_bounds = null;
+			this.selection_contours = [];
+		} else {
+			this.has_selection = true;
+			this.selection_contours = contours;
+			var min_x = Infinity, min_y = Infinity, max_x = -Infinity, max_y = -Infinity;
+			for (var c = 0; c < contours.length; c++) {
+				for (var p = 0; p < contours[c].length; p++) {
+					min_x = Math.min(min_x, contours[c][p][0]);
+					min_y = Math.min(min_y, contours[c][p][1]);
+					max_x = Math.max(max_x, contours[c][p][0]);
+					max_y = Math.max(max_y, contours[c][p][1]);
+				}
+			}
+			this.selection_bounds = {
+				min_x: min_x,
+				min_y: min_y,
+				max_x: max_x,
+				max_y: max_y,
+				width: max_x - min_x,
+				height: max_y - min_y,
+			};
+		}
+		for (var k in settings_all) {
+			var s = settings_all[k];
+			if (s && s.marching_ants_mode) {
+				if (this.has_selection && this.selection_bounds) {
+					if (s.data) {
+						s.data.x = this.selection_bounds.min_x;
+						s.data.y = this.selection_bounds.min_y;
+						s.data.width = this.selection_bounds.width;
+						s.data.height = this.selection_bounds.height;
+					}
+				} else if (s.data) {
+					s.data.x = null;
+					s.data.y = null;
+					s.data.width = null;
+					s.data.height = null;
+				}
+			}
+		}
+		config.need_render = true;
+	}
+
+	set_mask_canvas(src) {
+		var W = Math.max(1, config.WIDTH || (src ? src.width : 800));
+		var H = Math.max(1, config.HEIGHT || (src ? src.height : 600));
+		if (this.mask_canvas.width !== W || this.mask_canvas.height !== H) {
+			this.mask_canvas.width = W;
+			this.mask_canvas.height = H;
+		}
+		this.mask_ctx.clearRect(0, 0, W, H);
+		if (src) {
+			this.mask_ctx.drawImage(src, 0, 0);
+		}
+		this.update_mask_state();
+	}
+
+	clone_mask_canvas() {
+		var c = document.createElement('canvas');
+		c.width = this.mask_canvas.width;
+		c.height = this.mask_canvas.height;
+		c.getContext('2d').drawImage(this.mask_canvas, 0, 0);
+		return c;
+	}
+
+	clear_mask() {
+		this.mask_ctx.clearRect(0, 0, this.mask_canvas.width, this.mask_canvas.height);
+		this.has_selection = false;
+		this.selection_bounds = null;
+		this.selection_contours = [];
+		this._preview_contours = null;
+		this._preview_lasso_path = null;
+		if (app.Layers && app.Layers.Selection) {
+			app.Layers.Selection.selection.x = null;
+			app.Layers.Selection.selection.y = null;
+			app.Layers.Selection.selection.width = null;
+			app.Layers.Selection.selection.height = null;
+		}
+		config.need_render = true;
+	}
+
+	select_all() {
+		this.mask_ctx.fillStyle = '#ffffff';
+		this.mask_ctx.fillRect(0, 0, this.mask_canvas.width, this.mask_canvas.height);
+		this.update_mask_state();
+	}
+
+	draw_marching_ants(target_ctx = null) {
 		var ctx = target_ctx || this.ctx;
 		var Z = config.ZOOM || 1;
 
-		var contours = this.get_union_contours(data);
-
-		//animate - one dash step every ~50 ms
 		var phase = Math.floor(performance.now() / 50);
 		this.ant_offset = -(phase % 8) / Z;
 
 		var dash = 4 / Z;
 		var gap = 4 / Z;
 
-		ctx.save();
-		ctx.lineJoin = 'miter';
-		ctx.lineCap = 'butt';
+		var contours = this._preview_contours || (this.has_selection ? this.selection_contours : null);
+		if (contours && contours.length > 0) {
+			ctx.save();
+			ctx.lineJoin = 'miter';
+			ctx.lineCap = 'butt';
 
-		var draw_path_ants = (pts, is_closed) => {
-			if (pts.length < 2) return;
-			ctx.beginPath();
-			ctx.moveTo(pts[0][0], pts[0][1]);
-			for (var i = 1; i < pts.length; i++) {
-				ctx.lineTo(pts[i][0], pts[i][1]);
-			}
-			if (is_closed) {
+			for (var c = 0; c < contours.length; c++) {
+				var pts = contours[c];
+				if (!pts || pts.length < 2) continue;
+
+				ctx.beginPath();
+				ctx.moveTo(pts[0][0], pts[0][1]);
+				for (var i = 1; i < pts.length; i++) {
+					ctx.lineTo(pts[i][0], pts[i][1]);
+				}
 				ctx.closePath();
+
+				//white underlay
+				ctx.strokeStyle = '#ffffff';
+				ctx.lineWidth = 1 / Z;
+				ctx.stroke();
+
+				//animated black dashes
+				ctx.strokeStyle = '#000000';
+				ctx.lineWidth = 1 / Z;
+				ctx.setLineDash([dash, gap]);
+				ctx.lineDashOffset = this.ant_offset;
+				ctx.stroke();
+				ctx.setLineDash([]);
 			}
+
+			ctx.restore();
+		}
+
+		if (this._preview_lasso_path && this._preview_lasso_path.length > 1) {
+			var lpts = this._preview_lasso_path;
+			ctx.save();
+			ctx.lineJoin = 'round';
+			ctx.lineCap = 'round';
+
+			ctx.beginPath();
+			ctx.moveTo(lpts[0][0], lpts[0][1]);
+			for (var j = 1; j < lpts.length; j++) {
+				ctx.lineTo(lpts[j][0], lpts[j][1]);
+			}
+			// Open path: do not call closePath() until mouseup
 
 			//white underlay
 			ctx.strokeStyle = '#ffffff';
@@ -627,418 +794,193 @@ class Base_selection_class {
 			ctx.lineDashOffset = this.ant_offset;
 			ctx.stroke();
 			ctx.setLineDash([]);
-		};
 
-		for (var c = 0; c < contours.length; c++) {
-			draw_path_ants(contours[c], true);
+			ctx.restore();
 		}
-
-		// If there is an active in-progress drag region, draw it in real time
-		if (data.active_region != null) {
-			var ar = data.active_region;
-			if (ar.shape === 'lasso' && ar.path && ar.path.length > 1) {
-				draw_path_ants(ar.path, false);
-			} else if (ar.width != null && ar.height != null && (ar.width !== 0 || ar.height !== 0)) {
-				var ar_contours = this.get_simple_shape_contours(ar);
-				for (var ac = 0; ac < ar_contours.length; ac++) {
-					draw_path_ants(ar_contours[ac], true);
-				}
-			}
-		}
-
-		ctx.restore();
 	}
 
-	/**
-	 * returns the union-silhouette contours (array of closed polylines in
-	 * world coordinates) for the given marching-ants selection.
-	 */
-	get_union_contours(data) {
-		var regions = this.get_selection_regions(data, false);
-		if (regions.length === 0)
-			return [];
-
-		// Fast path for single add region (e.g. Select All or single rectangle/ellipse marquee)
-		if (regions.length === 1 && regions[0].mode !== 'subtract') {
-			return this.get_simple_shape_contours(regions[0]);
-		}
-
-		var key = JSON.stringify(regions);
-		if (this._ant_cache.key === key) {
-			return this._ant_cache.contours;
-		}
-
-		var PAD = 2;
-		var canvas = document.createElement('canvas');
-		canvas.width = Math.max(1, config.WIDTH) + PAD * 2;
-		canvas.height = Math.max(1, config.HEIGHT) + PAD * 2;
-		var ctx = canvas.getContext('2d');
-
-		ctx.fillStyle = '#000000';
-		ctx.fillRect(0, 0, canvas.width, canvas.height);
-
-		ctx.save();
-		ctx.translate(PAD, PAD);
-
-		ctx.beginPath();
-		var has_add = false;
-		for (var i = 0; i < regions.length; i++) {
-			if (regions[i].mode == 'subtract')
-				continue;
-			this._build_shape_path(ctx, regions[i]);
-			has_add = true;
-		}
-		if (has_add) {
-			ctx.fillStyle = '#ffffff';
-			ctx.fill();
-		}
-		for (var i = 0; i < regions.length; i++) {
-			if (regions[i].mode != 'subtract')
-				continue;
-			ctx.beginPath();
-			this._build_shape_path(ctx, regions[i]);
-			ctx.fillStyle = '#000000';
-			ctx.fill();
-		}
-		ctx.restore();
-
-		var raw_contours = this._trace_mask_contours(canvas);
-		var contours = [];
-		for (var c = 0; c < raw_contours.length; c++) {
-			var poly = [];
-			for (var p = 0; p < raw_contours[c].length; p++) {
-				poly.push([raw_contours[c][p][0] - PAD, raw_contours[c][p][1] - PAD]);
-			}
-			contours.push(poly);
-		}
-
-		this._ant_cache.key = key;
-		this._ant_cache.contours = contours;
-		return contours;
-	}
-
-	/**
-	 * traces the white/black boundary of the given raster canvas into closed
-	 * contours with marching squares (linear interpolation on the isovalue).
-	 */
 	_trace_mask_contours(canvas) {
 		var W = canvas.width;
 		var H = canvas.height;
-		var img = canvas.getContext('2d').getImageData(0, 0, W, H);
+		var img = canvas.getContext('2d', { willReadFrequently: true }).getImageData(0, 0, W, H);
 		var d = img.data;
-		var iso = 128;
 
-		var corner = function (i, j) {
-			if (i < 0 || j < 0 || i >= W || j >= H)
-				return 0;
-			return d[(j * W + i) * 4] >= iso ? 255 : 0;
-		};
-		var interp = function (a, b) {
-			if (a === b)
-				return 0.5;
-			var t = (iso - a) / (b - a);
-			if (t < 0)
-				return 0;
-			if (t > 1)
-				return 1;
-			return t;
-		};
-
-		//edges per marching-squares case (top, right, bottom, left). Cases 5
-		//and 10 are ambiguous and get two segments.
-		var table = [
-			[],              [0, 3],        [0, 1],        [1, 3],
-			[1, 2],          [0, 3, 1, 2],  [0, 2],        [2, 3],
-			[2, 3],          [0, 2],        [0, 1, 2, 3],  [1, 2],
-			[1, 3],          [0, 1],        [0, 3],        []
-		];
-
-		var segments = [];
-		for (var j = 0; j < H; j++) {
-			for (var i = 0; i < W; i++) {
-				var v00 = corner(i, j);
-				var v10 = corner(i + 1, j);
-				var v11 = corner(i + 1, j + 1);
-				var v01 = corner(i, j + 1);
-
-				var idx = (v00 ? 1 : 0) | (v10 ? 2 : 0) | (v11 ? 4 : 0) | (v01 ? 8 : 0);
-				var edges = table[idx];
-				if (!edges.length)
-					continue;
-
-				//edge intersection points (linear interpolation)
-				var e0 = [i + interp(v00, v10), j];
-				var e1 = [i + 1, j + interp(v10, v11)];
-				var e2 = [i + interp(v01, v11), j + 1];
-				var e3 = [i, j + interp(v00, v01)];
-				var edge_pts = [e0, e1, e2, e3];
-
-				if (edges.length === 2) {
-					segments.push([edge_pts[edges[0]], edge_pts[edges[1]]]);
-				}
-				else if (edges.length === 4) {
-					segments.push([edge_pts[edges[0]], edge_pts[edges[1]]]);
-					segments.push([edge_pts[edges[2]], edge_pts[edges[3]]]);
-				}
-			}
+		function is_opaque(x, y) {
+			if (x < 0 || y < 0 || x >= W || y >= H) return false;
+			return d[(y * W + x) * 4] > 127;
 		}
-		if (!segments.length)
-			return [];
 
-		//chain the segments into point lists (each point key is exact since
-		//shared edges are interpolated identically)
-		var points = [];
+		var all_edges = [];
+		var outgoing = {};
+
 		var point_index = {};
-		var adjacency = [];
-		var get_idx = function (p) {
-			var key = Math.round(p[0] * 1e6) + ',' + Math.round(p[1] * 1e6);
-			if (key in point_index)
-				return point_index[key];
+		var points = [];
+		function get_idx(x, y) {
+			var key = x + ',' + y;
+			if (key in point_index) return point_index[key];
 			var idx = points.length;
 			point_index[key] = idx;
-			points.push(p);
-			adjacency.push([]);
+			points.push([x, y]);
 			return idx;
-		};
-
-		for (var s = 0; s < segments.length; s++) {
-			var a = get_idx(segments[s][0]);
-			var b = get_idx(segments[s][1]);
-			if (a === b)
-				continue;
-			adjacency[a].push(b);
-			adjacency[b].push(a);
 		}
 
-		var used = new Array(points.length).fill(false);
+		for (var j = 0; j < H; j++) {
+			for (var i = 0; i < W; i++) {
+				if (!is_opaque(i, j)) continue;
+
+				// Top edge: [i, j] -> [i + 1, j] (dir: 0)
+				if (!is_opaque(i, j - 1)) {
+					var p1 = [i, j], p2 = [i + 1, j];
+					var from_id = get_idx(p1[0], p1[1]), to_id = get_idx(p2[0], p2[1]);
+					var e_id = all_edges.length;
+					all_edges.push({ from: from_id, to: to_id, from_pt: p1, to_pt: p2, dir: 0 });
+					if (!outgoing[from_id]) outgoing[from_id] = [];
+					outgoing[from_id].push({ to: to_id, pt: p2, edge_id: e_id, dir: 0 });
+				}
+				// Right edge: [i + 1, j] -> [i + 1, j + 1] (dir: 1)
+				if (!is_opaque(i + 1, j)) {
+					var p1 = [i + 1, j], p2 = [i + 1, j + 1];
+					var from_id = get_idx(p1[0], p1[1]), to_id = get_idx(p2[0], p2[1]);
+					var e_id = all_edges.length;
+					all_edges.push({ from: from_id, to: to_id, from_pt: p1, to_pt: p2, dir: 1 });
+					if (!outgoing[from_id]) outgoing[from_id] = [];
+					outgoing[from_id].push({ to: to_id, pt: p2, edge_id: e_id, dir: 1 });
+				}
+				// Bottom edge: [i + 1, j + 1] -> [i, j + 1] (dir: 2)
+				if (!is_opaque(i, j + 1)) {
+					var p1 = [i + 1, j + 1], p2 = [i, j + 1];
+					var from_id = get_idx(p1[0], p1[1]), to_id = get_idx(p2[0], p2[1]);
+					var e_id = all_edges.length;
+					all_edges.push({ from: from_id, to: to_id, from_pt: p1, to_pt: p2, dir: 2 });
+					if (!outgoing[from_id]) outgoing[from_id] = [];
+					outgoing[from_id].push({ to: to_id, pt: p2, edge_id: e_id, dir: 2 });
+				}
+				// Left edge: [i, j + 1] -> [i, j] (dir: 3)
+				if (!is_opaque(i - 1, j)) {
+					var p1 = [i, j + 1], p2 = [i, j];
+					var from_id = get_idx(p1[0], p1[1]), to_id = get_idx(p2[0], p2[1]);
+					var e_id = all_edges.length;
+					all_edges.push({ from: from_id, to: to_id, from_pt: p1, to_pt: p2, dir: 3 });
+					if (!outgoing[from_id]) outgoing[from_id] = [];
+					outgoing[from_id].push({ to: to_id, pt: p2, edge_id: e_id, dir: 3 });
+				}
+			}
+		}
+
+		if (!all_edges.length) return [];
+
+		var used_edges = new Uint8Array(all_edges.length);
 		var contours = [];
-		for (var start = 0; start < points.length; start++) {
-			if (used[start] || adjacency[start].length === 0)
-				continue;
-			used[start] = true;
 
-			var contour = [points[start]];
-			var prev = start;
-			var cur = adjacency[start][0];
+		for (var e = 0; e < all_edges.length; e++) {
+			if (used_edges[e]) continue;
+			used_edges[e] = 1;
+
+			var start_idx = all_edges[e].from;
+			var contour = [all_edges[e].from_pt, all_edges[e].to_pt];
+			var cur_idx = all_edges[e].to;
+			var cur_dir = all_edges[e].dir;
+
 			var guard = 0;
-			while (cur !== start) {
-				if (cur < 0 || cur >= points.length || used[cur])
-					break;
-				contour.push(points[cur]);
-				used[cur] = true;
-				if (++guard > points.length)
-					break;
-
-				var nxt = -1;
-				for (var k = 0; k < adjacency[cur].length; k++) {
-					var neighbor = adjacency[cur][k];
-					if (neighbor === start && contour.length > 2) {
-						nxt = start;
-						break;
-					}
-					if (neighbor !== prev && !used[neighbor]) {
-						nxt = neighbor;
-						break;
+			while (cur_idx !== start_idx && guard++ < all_edges.length * 2) {
+				var next_edge = null;
+				var out = outgoing[cur_idx];
+				if (out) {
+					if (out.length === 1) {
+						if (!used_edges[out[0].edge_id]) {
+							next_edge = out[0];
+						}
+					} else {
+						var best_edge = null;
+						var best_priority = -1;
+						for (var k = 0; k < out.length; k++) {
+							if (used_edges[out[k].edge_id]) continue;
+							var rel = (out[k].dir - cur_dir + 4) % 4;
+							var priority = (rel === 1) ? 4 : (rel === 0) ? 3 : (rel === 3) ? 2 : 1;
+							if (priority > best_priority) {
+								best_priority = priority;
+								best_edge = out[k];
+							}
+						}
+						next_edge = best_edge;
 					}
 				}
-				if (nxt === -1)
-					break;
-				prev = cur;
-				cur = nxt;
+				if (!next_edge) break;
+				used_edges[next_edge.edge_id] = 1;
+				cur_idx = next_edge.to;
+				cur_dir = next_edge.dir;
+				if (cur_idx !== start_idx) {
+					contour.push(next_edge.pt);
+				}
 			}
 
-			if (guard > 0 || contour.length > 1) {
-				contours.push(contour);
+			if (cur_idx === start_idx && contour.length >= 3) {
+				var simplified = [];
+				for (var p = 0; p < contour.length; p++) {
+					var prev = contour[(p - 1 + contour.length) % contour.length];
+					var curr = contour[p];
+					var next = contour[(p + 1) % contour.length];
+					var dx1 = curr[0] - prev[0];
+					var dy1 = curr[1] - prev[1];
+					var dx2 = next[0] - curr[0];
+					var dy2 = next[1] - curr[1];
+					var cross = dx1 * dy2 - dy1 * dx2;
+					var dot = dx1 * dx2 + dy1 * dy2;
+					if (Math.abs(cross) < 1e-4 && dot > 0) {
+						continue;
+					}
+					simplified.push(curr);
+				}
+				if (simplified.length >= 3) {
+					contours.push(simplified);
+				}
 			}
 		}
 
 		return contours;
 	}
 
-	/**
-	 * returns a full-document grayscale canvas representing the committed
-	 * selection interior: white inside (union of add/intersect regions),
-	 * black outside, with subtract regions carved out as black holes.
-	 */
-	create_selection_clip_canvas() {
-		var canvas = document.createElement('canvas');
-		canvas.width = Math.max(1, config.WIDTH);
-		canvas.height = Math.max(1, config.HEIGHT);
-		var ctx = canvas.getContext('2d');
-
-		ctx.fillStyle = '#000000';
-		ctx.fillRect(0, 0, canvas.width, canvas.height);
-
-		var data = this.get_committed_selection_data();
-		if (data == null)
-			return canvas;
-		var regions = this.get_selection_regions(data, false);
-		if (!regions.length)
-			return canvas;
-
-		ctx.beginPath();
-		var has_add = false;
-		for (var i = 0; i < regions.length; i++) {
-			if (regions[i].mode == 'subtract')
-				continue;
-			this._build_shape_path(ctx, regions[i]);
-			has_add = true;
-		}
-		if (has_add) {
-			ctx.fillStyle = '#ffffff';
-			ctx.fill();
-		}
-		for (var i = 0; i < regions.length; i++) {
-			if (regions[i].mode != 'subtract')
-				continue;
-			ctx.beginPath();
-			this._build_shape_path(ctx, regions[i]);
-			ctx.fillStyle = '#000000';
-			ctx.fill();
-		}
-
-		return canvas;
-	}
-
-	/**
-	 * returns a layer-mask object anchored over the whole document that reveals
-	 * only the committed selection (white inside, black outside), tagged as a
-	 * selection clip so bake_selection_clips() can bake it away later. Returns
-	 * null when no persistent selection exists.
-	 */
-	get_selection_clip_mask() {
-		var data = this.get_committed_selection_data();
-		if (data == null || data.width == null || data.height == null
-			|| data.width <= 0 || data.height <= 0)
-			return null;
-
-		var canvas = this.create_selection_clip_canvas();
-		return {
-			link: canvas,
-			x: 0,
-			y: 0,
-			width: canvas.width,
-			height: canvas.height,
-			enabled: true,
-			linked: true,
-			_selection_clip: true,
-		};
-	}
-
-	has_committed_selection() {
-		var data = this.get_committed_selection_data();
-		return data != null && data.width != null && data.height != null
-			&& data.width > 0 && data.height > 0;
-	}
-
-	get_selection_bounds(data) {
-		data = data || this.get_committed_selection_data();
-		if (data == null)
-			return null;
-		var regions = this.get_selection_regions(data, false);
-		var x1 = Infinity;
-		var y1 = Infinity;
-		var x2 = -Infinity;
-		var y2 = -Infinity;
-		var found = false;
-		for (var i = 0; i < regions.length; i++) {
-			if (regions[i].mode == 'subtract')
-				continue;
-			found = true;
-			x1 = Math.min(x1, regions[i].x);
-			y1 = Math.min(y1, regions[i].y);
-			x2 = Math.max(x2, regions[i].x + regions[i].width);
-			y2 = Math.max(y2, regions[i].y + regions[i].height);
-		}
-		if (!found) {
-			if (data.x == null || data.width == null)
-				return null;
-			return {
-				x: data.x,
-				y: data.y,
-				width: data.width,
-				height: data.height,
-			};
-		}
-		return {
-			x: x1,
-			y: y1,
-			width: x2 - x1,
-			height: y2 - y1,
-		};
-	}
-
-	_paint_selection_alpha(ctx, data) {
-		var regions = this.get_selection_regions(data, false);
-		if (!regions.length)
-			return;
-
-		ctx.beginPath();
-		var has_add = false;
-		for (var i = 0; i < regions.length; i++) {
-			if (regions[i].mode == 'subtract')
-				continue;
-			this._build_shape_path(ctx, regions[i]);
-			has_add = true;
-		}
-		if (has_add) {
-			ctx.fillStyle = '#ffffff';
-			ctx.globalCompositeOperation = 'source-over';
-			ctx.fill();
-		}
-		for (var i = 0; i < regions.length; i++) {
-			if (regions[i].mode != 'subtract')
-				continue;
-			ctx.beginPath();
-			this._build_shape_path(ctx, regions[i]);
-			ctx.globalCompositeOperation = 'destination-out';
-			ctx.fillStyle = '#ffffff';
-			ctx.fill();
-		}
-		ctx.globalCompositeOperation = 'source-over';
-	}
-
-	/**
-	 * alpha mask in the layer's native pixel space (width_original x
-	 * height_original). Opaque white inside the selection, transparent outside.
-	 */
 	create_layer_selection_alpha(layer) {
 		var w = Math.max(1, Math.round(layer.width_original || layer.width || 1));
 		var h = Math.max(1, Math.round(layer.height_original || layer.height || 1));
 		var canvas = document.createElement('canvas');
 		canvas.width = w;
 		canvas.height = h;
-		var ctx = canvas.getContext('2d');
+		var ctx = canvas.getContext('2d', { willReadFrequently: true });
 
-		var data = this.get_committed_selection_data();
-		if (data == null) {
+		if (!this.has_selection) {
 			ctx.fillStyle = '#ffffff';
 			ctx.fillRect(0, 0, w, h);
 			return canvas;
 		}
 
-		var lw = layer.width || w;
-		var lh = layer.height || h;
-		var ratio_w = lw / w;
-		var ratio_h = lh / h;
+		var lx = (layer.x != null) ? layer.x : 0;
+		var ly = (layer.y != null) ? layer.y : 0;
+		var lw = (layer.width != null && layer.width > 0) ? layer.width : (config.WIDTH || 1);
+		var lh = (layer.height != null && layer.height > 0) ? layer.height : (config.HEIGHT || 1);
+		var lwo = layer.width_original || lw;
+		var lho = layer.height_original || lh;
+		var rot = layer.rotate || 0;
 
 		ctx.save();
-		ctx.scale(1 / (ratio_w || 1), 1 / (ratio_h || 1));
-		ctx.translate(-(layer.x || 0), -(layer.y || 0));
-		this._paint_selection_alpha(ctx, data);
+		ctx.scale(lwo / lw, lho / lh);
+		if (rot !== 0) {
+			var cx = lw / 2;
+			var cy = lh / 2;
+			ctx.translate(cx, cy);
+			ctx.rotate(-rot * Math.PI / 180);
+			ctx.translate(-cx, -cy);
+		}
+		ctx.translate(-lx, -ly);
+		ctx.drawImage(this.mask_canvas, 0, 0);
 		ctx.restore();
 		return canvas;
 	}
 
-	/**
-	 * keeps edits that fall inside the committed selection and restores
-	 * original pixels everywhere else. `edited` is the layer's native canvas
-	 * (typically width_original x height_original).
-	 */
 	restore_outside_selection(edited, original, layer) {
 		if (edited == null || original == null || layer == null)
 			return;
-		if (!this.has_committed_selection())
+		if (!this.has_selection)
 			return;
 
 		var clip = this.create_layer_selection_alpha(layer);
@@ -1065,70 +1007,91 @@ class Base_selection_class {
 		clip.height = 1;
 	}
 
-	/**
-	 * copies the current layer's pixels inside the selection into a cropped
-	 * canvas with transparency outside the shape. Returns
-	 * {canvas, x, y, width, height} in world coordinates, or null.
-	 */
 	extract_selection_image(layer) {
 		if (layer == null)
 			layer = config.layer;
-		var data = this.get_committed_selection_data();
-		if (data == null || layer == null)
+		if (layer == null)
 			return null;
 
-		var bounds = this.get_selection_bounds(data);
-		if (bounds == null || bounds.width <= 0 || bounds.height <= 0)
-			return null;
+		var bounds = this.selection_bounds;
+		var crop_min_x, crop_min_y, crop_max_x, crop_max_y, crop_w, crop_h;
 
-		var x = Math.round(bounds.x);
-		var y = Math.round(bounds.y);
-		var width = Math.max(1, Math.round(bounds.width));
-		var height = Math.max(1, Math.round(bounds.height));
-
-		var canvas = document.createElement('canvas');
-		canvas.width = width;
-		canvas.height = height;
-		var ctx = canvas.getContext('2d');
-		ctx.translate(-x, -y);
-
-		if (app.Layers != null && typeof app.Layers.render_object == 'function') {
-			app.Layers.render_object(ctx, layer);
-		}
-		else if (layer.type == 'image' && (layer.link_canvas != null || layer.link != null)) {
-			ctx.save();
-			ctx.translate((layer.x || 0) + (layer.width || 0) / 2, (layer.y || 0) + (layer.height || 0) / 2);
-			ctx.rotate(((layer.rotate || 0) * Math.PI) / 180);
-			ctx.drawImage(
-				layer.link_canvas != null ? layer.link_canvas : layer.link,
-				-(layer.width || 0) / 2,
-				-(layer.height || 0) / 2,
-				layer.width || width,
-				layer.height || height
-			);
-			ctx.restore();
+		if (this.has_selection && bounds && bounds.width > 0 && bounds.height > 0) {
+			crop_min_x = Math.max(0, Math.floor(bounds.min_x));
+			crop_min_y = Math.max(0, Math.floor(bounds.min_y));
+			crop_max_x = Math.min(config.WIDTH, Math.ceil(bounds.max_x));
+			crop_max_y = Math.min(config.HEIGHT, Math.ceil(bounds.max_y));
+			if (crop_max_x <= crop_min_x || crop_max_y <= crop_min_y)
+				return null;
+			crop_w = crop_max_x - crop_min_x;
+			crop_h = crop_max_y - crop_min_y;
+		} else {
+			crop_min_x = 0;
+			crop_min_y = 0;
+			crop_max_x = config.WIDTH;
+			crop_max_y = config.HEIGHT;
+			crop_w = config.WIDTH;
+			crop_h = config.HEIGHT;
 		}
 
-		var alpha = document.createElement('canvas');
-		alpha.width = width;
-		alpha.height = height;
-		var actx = alpha.getContext('2d');
-		actx.translate(-x, -y);
-		this._paint_selection_alpha(actx, data);
+		var out_canvas = document.createElement('canvas');
+		out_canvas.width = Math.max(1, crop_w);
+		out_canvas.height = Math.max(1, crop_h);
+		var octx = out_canvas.getContext('2d');
 
-		ctx.setTransform(1, 0, 0, 1, 0, 0);
-		ctx.globalCompositeOperation = 'destination-in';
-		ctx.drawImage(alpha, 0, 0);
+		octx.save();
+		octx.translate(-crop_min_x, -crop_min_y);
 
-		alpha.width = 1;
-		alpha.height = 1;
+		var src = layer.link_canvas || layer.link;
+		var lw = (layer.width != null) ? layer.width : (layer.width_original || (src ? src.width : config.WIDTH));
+		var lh = (layer.height != null) ? layer.height : (layer.height_original || (src ? src.height : config.HEIGHT));
+		var lx = (layer.x != null) ? layer.x : 0;
+		var ly = (layer.y != null) ? layer.y : 0;
+		var rot = (layer.rotate != null) ? layer.rotate : 0;
+
+		if (layer.type == 'image' && src != null) {
+			octx.save();
+			octx.translate(lx + lw / 2, ly + lh / 2);
+			if (rot !== 0) {
+				octx.rotate((rot * Math.PI) / 180);
+			}
+			octx.drawImage(src, -lw / 2, -lh / 2, lw, lh);
+			octx.restore();
+		} else if (app.Layers != null && typeof app.Layers.render_object == 'function') {
+			app.Layers.render_object(octx, layer);
+		}
+		octx.restore();
+
+		if (this.has_selection) {
+			octx.globalCompositeOperation = 'destination-in';
+			octx.drawImage(this.mask_canvas, crop_min_x, crop_min_y, crop_w, crop_h, 0, 0, crop_w, crop_h);
+			octx.globalCompositeOperation = 'source-over';
+		}
 
 		return {
-			canvas: canvas,
-			x: x,
-			y: y,
-			width: width,
-			height: height,
+			canvas: out_canvas,
+			x: crop_min_x,
+			y: crop_min_y,
+			width: crop_w,
+			height: crop_h,
+		};
+	}
+
+	create_selection_clip_canvas() {
+		return this.clone_mask_canvas();
+	}
+
+	get_selection_clip_mask() {
+		if (!this.has_selection) return null;
+		return {
+			link: this.clone_mask_canvas(),
+			x: 0,
+			y: 0,
+			width: this.mask_canvas.width,
+			height: this.mask_canvas.height,
+			enabled: true,
+			linked: true,
+			_selection_clip: true,
 		};
 	}
 
@@ -1275,11 +1238,13 @@ class Base_selection_class {
 
 		//simplify checks
 		var event_type = e.type;
-		if(event_type == 'touchstart') event_type = 'mousedown';
-		if(event_type == 'touchmove') event_type = 'mousemove';
-		if(event_type == 'touchend') event_type = 'mouseup';
+		if (event_type == 'touchstart' || event_type == 'pointerdown') event_type = 'mousedown';
+		if (event_type == 'touchmove' || event_type == 'pointermove') event_type = 'mousemove';
+		if (event_type == 'touchend' || event_type == 'pointerup' || event_type == 'pointercancel') event_type = 'mouseup';
 
-		if (!this.is_drag && ['mousedown', 'mouseup'].includes(event_type))
+		var is_drag = this.is_drag || (config.mouse && config.mouse.is_drag);
+
+		if (!is_drag && ['mousedown', 'mouseup'].includes(event_type))
 			return;
 
 		const mainWrapper = document.getElementById('main_wrapper');
@@ -1321,7 +1286,7 @@ class Base_selection_class {
 			};
 			this.current_angle = null;
 		}
-		if (event_type == 'mousemove' && this.mouse_lock == 'selected_object_actions' && this.is_drag) {
+		if (event_type == 'mousemove' && this.mouse_lock == 'selected_object_actions' && is_drag) {
 
 			const allowNegativeDimensions = settings.data.render_function
 				&& ['line', 'arrow', 'gradient'].includes(settings.data.render_function[0]);

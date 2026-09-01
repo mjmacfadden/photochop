@@ -17,6 +17,7 @@ class GUI_shortcuts_class {
 		this.is_meta_down = false;
 		this.is_ctrl_down = false;
 		this.is_alt_down = false;
+		this.is_shift_down = false;
 
 		this.keymap = {
 			'v': 'select',
@@ -27,7 +28,7 @@ class GUI_shortcuts_class {
 			't': 'text',
 			'c': 'crop',
 			's': 'clone',
-			'l': 'blur',
+			'l': 'lasso',
 			'n': 'pencil',
 			'm': 'selection',
 			'u': 'sharpen',
@@ -62,6 +63,9 @@ class GUI_shortcuts_class {
 			if (key === 'Alt' || key === 'AltGraph' || code === 'AltLeft' || code === 'AltRight' || event.keyCode === 18) {
 				this.is_alt_down = isDown;
 			}
+			if (key === 'Shift' || code === 'ShiftLeft' || code === 'ShiftRight' || event.keyCode === 16) {
+				this.is_shift_down = isDown;
+			}
 		};
 		window.addEventListener('keydown', (event) => updateModifierState(event, true), { capture: true, passive: true });
 		window.addEventListener('keyup', (event) => updateModifierState(event, false), { capture: true, passive: true });
@@ -69,6 +73,7 @@ class GUI_shortcuts_class {
 			this.is_meta_down = false;
 			this.is_ctrl_down = false;
 			this.is_alt_down = false;
+			this.is_shift_down = false;
 		});
 
 		document.addEventListener('keydown', (event) => {
@@ -245,7 +250,30 @@ class GUI_shortcuts_class {
 			if (this.keymap[key]) {
 				event.preventDefault();
 				event.stopImmediatePropagation();
-				app.GUI.GUI_tools.activate_tool(this.keymap[key]);
+				var targetTool = this.keymap[key];
+				if (targetTool === 'lasso') {
+					if (app.GUI && app.GUI.GUI_tools) {
+						app.GUI.GUI_tools.update_tool_shape('selection', 'lasso');
+					}
+				} else if (targetTool === 'selection') {
+					if (app.GUI && app.GUI.GUI_tools) {
+						var selDef = null;
+						for (var si in config.TOOLS) {
+							if (config.TOOLS[si].name === 'selection') {
+								selDef = config.TOOLS[si];
+								break;
+							}
+						}
+						var activeShape = (selDef && selDef.tool_group) ? selDef.tool_group.active_shape : 'rect';
+						if (activeShape === 'lasso') {
+							app.GUI.GUI_tools.update_tool_shape('selection', 'rect');
+						} else {
+							app.GUI.GUI_tools.activate_tool('selection');
+						}
+					}
+				} else {
+					app.GUI.GUI_tools.activate_tool(targetTool);
+				}
 			}
 
 			// [ and ] = Decrease/Increase brush size

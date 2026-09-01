@@ -22,41 +22,7 @@ class Clone_class extends Base_tools_class {
 	}
 
 	load() {
-		var _this = this;
-		var is_touch = false;
-
-		//mouse events
-		document.addEventListener('mousedown', function (event) {
-			if(is_touch)
-				return;
-			_this.dragStart(event);
-		});
-		document.addEventListener('mousemove', function (event) {
-			if(is_touch)
-				return;
-			_this.dragMove(event);
-		});
-		document.addEventListener('mouseup', function (event) {
-			if(is_touch)
-				return;
-			_this.dragEnd(event);
-		});
-
-		// collect touch events
-		document.addEventListener('touchstart', function (event) {
-			is_touch = true;
-			_this.dragStart(event);
-		});
-		document.addEventListener('touchmove', function (event) {
-			_this.dragMove(event);
-		});
-		document.addEventListener('touchend', function (event) {
-			_this.dragEnd(event);
-		});
-
-		document.addEventListener('contextmenu', function (event) {
-			_this.mouseRightClick(event);
-		});
+		// Event routing is handled centrally by Base_tools_class
 	}
 
 	dragStart(event) {

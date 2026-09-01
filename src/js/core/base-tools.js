@@ -36,22 +36,41 @@ class Base_tools_class {
 		}
 	}
 
+	get_active_tool() {
+		if (app.GUI && app.GUI.GUI_tools && config.TOOL) {
+			var mod = app.GUI.GUI_tools.tools_modules[config.TOOL.name];
+			if (mod && mod.object) {
+				return mod.object;
+			}
+		}
+		return null;
+	}
+
 	dragStart(event) {
 		var _this = this;
 
-		var mouse = _this.get_mouse_info(event, true);
-		_this.mouse_click_pos[0] = mouse.x;
-		_this.mouse_click_pos[1] = mouse.y;
-
-		//update
+		_this.is_drag = true;
 		_this.set_mouse_info(event);
 
-		_this.is_drag = true;
+		_this.mouse_click_pos[0] = config.mouse.x;
+		_this.mouse_click_pos[1] = config.mouse.y;
+		_this.mouse_last_click_pos[0] = config.mouse.x;
+		_this.mouse_last_click_pos[1] = config.mouse.y;
+
+		config.mouse.click_x = config.mouse.x;
+		config.mouse.click_y = config.mouse.y;
+		config.mouse.last_click_x = config.mouse.x;
+		config.mouse.last_click_y = config.mouse.y;
+		config.mouse.is_drag = true;
+		config.mouse.click_valid = _this.mouse_click_valid;
+
 		_this.speed_average = 0;
 
-		var mouse = _this.get_mouse_info(event, true);
-		_this.mouse_last_click_pos[0] = mouse.x;
-		_this.mouse_last_click_pos[1] = mouse.y;
+		// Dispatch to active tool
+		var activeTool = _this.get_active_tool();
+		if (activeTool && typeof activeTool.mousedown === 'function') {
+			activeTool.mousedown(event);
+		}
 	}
 
 	dragMove(event) {
@@ -59,52 +78,136 @@ class Base_tools_class {
 		_this.set_mouse_info(event);
 
 		_this.speed_average = _this.calc_average_mouse_speed(event);
+
+		// Dispatch to active tool
+		var activeTool = _this.get_active_tool();
+		if (activeTool) {
+			if (typeof activeTool.mousemove === 'function') {
+				activeTool.mousemove(event);
+			}
+
+			// Custom brush cursor outline
+			var brushTools = ['brush', 'pencil', 'erase', 'clone', 'blur', 'sharpen', 'desaturate', 'bulge_pinch'];
+			if (config.TOOL && brushTools.includes(config.TOOL.name)) {
+				var params = activeTool.getParams ? activeTool.getParams() : (config.TOOL.attributes || {});
+				var size = params.size?.value ?? params.size ?? 10;
+				_this.show_mouse_cursor(config.mouse.x, config.mouse.y, size, 'circle');
+			}
+		}
 	}
 
 	dragEnd(event) {
 		var _this = this;
 		_this.is_drag = false;
 		_this.set_mouse_info(event);
+
+		// Dispatch to active tool
+		var activeTool = _this.get_active_tool();
+		if (activeTool && typeof activeTool.mouseup === 'function') {
+			activeTool.mouseup(event);
+		}
+	}
+
+	doubleClick(event) {
+		var _this = this;
+		_this.set_mouse_info(event);
+
+		var activeTool = _this.get_active_tool();
+		if (activeTool) {
+			if (typeof activeTool.dblclick === 'function') {
+				activeTool.dblclick(event);
+			} else if (typeof activeTool.doubleClick === 'function') {
+				activeTool.doubleClick(event);
+			}
+		}
+	}
+
+	keyDown(event) {
+		if (this.Helper.is_input(event.target)) return;
+		if (app.GUI && app.GUI.POP && typeof app.GUI.POP.get_active_instances === 'function' && app.GUI.POP.get_active_instances() > 0) return;
+
+		var activeTool = this.get_active_tool();
+		if (activeTool && typeof activeTool.keydown === 'function') {
+			activeTool.keydown(event);
+		}
+	}
+
+	keyUp(event) {
+		if (this.Helper.is_input(event.target)) return;
+		if (app.GUI && app.GUI.POP && typeof app.GUI.POP.get_active_instances === 'function' && app.GUI.POP.get_active_instances() > 0) return;
+
+		var activeTool = this.get_active_tool();
+		if (activeTool && typeof activeTool.keyup === 'function') {
+			activeTool.keyup(event);
+		}
 	}
 
 	events() {
 		var _this = this;
-		
-		//collect mouse info
-		document.addEventListener('mousedown', function (event) {
-			if(_this.is_touch == true)
-				return;
 
+		// Pointer events (unifies mouse, pen/stylus pressure, and touch)
+		document.addEventListener('pointerdown', function (event) {
+			if (event.pointerType === 'touch') _this.is_touch = true;
 			_this.dragStart(event);
 		});
-		document.addEventListener('mousemove', function (event) {
-			if(_this.is_touch == true)
-				return;
-
+		document.addEventListener('pointermove', function (event) {
 			_this.dragMove(event);
 		});
-		document.addEventListener('mouseup', function (event) {
-			if(_this.is_touch == true)
-				return;
-
+		document.addEventListener('pointerup', function (event) {
+			_this.dragEnd(event);
+		});
+		document.addEventListener('pointercancel', function (event) {
 			_this.dragEnd(event);
 		});
 
-		// collect touch info
+		// Fallback for non-PointerEvent browsers
+		document.addEventListener('mousedown', function (event) {
+			if (window.PointerEvent) return;
+			if (_this.is_touch == true) return;
+			_this.dragStart(event);
+		});
+		document.addEventListener('mousemove', function (event) {
+			if (window.PointerEvent) return;
+			if (_this.is_touch == true) return;
+			_this.dragMove(event);
+		});
+		document.addEventListener('mouseup', function (event) {
+			if (window.PointerEvent) return;
+			if (_this.is_touch == true) return;
+			_this.dragEnd(event);
+		});
+
+		// Double click
+		document.addEventListener('dblclick', function (event) {
+			_this.doubleClick(event);
+		});
+
+		// Keyboard routing
+		document.addEventListener('keydown', function (event) {
+			_this.keyDown(event);
+		});
+		document.addEventListener('keyup', function (event) {
+			_this.keyUp(event);
+		});
+
+		// Touch fallback
 		document.addEventListener('touchstart', function (event) {
+			if (window.PointerEvent) return;
 			_this.is_touch = true;
 			_this.dragStart(event);
 		});
 		document.addEventListener('touchmove', function (event) {
+			if (window.PointerEvent) return;
 			_this.dragMove(event);
 			if (event.target.id === "canvas_minipaint" && !$('.scroll').has($(event.target)).length)
 				event.preventDefault();
-		}, {passive: false});
+		}, { passive: false });
 		document.addEventListener('touchend', function (event) {
+			if (window.PointerEvent) return;
 			_this.dragEnd(event);
 		});
-		
-		//on resize
+
+		// On resize
 		window.addEventListener('resize', function (event) {
 			_this.prepare();
 		});
@@ -124,6 +227,9 @@ class Base_tools_class {
 		}
 
 		var eventType = event.type;
+		var is_down = (eventType === 'mousedown' || eventType === 'touchstart' || eventType === 'pointerdown');
+		var is_move = (eventType === 'mousemove' || eventType === 'touchmove' || eventType === 'pointermove');
+		var is_up = (eventType === 'mouseup' || eventType === 'touchend' || eventType === 'pointerup' || eventType === 'pointercancel');
 
 		const isInsideCanvas = !!(event.target && (
 			event.target.id === 'canvas_minipaint' ||
@@ -134,22 +240,19 @@ class Base_tools_class {
 			(event.target.closest && event.target.closest('#main_wrapper') != null)
 		));
 
-		if (!isInsideCanvas) {
-			//outside canvas
-			this.mouse_valid = false;
-		}
-		else {
-			this.mouse_valid = true;
-		}
+		this.mouse_valid = isInsideCanvas;
 
-		if (eventType === 'mousedown' || eventType === 'touchstart') {
-			if (!isInsideCanvas || (event.which != 1 && eventType !== 'touchstart')) {
+		if (is_down) {
+			var is_primary = (event.button === 0 || event.button === undefined || event.buttons === 1 || event.which === 1 || eventType === 'touchstart');
+			if (!isInsideCanvas || !is_primary) {
 				this.mouse_click_valid = false;
 			}
 			else {
 				this.mouse_click_valid = true;
 			}
-			this.mouse_valid = isInsideCanvas;
+		} else if (is_up) {
+			this.mouse_click_valid = false;
+			this.is_drag = false;
 		}
 
 		if (event.changedTouches) {
@@ -164,6 +267,11 @@ class Base_tools_class {
 		var start_pos = this.Base_layers.get_world_coords(0, 0);
 		var x_rel = mouse_x - start_pos.x;
 		var y_rel = mouse_y - start_pos.y;
+
+		var pressure = 0.5;
+		if (event.pressure !== undefined && event.pressure > 0 && event.pressure <= 1) {
+			pressure = event.pressure;
+		}
 
 		//save
 		config.mouse = {
@@ -181,9 +289,10 @@ class Base_tools_class {
 			click_valid: this.mouse_click_valid,
 			is_drag: this.is_drag,
 			speed_average: this.speed_average,
+			pressure: pressure,
 		};
 
-		if (eventType === 'mousemove' || eventType === 'touchmove') {
+		if (is_move) {
 			//save last pos
 			this.mouse_move_last[0] = mouse_x;
 			this.mouse_move_last[1] = mouse_y;
@@ -217,7 +326,7 @@ class Base_tools_class {
 	}
 
 	get_mouse_info(event) {
-		if(typeof event != "undefined" && typeof mouse.x == "undefined"){
+		if (typeof event != "undefined" && (!config.mouse || typeof config.mouse.x == "undefined")) {
 			//mouse not set yet - set it now...
 			this.set_mouse_info(event);
 		}
@@ -394,29 +503,7 @@ class Base_tools_class {
 	}
 
 	default_events(){
-		var _this = this;
-
-		//mouse events
-		document.addEventListener('mousedown', function (event) {
-			_this.default_dragStart(event);
-		});
-		document.addEventListener('mousemove', function (event) {
-			_this.default_dragMove(event);
-		});
-		document.addEventListener('mouseup', function (event) {
-			_this.default_dragEnd(event);
-		});
-
-		// collect touch events
-		document.addEventListener('touchstart', function (event) {
-			_this.default_dragStart(event);
-		});
-		document.addEventListener('touchmove', function (event) {
-			_this.default_dragMove(event);
-		});
-		document.addEventListener('touchend', function (event) {
-			_this.default_dragEnd(event);
-		});
+		// No-op: input events are handled and routed centrally by Base_tools_class singleton
 	}
 
 	default_dragStart(event) {

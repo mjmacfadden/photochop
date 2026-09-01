@@ -21,18 +21,7 @@ class Desaturate_class extends Base_tools_class {
 	}
 
 	load() {
-		this.default_events();
-	}
-
-	default_dragMove(event) {
-		if (config.TOOL.name != this.name)
-			return;
-		this.mousemove(event);
-
-		//mouse cursor
-		var mouse = this.get_mouse_info(event);
-		var params = this.getParams();
-		this.show_mouse_cursor(mouse.x, mouse.y, params.size, 'circle');
+		// Event routing is handled centrally by Base_tools_class
 	}
 
 	mousedown(e) {

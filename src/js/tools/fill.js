@@ -26,17 +26,7 @@ class Fill_class extends Base_tools_class {
 	}
 
 	load() {
-		var _this = this;
-
-		//mouse events
-		document.addEventListener('mousedown', function (event) {
-			_this.dragStart(event);
-		});
-
-		// collect touch events
-		document.addEventListener('touchstart', function (event) {
-			_this.dragStart(event);
-		});
+		// Event routing is handled centrally by Base_tools_class
 	}
 
 	mousedown(e) {
@@ -63,6 +53,10 @@ class Fill_class extends Base_tools_class {
 			return;
 		}
 
+		if (config.layer.type === 'adjustment') {
+			alertify.error('Cannot fill an adjustment layer. Create a new layer or edit the layer mask.');
+			return;
+		}
 		if (config.layer.type != 'image' && config.layer.type !== null) {
 			alertify.error('This layer must contain an image. Please convert it to raster to apply this tool.');
 			return;

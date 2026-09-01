@@ -38,12 +38,17 @@ class Copy_class {
 	}
 
 	extract_clipboard_canvas() {
-		var sel = this.Base_layers.Base_selection;
+		var sel = (app.Layers && app.Layers.Base_selection) ? app.Layers.Base_selection : this.Base_layers.Base_selection;
 		if (sel != null && sel.has_committed_selection()) {
-			return sel.extract_selection_image(config.layer);
+			var extracted = sel.extract_selection_image(config.layer);
+			if (extracted != null) {
+				return extracted;
+			}
 		}
 
-		var canvas = this.Base_layers.convert_layer_to_canvas();
+		var canvas = (app.Layers && typeof app.Layers.convert_layer_to_canvas === 'function')
+			? app.Layers.convert_layer_to_canvas()
+			: this.Base_layers.convert_layer_to_canvas();
 		if (config.TRANSPARENCY == false) {
 			var ctx = canvas.getContext('2d');
 			ctx.globalCompositeOperation = 'destination-over';
@@ -53,8 +58,8 @@ class Copy_class {
 		var marquee = Base_selection_class.get_marquee_position();
 		return {
 			canvas: canvas,
-			x: marquee ? marquee.x : (config.layer.x || 0),
-			y: marquee ? marquee.y : (config.layer.y || 0),
+			x: marquee ? marquee.x : (config.layer ? (config.layer.x || 0) : 0),
+			y: marquee ? marquee.y : (config.layer ? (config.layer.y || 0) : 0),
 			width: canvas.width,
 			height: canvas.height,
 		};

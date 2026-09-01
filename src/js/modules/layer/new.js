@@ -24,7 +24,8 @@ class Layer_new_class {
 	}
 
 	new_selection() {
-		var extracted = this.Base_layers.Base_selection.extract_selection_image(config.layer);
+		var sel = (app.Layers && app.Layers.Base_selection) ? app.Layers.Base_selection : this.Base_selection;
+		var extracted = sel ? sel.extract_selection_image(config.layer) : null;
 		if (extracted == null) {
 			alertify.error('Nothing is selected.');
 			return;

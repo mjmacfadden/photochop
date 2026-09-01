@@ -2242,30 +2242,7 @@ class Text_class extends Base_tools_class {
 	}
 
 	load() {
-		// Mouse events
-		document.addEventListener('mousedown', (event) => {
-			this.dragStart(event);
-		});
-		document.addEventListener('mousemove', (event) => {
-			this.dragMove(event);
-		});
-		document.addEventListener('mouseup', (event) => {
-			this.dragEnd(event);
-		});
-		document.addEventListener('dblclick', (event) => {
-			this.doubleClick(event);
-		});
-
-		// Touch events
-		document.addEventListener('touchstart', (event) => {
-			this.dragStart(event);
-		});
-		document.addEventListener('touchmove', (event) => {
-			this.dragMove(event);
-		});
-		document.addEventListener('touchend', (event) => {
-			this.dragEnd(event);
-		});
+		// Event routing is handled centrally by Base_tools_class
 	}
 
 	mousedown(e) {

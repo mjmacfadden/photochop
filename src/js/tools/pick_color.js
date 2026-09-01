@@ -30,29 +30,14 @@ class Pick_color_class extends Base_tools_class {
 	}
 
 	load() {
-		var _this = this;
+		// Event routing is handled centrally by Base_tools_class
+	}
 
-		//mouse events
-		document.addEventListener('mousedown', function (event) {
-			_this.dragStart(event);
-		});
-		document.addEventListener('mousemove', function (event) {
-			_this.dragMove(event);
-		});
-		document.addEventListener('mouseup', function (event) {
-			var mouse = _this.get_mouse_info(event);
-			if (config.TOOL.name != _this.name || mouse.click_valid == false)
-				return;
-			_this.copy_color_to_clipboard();
-		});
-
-		// collect touch events
-		document.addEventListener('touchstart', function (event) {
-			_this.dragStart(event);
-		});
-		document.addEventListener('touchmove', function (event) {
-			_this.dragMove(event);
-		});
+	mouseup(e) {
+		var mouse = this.get_mouse_info(e);
+		if (mouse.click_valid == false)
+			return;
+		this.copy_color_to_clipboard();
 	}
 
 	mousedown(e) {

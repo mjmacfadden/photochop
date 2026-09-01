@@ -208,7 +208,10 @@ class GUI_tools_class {
 			var row = document.createElement('div');
 			row.className = 'tool_group_item' + (it.shape == current_shape ? ' active' : '');
 			row.dataset.shape = it.shape;
-			row.innerHTML = '<span class="tg_icon ' + it.icon + '"></span><span class="tg_name">' + it.title + '</span>';
+			var toolKey = it.tool || it.shape || itemDef.name;
+			var shortcutKey = this.tool_shortcuts && (this.tool_shortcuts[toolKey] || this.tool_shortcuts[it.shape] || (it.shape === 'lasso' ? 'L' : this.tool_shortcuts[itemDef.name]));
+			var shortcutHtml = shortcutKey ? '<span class="tg_shortcut" style="margin-left:auto;color:#888;font-size:11px;">' + shortcutKey + '</span>' : '';
+			row.innerHTML = '<span class="tg_icon ' + it.icon + '"></span><span class="tg_name">' + it.title + '</span>' + shortcutHtml;
 			(function (shape) {
 				row.addEventListener('click', function (event) {
 					event.stopPropagation();
@@ -295,9 +298,10 @@ class GUI_tools_class {
 		for (var i in itemDef.tool_group.items) {
 			if (itemDef.tool_group.items[i].shape == shape) {
 				var title = itemDef.tool_group.items[i].title;
-				var toolKey = itemDef.tool_group.items[i].tool || itemDef.name;
-				if (this.tool_shortcuts && this.tool_shortcuts[toolKey]) {
-					title += ' [' + this.tool_shortcuts[toolKey] + ']';
+				var toolKey = itemDef.tool_group.items[i].tool || itemDef.tool_group.items[i].shape || itemDef.name;
+				var shortcutKey = this.tool_shortcuts && (this.tool_shortcuts[toolKey] || this.tool_shortcuts[itemDef.tool_group.items[i].shape] || (itemDef.tool_group.items[i].shape === 'lasso' ? 'L' : this.tool_shortcuts[itemDef.name]));
+				if (shortcutKey) {
+					title += ' [' + shortcutKey + ']';
 				}
 				return title;
 			}
