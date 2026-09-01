@@ -91,7 +91,8 @@ class Base_tools_class {
 			if (config.TOOL && brushTools.includes(config.TOOL.name)) {
 				var params = activeTool.getParams ? activeTool.getParams() : (config.TOOL.attributes || {});
 				var size = params.size?.value ?? params.size ?? 10;
-				_this.show_mouse_cursor(config.mouse.x, config.mouse.y, size, 'circle');
+				var cursorType = (config.TOOL.name === 'clone' && (event.altKey || (app.GUI && app.GUI.GUI_shortcuts && app.GUI.GUI_shortcuts.is_alt_down))) ? 'crosshair' : 'circle';
+				_this.show_mouse_cursor(config.mouse.x, config.mouse.y, size, cursorType);
 			}
 		}
 	}

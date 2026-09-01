@@ -62,6 +62,12 @@ class GUI_shortcuts_class {
 			}
 			if (key === 'Alt' || key === 'AltGraph' || code === 'AltLeft' || code === 'AltRight' || event.keyCode === 18) {
 				this.is_alt_down = isDown;
+				if (config.TOOL && config.TOOL.name === 'clone' && app.GUI && app.GUI.GUI_tools) {
+					const cloneTool = app.GUI.GUI_tools.tools_modules['clone']?.object;
+					if (cloneTool && typeof cloneTool.update_cursor === 'function') {
+						cloneTool.update_cursor(isDown);
+					}
+				}
 			}
 			if (key === 'Shift' || code === 'ShiftLeft' || code === 'ShiftRight' || event.keyCode === 16) {
 				this.is_shift_down = isDown;

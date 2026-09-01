@@ -545,8 +545,8 @@ config.TOOLS = [
 			size: 30,
 			anti_aliasing: true,
 			source_layer: {
-				value: 'Current',
-				values: ['Current', 'Previous'],
+				value: 'All Layers',
+				values: ['All Layers', 'Current', 'Previous'],
 			},
 		},
 	},

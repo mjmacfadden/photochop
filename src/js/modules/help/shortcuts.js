@@ -23,6 +23,7 @@ class Help_shortcuts_class {
 				{title: "T", value: 'Text Tool'},
 				{title: "C", value: 'Crop Tool'},
 				{title: "S", value: 'Clone Tool'},
+				{title: "Alt / Option + Click", value: 'Sample Clone Source'},
 				{title: "L", value: 'Blur Tool'},
 				{title: "N", value: 'Pencil Tool'},
 				{title: "M", value: 'Selection Tool'},

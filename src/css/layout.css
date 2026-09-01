@@ -1535,6 +1535,33 @@ visible around/outside the canvas edge; never blocks pointer events */
 	box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.7);
 	border-radius: 50%;
 }
+#mouse.crosshair{
+	border: 1px solid rgba(0, 0, 0, 0.85);
+	box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.75);
+	border-radius: 50%;
+}
+#mouse.crosshair::before,
+#mouse.crosshair::after{
+	content: '';
+	position: absolute;
+	background: rgba(0, 0, 0, 0.85);
+	box-shadow: 0 0 1px rgba(255, 255, 255, 0.9);
+	pointer-events: none;
+}
+#mouse.crosshair::before{
+	left: 50%;
+	top: -4px;
+	bottom: -4px;
+	width: 1px;
+	transform: translateX(-50%);
+}
+#mouse.crosshair::after{
+	top: 50%;
+	left: -4px;
+	right: -4px;
+	height: 1px;
+	transform: translateY(-50%);
+}
 .transparent-grid{
 	width: 100%;
 	height: 100%;
