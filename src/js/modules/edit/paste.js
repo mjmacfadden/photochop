@@ -37,6 +37,12 @@ class Edit_paste_class {
 		clip.y = (clip.y || 0) + 10;
 	}
 
+	async paste_as_new() {
+		if (app.GUI && app.GUI.modules && app.GUI.modules['file/new']) {
+			return await app.GUI.modules['file/new'].paste_as_new();
+		}
+	}
+
 	async paste_to_fit() {
 		var clip = config._internal_clipboard;
 

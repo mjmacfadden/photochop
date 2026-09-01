@@ -8,6 +8,11 @@ const menuDefinition = [
 				target: 'file/new.new'
 			},
 			{
+				name: 'Paste as New',
+				shortcut: 'Ctrl + Alt + V',
+				target: 'file/new.paste_as_new'
+			},
+			{
 				divider: true
 			},
 			{
@@ -146,6 +151,11 @@ const menuDefinition = [
 			name: 'Paste to Fit',
 			shortcut: 'Ctrl + Shift + V',
 			target: 'edit/paste.paste_to_fit'
+		},
+		{
+			name: 'Paste as New',
+			shortcut: 'Ctrl + Alt + V',
+			target: 'file/new.paste_as_new'
 		},
 		{
 			divider: true

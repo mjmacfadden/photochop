@@ -5,6 +5,7 @@ import Base_layers_class from './../../core/base-layers.js';
 import Helper_class from './../../libs/helpers.js';
 import Dialog_class from './../../libs/popup.js';
 import Tools_settings_class from './../tools/settings.js';
+import alertify from './../../../../node_modules/alertifyjs/build/alertify.min.js';
 
 /** 
  * manages files / new
@@ -240,6 +241,111 @@ class File_new_class {
 		else {
 			this.Helper.setCookie('transparency', 0);
 		}
+	}
+
+	blob_to_data_url(blob) {
+		return new Promise((resolve, reject) => {
+			const reader = new FileReader();
+			reader.onload = () => resolve(reader.result);
+			reader.onerror = (err) => reject(err);
+			reader.readAsDataURL(blob);
+		});
+	}
+
+	load_image_dimensions(data_url) {
+		return new Promise((resolve, reject) => {
+			const img = new Image();
+			img.onload = () => resolve({ width: img.width, height: img.height });
+			img.onerror = (err) => reject(err);
+			img.src = data_url;
+		});
+	}
+
+	async paste_as_new() {
+		let data_url = null;
+		let img_w = null;
+		let img_h = null;
+
+		// 1. Try system clipboard first if available (screenshots, browser copied images, etc.)
+		if (navigator.clipboard && navigator.clipboard.read) {
+			try {
+				const items = await navigator.clipboard.read();
+				for (let i = 0; i < items.length; i++) {
+					const types = items[i].types || [];
+					for (let t = 0; t < types.length; t++) {
+						if (types[t].indexOf('image') !== -1) {
+							const blob = await items[i].getType(types[t]);
+							data_url = await this.blob_to_data_url(blob);
+							const dims = await this.load_image_dimensions(data_url);
+							img_w = dims.width;
+							img_h = dims.height;
+							break;
+						}
+					}
+					if (data_url != null) break;
+				}
+			} catch (err) {
+				// Clipboard permission prompt denied, unsupported, or empty
+			}
+		}
+
+		// 2. Fallback to in-app internal clipboard
+		if (!data_url && config._internal_clipboard && config._internal_clipboard.data_url) {
+			data_url = config._internal_clipboard.data_url;
+			img_w = config._internal_clipboard.width;
+			img_h = config._internal_clipboard.height;
+		}
+
+		if (!data_url) {
+			alertify.error('Nothing to paste. Copy an image to the clipboard first.');
+			return;
+		}
+
+		// 3. Create new document
+		if (app.Documents && typeof app.Documents.create_document_from_image === 'function') {
+			await app.Documents.create_document_from_image({
+				name: 'Pasted Image',
+				data: data_url,
+			});
+		} else {
+			const img = new Image();
+			img.onload = () => {
+				const new_layer = {
+					name: 'Pasted Image',
+					type: 'image',
+					link: img,
+					width: img.width,
+					height: img.height,
+					width_original: img.width,
+					height_original: img.height,
+				};
+				app.State.do_action(
+					new app.Actions.Bundle_action('paste_as_new', 'Paste as New', [
+						new app.Actions.Init_canvas_zoom_action(),
+						new app.Actions.Reset_layers_action(),
+						new app.Actions.Insert_layer_action(new_layer),
+						new app.Actions.Autoresize_canvas_action(img.width, img.height, null, true, true)
+					])
+				);
+			};
+			img.src = data_url;
+		}
+
+		// Fit to screen
+		await new Promise(r => setTimeout(r, 20));
+		if (this.Base_gui && this.Base_gui.GUI_preview) {
+			this.Base_gui.GUI_preview.zoom_auto(true);
+		}
+
+		if (img_w && img_h) {
+			alertify.success(`Created new document from clipboard (${img_w} × ${img_h}px).`);
+		} else {
+			alertify.success('Created new document from clipboard.');
+		}
+	}
+
+	new_from_clipboard() {
+		return this.paste_as_new();
 	}
 
 }

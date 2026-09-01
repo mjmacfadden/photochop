@@ -387,13 +387,13 @@ class Base_documents_class {
 		return newDoc;
 	}
 
-	async create_document_from_image({ name, data, exif }) {
+	async create_document_from_image({ name, data, exif, force_new = false }) {
 		return new Promise((resolve) => {
 			const img = new Image();
 			img.onload = async () => {
 				const w = img.width;
 				const h = img.height;
-				const isPristine = this.is_active_document_empty();
+				const isPristine = !force_new && this.is_active_document_empty();
 
 				const new_layer = {
 					id: 1,

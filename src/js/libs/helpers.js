@@ -578,9 +578,9 @@ class Helper_class {
 	format_shortcut(shortcut) {
 		if (!shortcut) return '';
 		if (this.is_mac()) {
-			return shortcut.replace(/\bCtrl\b/gi, 'Cmd');
+			return shortcut.replace(/\bCtrl\b/gi, 'Cmd').replace(/\bAlt\b/gi, 'Option');
 		} else {
-			return shortcut.replace(/\b(Cmd|Command)\b/gi, 'Ctrl');
+			return shortcut.replace(/\b(Cmd|Command)\b/gi, 'Ctrl').replace(/\b(Option|Opt)\b/gi, 'Alt');
 		}
 	}
 
