@@ -15,6 +15,56 @@ import Layer_raster_class from './../../modules/layer/raster.js';
 import Tools_translate_class from './../../modules/tools/translate.js';
 
 var template = `
+	<div class="layers_header" id="layers_header">
+		<div class="layers_header_row">
+			<select class="layer_blend_select" id="layer_blend_select" title="Layer Blend Mode">
+				<option value="source-over">Normal</option>
+				<optgroup label="Darken">
+					<option value="darken">Darken</option>
+					<option value="multiply">Multiply</option>
+					<option value="color-burn">Color Burn</option>
+				</optgroup>
+				<optgroup label="Lighten">
+					<option value="lighten">Lighten</option>
+					<option value="screen">Screen</option>
+					<option value="color-dodge">Color Dodge</option>
+					<option value="lighter">Lighter</option>
+				</optgroup>
+				<optgroup label="Contrast">
+					<option value="overlay">Overlay</option>
+					<option value="soft-light">Soft Light</option>
+					<option value="hard-light">Hard Light</option>
+				</optgroup>
+				<optgroup label="Inversion">
+					<option value="difference">Difference</option>
+					<option value="exclusion">Exclusion</option>
+				</optgroup>
+				<optgroup label="Component">
+					<option value="hue">Hue</option>
+					<option value="saturation">Saturation</option>
+					<option value="color">Color</option>
+					<option value="luminosity">Luminosity</option>
+				</optgroup>
+				<optgroup label="Masking / Other">
+					<option value="source-atop">Clipping Mask (source-atop)</option>
+					<option value="destination-over">Destination Over</option>
+					<option value="destination-out">Destination Out</option>
+					<option value="xor">XOR</option>
+				</optgroup>
+			</select>
+			<div class="layer_opacity_group" title="Layer Opacity">
+				<span class="layer_opacity_label">Opacity:</span>
+				<div class="layer_opacity_input_wrapper">
+					<input type="number" class="layer_opacity_number" id="layer_opacity_number" min="0" max="100" value="100" />
+					<span class="layer_opacity_symbol">%</span>
+					<button type="button" class="layer_opacity_popup_btn" id="layer_opacity_popup_btn" title="Adjust Opacity">▾</button>
+				</div>
+				<div class="layer_opacity_slider_popup hidden" id="layer_opacity_slider_popup">
+					<input type="range" class="layer_opacity_range" id="layer_opacity_range" min="0" max="100" value="100" />
+				</div>
+			</div>
+		</div>
+	</div>
 	<div class="layers_list" id="layers"></div>
 `;
 
@@ -36,6 +86,8 @@ class GUI_layers_class {
 		this.mask_context_menu_open = false;
 		this.fx_menu = null;
 		this.fx_menu_open = false;
+		this.adj_menu = null;
+		this.adj_menu_open = false;
 	}
 
 	render_main_layers() {
@@ -165,8 +217,28 @@ class GUI_layers_class {
 					);
 				}
 			}
+			else if (target.closest('.clipping_arrow_btn') != null || target.closest('.arrow_down') != null) {
+				var arrowBtn = target.closest('.clipping_arrow_btn') || target.closest('.arrow_down');
+				var layer_id = parseInt(arrowBtn.dataset.id);
+				var arrow_layer = app.Layers.get_layer(layer_id);
+				if (arrow_layer) {
+					var newComp = (arrow_layer.composition === 'source-atop') ? 'source-over' : 'source-atop';
+					return app.State.do_action(
+						new app.Actions.Update_layer_action(layer_id, {
+							composition: newComp
+						})
+					);
+				}
+			}
 			else if (target.closest('.layer_thumb') != null) {
 				var layer_id = parseInt(target.closest('.layer_thumb').dataset.id);
+				var thumb_layer = app.Layers.get_layer(layer_id);
+				if (thumb_layer && thumb_layer.type === 'adjustment') {
+					if (app.GUI && app.GUI.modules && app.GUI.modules['layer/adjustment']) {
+						app.GUI.modules['layer/adjustment'].edit(layer_id);
+						return;
+					}
+				}
 				if (config.layer && config.layer.id == layer_id && config.mask_active === true) {
 					//main thumbnail clicked - exit mask editing, edit the layer instead
 					_this.Mask.set_active(false);
@@ -179,9 +251,107 @@ class GUI_layers_class {
 			}
 		});
 
+		// Header blend mode select
+		var blendSelect = document.getElementById('layer_blend_select');
+		if (blendSelect) {
+			blendSelect.addEventListener('change', function () {
+				if (!config.layer || config.layer.id == null) return;
+				var val = this.value;
+				var prev = config.layer.composition || 'source-over';
+				if (val !== prev) {
+					app.State.do_action(
+						new app.Actions.Update_layer_action(config.layer.id, {
+							composition: val
+						})
+					);
+				}
+			});
+		}
+
+		// Header opacity input and slider
+		var opNumber = document.getElementById('layer_opacity_number');
+		var opRange = document.getElementById('layer_opacity_range');
+		var opPopupBtn = document.getElementById('layer_opacity_popup_btn');
+		var opPopup = document.getElementById('layer_opacity_slider_popup');
+
+		if (opPopupBtn && opPopup) {
+			opPopupBtn.addEventListener('click', function (e) {
+				e.stopPropagation();
+				opPopup.classList.toggle('hidden');
+			});
+		}
+
+		var focus_opacity = null;
+		if (opNumber) {
+			opNumber.addEventListener('focus', function () {
+				focus_opacity = (config.layer && config.layer.opacity != null) ? Math.round(config.layer.opacity) : 100;
+			});
+			opNumber.addEventListener('input', function () {
+				if (!config.layer || config.layer.id == null) return;
+				var val = parseInt(this.value);
+				if (isNaN(val)) return;
+				val = Math.max(0, Math.min(100, val));
+				config.layer.opacity = val;
+				if (opRange) opRange.value = val;
+				app.Layers.invalidate({ document: true });
+				app.Layers.render(true);
+			});
+			opNumber.addEventListener('blur', function () {
+				if (!config.layer || config.layer.id == null) return;
+				var val = parseInt(this.value);
+				if (isNaN(val)) val = 100;
+				val = Math.max(0, Math.min(100, val));
+				this.value = val;
+				if (opRange) opRange.value = val;
+				if (focus_opacity !== val) {
+					config.layer.opacity = focus_opacity;
+					app.State.do_action(
+						new app.Actions.Update_layer_action(config.layer.id, {
+							opacity: val
+						})
+					);
+				}
+			});
+		}
+
+		var range_start_opacity = null;
+		if (opRange) {
+			opRange.addEventListener('mousedown', function () {
+				range_start_opacity = (config.layer && config.layer.opacity != null) ? Math.round(config.layer.opacity) : 100;
+			});
+			opRange.addEventListener('input', function () {
+				if (!config.layer || config.layer.id == null) return;
+				var val = parseInt(this.value);
+				config.layer.opacity = val;
+				if (opNumber) opNumber.value = val;
+				app.Layers.invalidate({ document: true });
+				app.Layers.render(true);
+			});
+			opRange.addEventListener('change', function () {
+				if (!config.layer || config.layer.id == null) return;
+				var val = parseInt(this.value);
+				if (range_start_opacity !== val) {
+					config.layer.opacity = range_start_opacity;
+					app.State.do_action(
+						new app.Actions.Update_layer_action(config.layer.id, {
+							opacity: val
+						})
+					);
+				}
+			});
+		}
+
 		document.getElementById('layers_base').addEventListener('dblclick', function (event) {
 			var target = event.target;
 			if (target.id == 'layer_name') {
+				var layer_id = parseInt(target.dataset.id);
+				var dbl_layer = app.Layers.get_layer(layer_id);
+				if (dbl_layer && dbl_layer.type === 'adjustment') {
+					if (app.GUI && app.GUI.modules && app.GUI.modules['layer/adjustment']) {
+						app.GUI.modules['layer/adjustment'].edit(layer_id);
+						return;
+					}
+				}
 				_this.Layer_rename.rename(target.dataset.id);
 			}
 		});
@@ -209,6 +379,18 @@ class GUI_layers_class {
 				var target = event.target;
 				if (!target.closest('#layer_fx_popup_menu') && !target.closest('#status_layer_fx')) {
 					_this.hide_fx_menu();
+				}
+			}
+			if (_this.adj_menu_open === true) {
+				var target = event.target;
+				if (!target.closest('#layer_adj_popup_menu') && !target.closest('#status_adjustment_layer')) {
+					_this.hide_adj_menu();
+				}
+			}
+			if (opPopup && !opPopup.classList.contains('hidden')) {
+				var target = event.target;
+				if (!target.closest('#layer_opacity_slider_popup') && !target.closest('#layer_opacity_popup_btn')) {
+					opPopup.classList.add('hidden');
 				}
 			}
 		});
@@ -305,9 +487,9 @@ class GUI_layers_class {
 		menu.style.top = y + 'px';
 
 		var _this = this;
-		var button = function (label, callback) {
+		var button = function (label, callback, extraClass = '') {
 			var b = document.createElement('button');
-			b.className = 'mask_context_menu_item';
+			b.className = 'mask_context_menu_item' + (extraClass ? ' ' + extraClass : '');
 			b.innerHTML = label;
 			b.addEventListener('click', function () {
 				_this.hide_mask_context_menu();
@@ -316,19 +498,73 @@ class GUI_layers_class {
 			menu.appendChild(b);
 		};
 
+		var separator = function () {
+			var hr = document.createElement('hr');
+			hr.className = 'layer_context_menu_divider';
+			menu.appendChild(hr);
+		};
+
+		// 1. Clipping Mask
+		if (layer.composition === 'source-atop') {
+			button('Release Clipping Mask', () => {
+				app.State.do_action(
+					new app.Actions.Update_layer_action(layer_id, {
+						composition: 'source-over'
+					})
+				);
+			});
+		} else {
+			button('Create Clipping Mask', () => {
+				app.State.do_action(
+					new app.Actions.Update_layer_action(layer_id, {
+						composition: 'source-atop'
+					})
+				);
+			});
+		}
+
+		separator();
+
+		// 2. Layer operations
+		button('Duplicate Layer', () => {
+			app.State.do_action(new app.Actions.Duplicate_layer_action(layer_id));
+		});
+		if (!layer.locked) {
+			button('Delete Layer', () => {
+				app.State.do_action(new app.Actions.Delete_layer_action(layer_id));
+			});
+		}
+		button('Rename Layer...', () => {
+			_this.Layer_rename.rename(layer_id);
+		});
+
+		if (layer.type === 'adjustment') {
+			button('Edit Adjustment...', () => {
+				if (app.GUI && app.GUI.modules && app.GUI.modules['layer/adjustment']) {
+					app.GUI.modules['layer/adjustment'].edit(layer_id);
+				}
+			});
+		} else {
+			button('Layer Styles (Fx)...', () => {
+				if (app.GUI && app.GUI.modules && app.GUI.modules['layer/styles']) {
+					app.GUI.modules['layer/styles'].open('shadow');
+				}
+			});
+		}
+
+		separator();
+
+		// 3. Mask operations
 		if (layer.mask == null) {
-			button('Reveal All', () => { _this.Mask.add_mask(layer_id, true, false); });
-			button('Hide All', () => { _this.Mask.add_mask(layer_id, false, false); });
-			button('Reveal Selection', () => { _this.Mask.add_mask(layer_id, true, true); });
-			button('Hide Selection', () => { _this.Mask.add_mask(layer_id, false, true); });
+			button('Add Layer Mask (Reveal All)', () => { _this.Mask.add_mask(layer_id, true, false); });
+			button('Add Layer Mask (Hide All)', () => { _this.Mask.add_mask(layer_id, false, false); });
+			button('Mask from Selection', () => { _this.Mask.add_mask(layer_id, true, true); });
 		}
 		else {
-			button(layer.mask.enabled === false ? 'Enable Mask' : 'Disable Mask',
+			button(layer.mask.enabled === false ? 'Enable Layer Mask' : 'Disable Layer Mask',
 				() => { _this.Mask.toggle_enabled(layer_id); });
 			button('Reveal All', () => { _this.Mask.fill_mask(layer_id, true); });
 			button('Hide All', () => { _this.Mask.fill_mask(layer_id, false); });
-			button('Reveal Selection', () => { _this.Mask.fill_mask_from_selection(layer_id, true); });
-			button('Hide Selection', () => { _this.Mask.fill_mask_from_selection(layer_id, false); });
 			button('Apply Mask', () => { _this.Mask.apply_mask(layer_id); });
 			button('Delete Mask', () => { _this.Mask.delete_mask(layer_id); });
 		}
@@ -360,6 +596,14 @@ class GUI_layers_class {
 			});
 		}
 
+		var adj_btn = document.getElementById('status_adjustment_layer');
+		if (adj_btn) {
+			adj_btn.addEventListener('click', function (e) {
+				e.stopPropagation();
+				_this.toggle_adj_menu(adj_btn);
+			});
+		}
+
 		document.getElementById('status_new_layer').addEventListener('click', function () {
 			app.State.do_action(
 				new app.Actions.Insert_layer_action()
@@ -373,6 +617,77 @@ class GUI_layers_class {
 				);
 			}
 		});
+	}
+
+	/**
+	 * toggles the Adjustment layer popup menu
+	 */
+	toggle_adj_menu(button_el) {
+		if (this.adj_menu_open) {
+			this.hide_adj_menu();
+		} else {
+			this.show_adj_menu(button_el);
+		}
+	}
+
+	/**
+	 * shows the Adjustment layer popup menu anchored above the given button
+	 */
+	show_adj_menu(button_el) {
+		this.hide_adj_menu();
+
+		var rect = button_el.getBoundingClientRect();
+		var menu = document.createElement('div');
+		menu.id = 'layer_adj_popup_menu';
+		menu.className = 'layer_fx_popup_menu layer_adj_popup_menu';
+
+		var _this = this;
+		var addItem = function (label, type) {
+			var b = document.createElement('button');
+			b.type = 'button';
+			b.className = 'layer_fx_menu_item';
+			b.innerHTML = label;
+			b.addEventListener('click', function (e) {
+				e.stopPropagation();
+				_this.hide_adj_menu();
+				if (app.GUI && app.GUI.modules && app.GUI.modules['layer/adjustment']) {
+					app.GUI.modules['layer/adjustment'].create(type);
+				}
+			});
+			menu.appendChild(b);
+		};
+
+		addItem('Brightness...', 'brightness');
+		addItem('Contrast...', 'contrast');
+		addItem('Hue Rotate...', 'hue-rotate');
+		addItem('Saturate...', 'saturate');
+		addItem('Grayscale...', 'grayscale');
+		addItem('Sepia...', 'sepia');
+		addItem('Invert (Negative)...', 'invert');
+		addItem('Gaussian Blur...', 'blur');
+		addItem('Threshold...', 'threshold');
+
+		document.body.appendChild(menu);
+
+		var menuRect = menu.getBoundingClientRect();
+		var left = Math.max(10, Math.min(window.innerWidth - menuRect.width - 10, rect.left + (rect.width / 2) - (menuRect.width / 2)));
+		var top = Math.max(10, rect.top - menuRect.height - 4);
+		menu.style.left = Math.round(left) + 'px';
+		menu.style.top = Math.round(top) + 'px';
+
+		this.adj_menu = menu;
+		this.adj_menu_open = true;
+	}
+
+	/**
+	 * hides the Adjustment layer popup menu
+	 */
+	hide_adj_menu() {
+		this.adj_menu_open = false;
+		if (this.adj_menu) {
+			this.adj_menu.remove();
+			this.adj_menu = null;
+		}
 	}
 
 	/**
@@ -465,6 +780,9 @@ class GUI_layers_class {
 	 * returns thumbnail HTML for layer type
 	 */
 	get_layer_thumb(layer) {
+		if (layer.type === 'adjustment') {
+			return '<svg class="thumb_icon thumb_adjustment" viewBox="0 0 16 16" fill="currentColor"><circle cx="8" cy="8" r="6" fill="none" stroke="currentColor" stroke-width="1.3"/><path d="M8 2 A6 6 0 0 1 8 14 Z" fill="currentColor"/></svg>';
+		}
 		if (layer.type === 'text') {
 			return '<svg class="thumb_icon thumb_text" viewBox="0 0 16 16" fill="currentColor"><path d="M2 2h12v3h-1V3H9v10h2v1H5v-1h2V3H3v2H2V2z"/></svg>';
 		}
@@ -497,23 +815,47 @@ class GUI_layers_class {
 		var html = '';
 		
 		if (config.layer) {
+			var clipped_ids = new Set();
+			var base_ids = new Set();
+
+			for (var k = 0; k < layers.length; k++) {
+				if (layers[k].composition === 'source-atop') {
+					clipped_ids.add(layers[k].id);
+					for (var m = k + 1; m < layers.length; m++) {
+						if (layers[m].composition !== 'source-atop') {
+							base_ids.add(layers[m].id);
+							break;
+						}
+					}
+				}
+			}
+
 			for (var i in layers) {
 				var value = layers[i];
+				var is_clipped = clipped_ids.has(value.id);
+				var is_base = base_ids.has(value.id);
 				var class_extra = '';
-				if(value.composition === 'source-atop'){
-					class_extra += ' shorter';
+				if (is_clipped) {
+					class_extra += ' is_clipped shorter';
+				}
+				if (is_base) {
+					class_extra += ' is_clipping_base';
 				}
 				if (value.id == config.layer.id){
 					class_extra += ' active';
 				}
 
 				html += '<div class="item ' + class_extra + (value.locked ? ' locked' : '') + '" data-id="' + value.id + '" draggable="' + (value.locked ? 'false' : 'true') + '">';
-			if (value.visible == true)
-				html += '	<button class="visibility visible trn" id="visibility" data-id="' + value.id + '" title="Hide"></button>';
-			else
-				html += '	<button class="visibility trn" id="visibility" data-id="' + value.id + '" title="Show"></button>';
+				if (value.visible == true)
+					html += '	<button class="visibility visible trn" id="visibility" data-id="' + value.id + '" title="Hide"></button>';
+				else
+					html += '	<button class="visibility trn" id="visibility" data-id="' + value.id + '" title="Show"></button>';
 			
-			html += '	<span class="layer_thumb" data-id="' + value.id + '">' + this.get_layer_thumb(value) + '</span>';
+				if (is_clipped) {
+					html += '	<button type="button" class="clipping_arrow_btn" data-id="' + value.id + '" title="Clipping mask (click to release)"><svg class="clipping_arrow_svg" viewBox="0 0 16 16"><path d="M4 2v6h5.5V5.5L14 9.5l-4.5 4V11H2V2h2z" fill="currentColor"/></svg></button>';
+				}
+
+				html += '	<span class="layer_thumb" data-id="' + value.id + '">' + this.get_layer_thumb(value) + '</span>';
 
 				if (value.mask != null) {
 					var mask_class = 'mask_thumb';
@@ -529,14 +871,10 @@ class GUI_layers_class {
 				else {
 					html += '	<span class="mask_thumb empty" id="mask_thumb" data-id="' + value.id + '" title="Add layer mask"></span>';
 				}
-				
-				if(value.composition === 'source-atop'){
-					html += '	<button class="arrow_down" data-id="' + value.id + '" ></button>';
-				}
 
 				var layer_title = this.Helper.escapeHtml(value.name);
 				
-			html += '	<button class="layer_name" id="layer_name" data-id="' + value.id + '">' + layer_title + '</button>';
+				html += '	<button class="layer_name" id="layer_name" data-id="' + value.id + '">' + layer_title + '</button>';
 
 			if (value.locked) {
 				html += '	<span class="lock_icon locked" data-id="' + value.id + '" title="Locked (click to unlock)"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg></span>';
@@ -582,6 +920,48 @@ class GUI_layers_class {
 		document.getElementById(target_id).innerHTML = html;
 		if (config.LANG != 'en') {
 			this.Tools_translate.translate(config.LANG, document.getElementById(target_id));
+		}
+
+		this.update_header_controls();
+	}
+
+	/**
+	 * updates blend mode dropdown and opacity controls in the header
+	 */
+	update_header_controls() {
+		var blendSelect = document.getElementById('layer_blend_select');
+		var opNumber = document.getElementById('layer_opacity_number');
+		var opRange = document.getElementById('layer_opacity_range');
+
+		if (config.layer && config.layer.id != null) {
+			var comp = config.layer.composition || 'source-over';
+			var opacity = (config.layer.opacity != null) ? Math.round(config.layer.opacity) : 100;
+
+			if (blendSelect) {
+				blendSelect.value = comp;
+				blendSelect.disabled = false;
+			}
+			if (opNumber) {
+				opNumber.value = opacity;
+				opNumber.disabled = false;
+			}
+			if (opRange) {
+				opRange.value = opacity;
+				opRange.disabled = false;
+			}
+		} else {
+			if (blendSelect) {
+				blendSelect.value = 'source-over';
+				blendSelect.disabled = true;
+			}
+			if (opNumber) {
+				opNumber.value = 100;
+				opNumber.disabled = true;
+			}
+			if (opRange) {
+				opRange.value = 100;
+				opRange.disabled = true;
+			}
 		}
 	}
 }

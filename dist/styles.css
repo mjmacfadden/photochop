@@ -1658,7 +1658,7 @@ body.tool-pan.pan-dragging #canvas_minipaint{
 	overflow-x: hidden;
 	overflow-y: scroll;
 	margin: 0 4px;
-	width: 220px;
+	width: 250px;
 	background-color: #3c3c3c;
 	border-left: 1px solid #2a2a2a;
 }
@@ -1798,8 +1798,133 @@ body.tool-pan.pan-dragging #canvas_minipaint{
 }
 
 /* layers */
+.layers_header {
+	padding: 4px 6px 6px 6px;
+	border-bottom: 1px solid #333333;
+	margin-bottom: 4px;
+}
+.layers_header_row {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 6px;
+}
+.layer_blend_select {
+	flex: 1;
+	min-width: 0;
+	height: 22px;
+	background-color: #2c2c2c;
+	color: #e0e0e0;
+	border: 1px solid #444444;
+	border-radius: 3px;
+	padding: 0 4px;
+	font-size: 11px;
+	cursor: pointer;
+	outline: none;
+}
+.layer_blend_select:focus {
+	border-color: #4a9eff;
+}
+.layer_blend_select:disabled {
+	opacity: 0.4;
+	cursor: default;
+}
+.layer_blend_select optgroup {
+	background-color: #222222;
+	color: #888888;
+	font-style: normal;
+	font-weight: bold;
+}
+.layer_blend_select option {
+	background-color: #2c2c2c;
+	color: #e0e0e0;
+	padding: 2px 6px;
+}
+.layer_opacity_group {
+	position: relative;
+	display: flex;
+	align-items: center;
+	gap: 4px;
+	flex-shrink: 0;
+}
+.layer_opacity_label {
+	font-size: 11px;
+	color: #aaaaaa;
+	user-select: none;
+}
+.layer_opacity_input_wrapper {
+	display: flex;
+	align-items: center;
+	background-color: #2c2c2c;
+	border: 1px solid #444444;
+	border-radius: 3px;
+	height: 22px;
+	padding: 0 3px 0 4px;
+	box-sizing: border-box;
+}
+.layer_opacity_input_wrapper:focus-within {
+	border-color: #4a9eff;
+}
+.layer_opacity_number {
+	width: 32px;
+	background: transparent;
+	border: none;
+	color: #ffffff;
+	font-size: 11px;
+	text-align: right;
+	padding: 0;
+	outline: none;
+	-moz-appearance: textfield;
+}
+.layer_opacity_number::-webkit-outer-spin-button,
+.layer_opacity_number::-webkit-inner-spin-button {
+	-webkit-appearance: none;
+	margin: 0;
+}
+.layer_opacity_number:disabled {
+	color: #666666;
+}
+.layer_opacity_symbol {
+	font-size: 10px;
+	color: #888888;
+	margin: 0 1px;
+	user-select: none;
+}
+.layer_opacity_popup_btn {
+	background: transparent;
+	border: none;
+	color: #999999;
+	cursor: pointer;
+	padding: 0 2px;
+	font-size: 9px;
+	line-height: 1;
+	height: 100%;
+	display: flex;
+	align-items: center;
+}
+.layer_opacity_popup_btn:hover {
+	color: #ffffff;
+}
+.layer_opacity_slider_popup {
+	position: absolute;
+	top: calc(100% + 4px);
+	right: 0;
+	z-index: 100;
+	background-color: #2c2c2c;
+	border: 1px solid #555555;
+	border-radius: 4px;
+	padding: 8px 10px;
+	box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5);
+	width: 140px;
+	box-sizing: border-box;
+}
+.layer_opacity_range {
+	width: 100%;
+	cursor: pointer;
+	margin: 0;
+}
 .layers_list{
-	margin-top: 10px;
+	margin-top: 4px;
 }
 .layers_arrow{
 	display:inline-block;
@@ -1855,6 +1980,40 @@ body.tool-pan.pan-dragging #canvas_minipaint{
 .layers_list .item.active .layer_name{
 	background-color: transparent;
 	color: #ffffff;
+}
+.layers_list .item.is_clipped {
+	padding-left: 18px;
+}
+.layers_list .item.is_clipping_base .layer_name {
+	text-decoration: underline;
+	text-underline-offset: 2px;
+	text-decoration-color: #888888;
+}
+.layers_list .clipping_arrow_btn {
+	flex-shrink: 0;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	width: 14px;
+	height: 18px;
+	margin-right: 3px;
+	background: transparent;
+	border: none;
+	padding: 0;
+	cursor: pointer;
+	color: #999999;
+	transition: color 0.15s, transform 0.1s;
+}
+.layers_list .clipping_arrow_btn:hover {
+	color: #ffffff;
+	transform: scale(1.15);
+}
+.layers_list .clipping_arrow_svg {
+	width: 12px;
+	height: 12px;
+}
+.layers_list .item.active .clipping_arrow_btn {
+	color: #cccccc;
 }
 .layers_list .arrow_down{
 	flex-shrink: 0;
@@ -1926,7 +2085,8 @@ body.tool-pan.pan-dragging #canvas_minipaint{
 .layers_list .thumb_gradient{
 	color: #999999;
 }
-.layers_list .thumb_shape{
+.layers_list .thumb_shape,
+.layers_list .thumb_adjustment{
 	color: #999999;
 }
 .layers_list .item.active .thumb_text{
@@ -1935,7 +2095,8 @@ body.tool-pan.pan-dragging #canvas_minipaint{
 .layers_list .item.active .thumb_image,
 .layers_list .item.active .thumb_brush,
 .layers_list .item.active .thumb_gradient,
-.layers_list .item.active .thumb_shape{
+.layers_list .item.active .thumb_shape,
+.layers_list .item.active .thumb_adjustment{
 	color: #cccccc;
 }
 .layers_list .mask_thumb{
@@ -1997,6 +2158,11 @@ body.tool-pan.pan-dragging #canvas_minipaint{
 .mask_context_menu_item:hover{
 	background: #4a4a4a;
 	color: #ffffff;
+}
+.mask_context_menu hr.layer_context_menu_divider{
+	border: none;
+	border-top: 1px solid #4e4e4e;
+	margin: 4px 0;
 }
 .layers_list .lock_icon{
 	flex-shrink: 0;
@@ -2205,7 +2371,7 @@ body.tool-pan.pan-dragging #canvas_minipaint{
 	.sidebar_right{
 		position: absolute;
 		height: 100%;
-		right: -210px;
+		right: -250px;
 		background: var(--background);
 	}
 	.sidebar_right.active{

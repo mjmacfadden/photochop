@@ -71,6 +71,7 @@ export class Insert_layer_action extends Base_action {
 			filters: [],
 			render_function: null,
 			mask: null,
+			adjustment_type: null,
 		};
 
 		// Build data

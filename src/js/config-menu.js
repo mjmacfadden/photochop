@@ -335,6 +335,56 @@ const menuDefinition = [
 				target: 'layer/new.new_selection'
 			},
 			{
+				name: 'New Adjustment Layer',
+				children: [
+					{
+						name: 'Brightness',
+						ellipsis: true,
+						target: 'layer/adjustment.brightness'
+					},
+					{
+						name: 'Contrast',
+						ellipsis: true,
+						target: 'layer/adjustment.contrast'
+					},
+					{
+						name: 'Hue Rotate',
+						ellipsis: true,
+						target: 'layer/adjustment.hue_rotate'
+					},
+					{
+						name: 'Saturate',
+						ellipsis: true,
+						target: 'layer/adjustment.saturate'
+					},
+					{
+						name: 'Grayscale',
+						ellipsis: true,
+						target: 'layer/adjustment.grayscale'
+					},
+					{
+						name: 'Sepia',
+						ellipsis: true,
+						target: 'layer/adjustment.sepia'
+					},
+					{
+						name: 'Invert (Negative)',
+						ellipsis: true,
+						target: 'layer/adjustment.invert'
+					},
+					{
+						name: 'Gaussian Blur',
+						ellipsis: true,
+						target: 'layer/adjustment.blur'
+					},
+					{
+						name: 'Threshold',
+						ellipsis: true,
+						target: 'layer/adjustment.threshold'
+					}
+				]
+			},
+			{
 				divider: true
 			},
 			{
@@ -369,6 +419,11 @@ const menuDefinition = [
 						target: 'layer/move.down'
 					}
 				]
+			},
+			{
+				name: 'Create / Release Clipping Mask',
+				shortcut: 'Ctrl + Alt + G',
+				target: 'layer/composition.toggle_clipping_mask'
 			},
 			{
 				name: 'Composition',

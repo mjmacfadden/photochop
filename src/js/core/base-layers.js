@@ -189,6 +189,8 @@ class Base_layers_class {
 	can_render_interactive_layer(layer, layers) {
 		if (!layer || layer.visible === false || layer.type == null)
 			return false;
+		if (layer.type === 'adjustment')
+			return false;
 		// The initial fast path intentionally handles only an independent,
 		// top-most normal layer. Masks, filters, clipping and blend modes keep
 		// using the exact legacy compositor.
@@ -506,6 +508,33 @@ class Base_layers_class {
 				continue;
 			}
 
+			if (layer.visible === false || layer.type == null) {
+				continue;
+			}
+
+			// If this is an adjustment layer
+			if (layer.type === 'adjustment') {
+				if (
+					layer.composition === "source-atop" ||
+					(nextLayer && nextLayer.composition === "source-atop")
+				) {
+					if (nextLayer?.composition === "source-atop") {
+						this.render_adjustment(ctx, layer);
+						this.render_adjustment(tempCtx, layer);
+					} else {
+						this.render_adjustment(tempCtx, layer);
+						ctx.restore();
+						ctx.drawImage(tempCanvas, 0, 0);
+						prepare && prepare();
+						tempCtx.globalCompositeOperation = null;
+						tempCtx.clearRect(0, 0, tempCanvas.width, tempCanvas.height);
+					}
+				} else {
+					this.render_adjustment(ctx, layer);
+				}
+				continue;
+			}
+
 			// If the layer or next layer has clip masking effect (source-atop).
 			// If there are such layers, this will make sure that layers will be rendered
 			// in an isolated temporary canvas
@@ -583,6 +612,11 @@ class Base_layers_class {
 	 */
 	render_object(ctx, object, is_preview) {
 		if (object.visible == false || object.type == null) return;
+
+		if (object.type === 'adjustment') {
+			this.render_adjustment(ctx, object);
+			return;
+		}
 
 		this.pre_render_object(ctx, object);
 
@@ -776,6 +810,194 @@ class Base_layers_class {
 				this.render_success = false;
 				console.log("Error: can not find filter: " + filter_name);
 			}
+		}
+	}
+
+	/**
+	 * Renders an adjustment layer onto targetCtx
+	 * @param {CanvasRenderingContext2D} targetCtx
+	 * @param {object} layer
+	 */
+	render_adjustment(targetCtx, layer) {
+		if (!layer || layer.visible === false) return;
+
+		const type = layer.adjustment_type ? layer.adjustment_type.toLowerCase().replace(/_/g, '-') : null;
+		const filterString = this.get_adjustment_filter_string(layer);
+		if (type !== 'threshold' && (!filterString || filterString === 'none')) return;
+
+		const W = targetCtx.canvas.width;
+		const H = targetCtx.canvas.height;
+		if (W === 0 || H === 0) return;
+
+		if (!this.adj_scratch_canvas) {
+			this.adj_scratch_canvas = document.createElement('canvas');
+		}
+		if (this.adj_scratch_canvas.width !== W || this.adj_scratch_canvas.height !== H) {
+			this.adj_scratch_canvas.width = W;
+			this.adj_scratch_canvas.height = H;
+		}
+
+		const scratchCtx = this.adj_scratch_canvas.getContext('2d');
+		scratchCtx.setTransform(1, 0, 0, 1, 0, 0);
+		scratchCtx.clearRect(0, 0, W, H);
+		scratchCtx.drawImage(targetCtx.canvas, 0, 0);
+
+		const hasMask = layer.mask != null && layer.mask.enabled !== false;
+		const opacity = (layer.opacity ?? 100) / 100;
+		const comp = layer.composition || 'source-over';
+
+		if (hasMask) {
+			if (!this.Mask) {
+				this.Mask = new Mask_class();
+			}
+			if (!this.adj_filtered_canvas) {
+				this.adj_filtered_canvas = document.createElement('canvas');
+			}
+			if (this.adj_filtered_canvas.width !== W || this.adj_filtered_canvas.height !== H) {
+				this.adj_filtered_canvas.width = W;
+				this.adj_filtered_canvas.height = H;
+			}
+
+			const fCtx = this.adj_filtered_canvas.getContext('2d');
+			fCtx.setTransform(1, 0, 0, 1, 0, 0);
+			fCtx.clearRect(0, 0, W, H);
+			this.apply_adjustment_effect(fCtx, this.adj_scratch_canvas, layer, W, H);
+
+			this.Mask.multiply_alpha_by_mask_world(fCtx, layer);
+
+			targetCtx.save();
+			targetCtx.setTransform(1, 0, 0, 1, 0, 0);
+			targetCtx.globalAlpha = opacity;
+			targetCtx.globalCompositeOperation = comp;
+			targetCtx.drawImage(this.adj_filtered_canvas, 0, 0);
+			targetCtx.restore();
+		} else {
+			if (opacity >= 0.999 && (comp === 'source-over' || comp === 'source-atop')) {
+				targetCtx.save();
+				targetCtx.setTransform(1, 0, 0, 1, 0, 0);
+				targetCtx.clearRect(0, 0, W, H);
+				this.apply_adjustment_effect(targetCtx, this.adj_scratch_canvas, layer, W, H);
+				targetCtx.restore();
+			} else {
+				if (!this.adj_filtered_canvas) {
+					this.adj_filtered_canvas = document.createElement('canvas');
+				}
+				if (this.adj_filtered_canvas.width !== W || this.adj_filtered_canvas.height !== H) {
+					this.adj_filtered_canvas.width = W;
+					this.adj_filtered_canvas.height = H;
+				}
+
+				const fCtx = this.adj_filtered_canvas.getContext('2d');
+				fCtx.setTransform(1, 0, 0, 1, 0, 0);
+				fCtx.clearRect(0, 0, W, H);
+				this.apply_adjustment_effect(fCtx, this.adj_scratch_canvas, layer, W, H);
+
+				targetCtx.save();
+				targetCtx.setTransform(1, 0, 0, 1, 0, 0);
+				targetCtx.globalAlpha = opacity;
+				targetCtx.globalCompositeOperation = comp;
+				targetCtx.drawImage(this.adj_filtered_canvas, 0, 0);
+				targetCtx.restore();
+			}
+		}
+	}
+
+	/**
+	 * Applies the adjustment effect (CSS filter or pixel algorithm) from srcCanvas onto destCtx
+	 */
+	apply_adjustment_effect(destCtx, srcCanvas, layer, W, H) {
+		const type = layer.adjustment_type ? layer.adjustment_type.toLowerCase().replace(/_/g, '-') : null;
+
+		if (type === 'threshold') {
+			destCtx.drawImage(srcCanvas, 0, 0);
+			const imgData = destCtx.getImageData(0, 0, W, H);
+			const buf32 = new Uint32Array(imgData.data.buffer);
+			const threshold = (layer.params && layer.params.value !== undefined) ? layer.params.value : 128;
+
+			for (let i = 0; i < buf32.length; i++) {
+				const pixel = buf32[i];
+				const a = (pixel >> 24) & 0xff;
+				if (a === 0) continue;
+				const r = pixel & 0xff;
+				const g = (pixel >> 8) & 0xff;
+				const b = (pixel >> 16) & 0xff;
+				const lum = 0.2126 * r + 0.7152 * g + 0.0722 * b;
+				const v = lum >= threshold ? 255 : 0;
+				buf32[i] = (a << 24) | (v << 16) | (v << 8) | v;
+			}
+			destCtx.putImageData(imgData, 0, 0);
+		} else {
+			const filterString = this.get_adjustment_filter_string(layer);
+			destCtx.filter = filterString;
+			destCtx.drawImage(srcCanvas, 0, 0);
+			destCtx.filter = 'none';
+		}
+	}
+
+	get_adjustment_filter_string(layer) {
+		if (!layer) return 'none';
+
+		let type = layer.adjustment_type;
+		let params = layer.params || {};
+
+		if (!type && layer.filters && layer.filters.length > 0) {
+			let filtersArr = [];
+			for (let f of layer.filters) {
+				if (f && !f.disabled) {
+					let str = this.convert_filter_to_css(f.name, f.params || {});
+					if (str) filtersArr.push(str);
+				}
+			}
+			return filtersArr.length > 0 ? filtersArr.join(' ') : 'none';
+		}
+
+		return this.convert_filter_to_css(type, params) || 'none';
+	}
+
+	convert_filter_to_css(type, params) {
+		if (!type) return null;
+		type = type.toLowerCase().replace(/_/g, '-');
+		let value = params ? params.value : undefined;
+
+		switch (type) {
+			case 'brightness': {
+				let v = (value !== undefined) ? value : 0;
+				let sysVal = v / 100 + 1;
+				return `brightness(${sysVal})`;
+			}
+			case 'contrast': {
+				let v = (value !== undefined) ? value : 0;
+				let sysVal = v / 100 + 1;
+				return `contrast(${sysVal})`;
+			}
+			case 'hue-rotate':
+			case 'hue_rotate': {
+				let v = (value !== undefined) ? value : 0;
+				return `hue-rotate(${v}deg)`;
+			}
+			case 'saturate': {
+				let v = (value !== undefined) ? value : 0;
+				let sysVal = v / 100 + 1;
+				return `saturate(${sysVal})`;
+			}
+			case 'grayscale': {
+				let v = (value !== undefined) ? value : 100;
+				return `grayscale(${v / 100})`;
+			}
+			case 'sepia': {
+				let v = (value !== undefined) ? value : 100;
+				return `sepia(${v / 100})`;
+			}
+			case 'invert': {
+				let v = (value !== undefined) ? value : 100;
+				return `invert(${v / 100})`;
+			}
+			case 'blur': {
+				let v = (value !== undefined) ? value : 5;
+				return `blur(${v}px)`;
+			}
+			default:
+				return null;
 		}
 	}
 

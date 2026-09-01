@@ -13,6 +13,11 @@ class Effects_blur_class extends Effects_common_class {
 	}
 
 	blur(filter_id) {
+		if (app.GUI && app.GUI.modules && app.GUI.modules['layer/adjustment']) {
+			app.GUI.modules['layer/adjustment'].create_or_edit('blur');
+			return;
+		}
+
 		if (config.layer.type == null) {
 			alertify.error('Layer is empty.');
 			return;

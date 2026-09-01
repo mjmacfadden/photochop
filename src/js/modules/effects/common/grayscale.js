@@ -11,6 +11,11 @@ class Effects_grayscale_class extends Effects_common_class {
 	}
 
 	grayscale(filter_id) {
+		if (app.GUI && app.GUI.modules && app.GUI.modules['layer/adjustment']) {
+			app.GUI.modules['layer/adjustment'].create_or_edit('grayscale');
+			return;
+		}
+
 		if (config.layer.type == null) {
 			alertify.error('Layer is empty.');
 			return;

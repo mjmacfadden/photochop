@@ -154,6 +154,10 @@ class WebGL_renderer_class {
 			if (layer == null || layer.type == null || layer.visible === false)
 				continue;
 
+			if (layer.type === 'adjustment') {
+				return false;
+			}
+
 			//active filters need the 2D filter pipeline
 			var filters = layer.filters;
 			if (filters && filters.length) {

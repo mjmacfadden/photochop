@@ -81,6 +81,17 @@ class Layer_composition_class {
 		};
 		this.POP.show(settings);
 	}
+
+	toggle_clipping_mask() {
+		if (!config.layer || config.layer.id == null) return;
+		var newComp = (config.layer.composition === 'source-atop') ? 'source-over' : 'source-atop';
+		app.State.do_action(
+			new app.Actions.Update_layer_action(config.layer.id, {
+				composition: newComp
+			})
+		);
+	}
+
 }
 
 export default Layer_composition_class;
