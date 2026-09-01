@@ -768,9 +768,165 @@ class GUI_tools_class {
 			}
 		}
 
+		if (this.action_data().name === 'select') {
+			this.render_transform_attributes(itemContainer);
+		}
+
 		if (config.LANG != 'en') {
 			//retranslate
 			this.Tools_translate.translate(config.LANG);
+		}
+	}
+
+	render_transform_attributes(container) {
+		const layer = config.layer;
+		const w = layer ? Math.round(layer.width) : 0;
+		const h = layer ? Math.round(layer.height) : 0;
+		if (config.aspect_lock === undefined) {
+			config.aspect_lock = true; // pressed in by default
+		}
+
+		const group = document.createElement('div');
+		group.className = 'item transform_dimensions_group';
+		group.style.display = 'inline-flex';
+		group.style.alignItems = 'center';
+		group.style.gap = '4px';
+
+		// W indicator / input
+		const wLabel = document.createElement('label');
+		wLabel.innerText = 'W:';
+		wLabel.className = 'trn';
+		wLabel.style.fontWeight = 'bold';
+		wLabel.style.marginRight = '2px';
+		wLabel.style.marginTop = '0';
+
+		const wInput = document.createElement('input');
+		wInput.id = 'select_transform_w';
+		wInput.type = 'number';
+		wInput.className = 'attribute_value';
+		wInput.style.width = '60px';
+		wInput.value = w;
+		wInput.title = 'Width (px)';
+
+		// Lock button
+		const lockBtn = document.createElement('button');
+		lockBtn.id = 'select_aspect_lock_btn';
+		lockBtn.type = 'button';
+		lockBtn.className = 'ui_icon_button input_height aspect_ratio_lock';
+		lockBtn.title = 'Maintain aspect ratio (Shift temporarily unlocks)';
+		lockBtn.setAttribute('aria-pressed', config.aspect_lock ? 'true' : 'false');
+		lockBtn.style.padding = '3px 6px';
+		lockBtn.style.display = 'inline-flex';
+		lockBtn.style.alignItems = 'center';
+		lockBtn.style.justifyContent = 'center';
+		lockBtn.style.cursor = 'pointer';
+
+		this.update_aspect_lock_ui(false, lockBtn);
+
+		lockBtn.addEventListener('click', () => {
+			config.aspect_lock = !config.aspect_lock;
+			const selectTool = this.tools_modules['select']?.object;
+			if (selectTool && selectTool.Base_selection) {
+				selectTool.Base_selection.find_settings().keep_ratio = config.aspect_lock;
+			}
+			this.update_aspect_lock_ui(false, lockBtn);
+		});
+
+		// H indicator / input
+		const hLabel = document.createElement('label');
+		hLabel.innerText = 'H:';
+		hLabel.className = 'trn';
+		hLabel.style.fontWeight = 'bold';
+		hLabel.style.marginRight = '2px';
+		hLabel.style.marginTop = '0';
+
+		const hInput = document.createElement('input');
+		hInput.id = 'select_transform_h';
+		hInput.type = 'number';
+		hInput.className = 'attribute_value';
+		hInput.style.width = '60px';
+		hInput.value = h;
+		hInput.title = 'Height (px)';
+
+		const applyDimensions = (newW, newH) => {
+			if (!config.layer || newW <= 0 || newH <= 0) return;
+			app.State.do_action(
+				new app.Actions.Update_layer_action(config.layer.id, {
+					width: newW,
+					height: newH,
+				})
+			);
+		};
+
+		wInput.addEventListener('change', () => {
+			let newW = Math.round(parseFloat(wInput.value));
+			if (isNaN(newW) || newW <= 0) {
+				wInput.value = config.layer ? Math.round(config.layer.width) : 0;
+				return;
+			}
+			if (config.layer && config.layer.width && config.layer.height && config.aspect_lock) {
+				const ratio = config.layer.width / config.layer.height;
+				const newH = Math.max(1, Math.round(newW / ratio));
+				hInput.value = newH;
+				applyDimensions(newW, newH);
+			} else if (config.layer) {
+				applyDimensions(newW, config.layer.height);
+			}
+		});
+
+		hInput.addEventListener('change', () => {
+			let newH = Math.round(parseFloat(hInput.value));
+			if (isNaN(newH) || newH <= 0) {
+				hInput.value = config.layer ? Math.round(config.layer.height) : 0;
+				return;
+			}
+			if (config.layer && config.layer.width && config.layer.height && config.aspect_lock) {
+				const ratio = config.layer.width / config.layer.height;
+				const newW = Math.max(1, Math.round(newH * ratio));
+				wInput.value = newW;
+				applyDimensions(newW, newH);
+			} else if (config.layer) {
+				applyDimensions(config.layer.width, newH);
+			}
+		});
+
+		group.appendChild(wLabel);
+		group.appendChild(wInput);
+		group.appendChild(lockBtn);
+		group.appendChild(hLabel);
+		group.appendChild(hInput);
+
+		container.appendChild(group);
+	}
+
+	update_aspect_lock_ui(isShiftDown, btn) {
+		const lockBtn = btn || document.getElementById('select_aspect_lock_btn');
+		if (!lockBtn) return;
+		if (isShiftDown === undefined) {
+			isShiftDown = !!(app.GUI && app.GUI.GUI_shortcuts && app.GUI.GUI_shortcuts.is_shift_down);
+		}
+		const baseLock = (config.aspect_lock !== undefined) ? config.aspect_lock : true;
+		const effectiveLock = isShiftDown ? !baseLock : baseLock;
+		lockBtn.setAttribute('aria-pressed', effectiveLock ? 'true' : 'false');
+		if (effectiveLock) {
+			lockBtn.classList.add('active');
+			lockBtn.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>';
+		} else {
+			lockBtn.classList.remove('active');
+			lockBtn.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 9.9-1"/></svg>';
+		}
+	}
+
+	update_transform_indicators(width, height) {
+		const wInput = document.getElementById('select_transform_w');
+		const hInput = document.getElementById('select_transform_h');
+		if (wInput) {
+			const val = width !== undefined ? width : (config.layer ? config.layer.width : 0);
+			wInput.value = Math.round(val);
+		}
+		if (hInput) {
+			const val = height !== undefined ? height : (config.layer ? config.layer.height : 0);
+			hInput.value = Math.round(val);
 		}
 	}
 

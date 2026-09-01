@@ -164,6 +164,10 @@ class GUI_layers_class {
 					}
 				}
 			}
+			else if (target.closest('.mask_link_icon') != null) {
+				var layer_id = parseInt(target.closest('.mask_link_icon').dataset.id);
+				_this.Mask.toggle_linked(layer_id);
+			}
 			else if (target.closest('.mask_thumb') != null) {
 				var layer_id = parseInt(target.closest('.mask_thumb').dataset.id);
 				var mask_layer = app.Layers.get_layer(layer_id);
@@ -563,6 +567,8 @@ class GUI_layers_class {
 		else {
 			button(layer.mask.enabled === false ? 'Enable Layer Mask' : 'Disable Layer Mask',
 				() => { _this.Mask.toggle_enabled(layer_id); });
+			button(layer.mask.linked === false ? 'Link Layer Mask' : 'Unlink Layer Mask',
+				() => { _this.Mask.toggle_linked(layer_id); });
 			button('Reveal All', () => { _this.Mask.fill_mask(layer_id, true); });
 			button('Hide All', () => { _this.Mask.fill_mask(layer_id, false); });
 			button('Apply Mask', () => { _this.Mask.apply_mask(layer_id); });
@@ -855,9 +861,22 @@ class GUI_layers_class {
 					html += '	<button type="button" class="clipping_arrow_btn" data-id="' + value.id + '" title="Clipping mask (click to release)"><svg class="clipping_arrow_svg" viewBox="0 0 16 16"><path d="M4 2v6h5.5V5.5L14 9.5l-4.5 4V11H2V2h2z" fill="currentColor"/></svg></button>';
 				}
 
-				html += '	<span class="layer_thumb" data-id="' + value.id + '">' + this.get_layer_thumb(value) + '</span>';
+				var layer_thumb_class = 'layer_thumb';
+				if (config.layer && value.id == config.layer.id && config.mask_active !== true) {
+					layer_thumb_class += ' active_thumb';
+				}
+				html += '	<span class="' + layer_thumb_class + '" data-id="' + value.id + '">' + this.get_layer_thumb(value) + '</span>';
 
 				if (value.mask != null) {
+					var is_linked = value.mask.linked !== false;
+					html += '	<span class="mask_link_icon ' + (is_linked ? 'linked' : 'unlinked') + '" data-id="' + value.id + '" title="' + (is_linked ? 'Layer and mask are linked. Click to unlink.' : 'Layer and mask are unlinked. Click to link.') + '">';
+					if (is_linked) {
+						html += '<svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>';
+					} else {
+						html += '<span class="unlinked_space"></span>';
+					}
+					html += '</span>';
+
 					var mask_class = 'mask_thumb';
 					if (value.id == config.layer.id && config.mask_active === true) {
 						mask_class += ' active_mask';

@@ -71,6 +71,9 @@ class GUI_shortcuts_class {
 			}
 			if (key === 'Shift' || code === 'ShiftLeft' || code === 'ShiftRight' || event.keyCode === 16) {
 				this.is_shift_down = isDown;
+				if (app.GUI && app.GUI.GUI_tools && typeof app.GUI.GUI_tools.update_aspect_lock_ui === 'function') {
+					app.GUI.GUI_tools.update_aspect_lock_ui(isDown);
+				}
 			}
 		};
 		window.addEventListener('keydown', (event) => updateModifierState(event, true), { capture: true, passive: true });
@@ -80,6 +83,9 @@ class GUI_shortcuts_class {
 			this.is_ctrl_down = false;
 			this.is_alt_down = false;
 			this.is_shift_down = false;
+			if (app.GUI && app.GUI.GUI_tools && typeof app.GUI.GUI_tools.update_aspect_lock_ui === 'function') {
+				app.GUI.GUI_tools.update_aspect_lock_ui(false);
+			}
 		});
 
 		document.addEventListener('keydown', (event) => {

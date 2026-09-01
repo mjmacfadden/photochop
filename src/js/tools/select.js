@@ -34,6 +34,9 @@ class Select_tool_class extends Base_tools_class {
 			enable_rotation: true,
 			enable_move: true,
 			data_function: function () {
+				if (config.mask_active === true && config.layer && config.layer.mask && config.layer.mask.linked === false) {
+					return config.layer.mask;
+				}
 				return config.layer;
 			},
 		};
@@ -150,7 +153,8 @@ class Select_tool_class extends Base_tools_class {
 		if (this.Base_selection.mouse_lock != null) {
 			this.resizing = true;
 			this.moving = false;
-			this.Base_selection.find_settings().keep_ratio = config.layer.type === 'image';
+			const aspect_lock = (config.aspect_lock !== undefined) ? config.aspect_lock : true;
+			this.Base_selection.find_settings().keep_ratio = aspect_lock;
 			if (config.layer.type === 'text' && config.layer.params && config.layer.params.boundary === 'dynamic') {
 				config.layer.params.boundary = 'box';
 			}
@@ -164,8 +168,13 @@ class Select_tool_class extends Base_tools_class {
 				this.moving = false;
 				return;
 			}
-			this.Base_selection.find_settings().keep_ratio = config.layer.type === 'image';
+			const aspect_lock = (config.aspect_lock !== undefined) ? config.aspect_lock : true;
+			this.Base_selection.find_settings().keep_ratio = aspect_lock;
 			this.saved = false;
+		}
+
+		if (app.GUI && app.GUI.GUI_tools && typeof app.GUI.GUI_tools.update_transform_indicators === 'function') {
+			app.GUI.GUI_tools.update_transform_indicators();
 		}
 
 		this.mousedown_dimensions = {
@@ -178,7 +187,7 @@ class Select_tool_class extends Base_tools_class {
 				y: config.layer.mask.y,
 				width: config.layer.mask.width,
 				height: config.layer.mask.height,
-				linked: config.layer.mask.linked,
+				linked: config.layer.mask.linked !== false,
 			} : null
 		};
 		this.mousedown_mask_dimensions = config.layer.mask ? {
@@ -186,7 +195,7 @@ class Select_tool_class extends Base_tools_class {
 			y: config.layer.mask.y,
 			width: config.layer.mask.width,
 			height: config.layer.mask.height,
-			linked: config.layer.mask.linked,
+			linked: config.layer.mask.linked !== false,
 		} : null;
 	}
 
@@ -209,23 +218,34 @@ class Select_tool_class extends Base_tools_class {
 			return;
 		}
 		else if (this.moving) {
-			//move object
-			config.layer.x = Math.round(mouse.x - mouse.click_x + this.mousedown_dimensions.x);
-			config.layer.y = Math.round(mouse.y - mouse.click_y + this.mousedown_dimensions.y);
-			this.Mask.preview_linked_mask_transform(config.layer, this.mousedown_dimensions, config.layer);
+			if (config.mask_active === true && config.layer && config.layer.mask && config.layer.mask.linked === false && this.mousedown_mask_dimensions) {
+				// Move unlinked mask only
+				config.layer.mask.x = Math.round(mouse.x - mouse.click_x + this.mousedown_mask_dimensions.x);
+				config.layer.mask.y = Math.round(mouse.y - mouse.click_y + this.mousedown_mask_dimensions.y);
+				delete config.layer.mask._alpha_canvas;
+				delete config.layer.mask._alpha_source;
+			} else {
+				// Move layer (and linked mask moves with it)
+				config.layer.x = Math.round(mouse.x - mouse.click_x + this.mousedown_dimensions.x);
+				config.layer.y = Math.round(mouse.y - mouse.click_y + this.mousedown_dimensions.y);
+				this.Mask.preview_linked_mask_transform(config.layer, this.mousedown_dimensions, config.layer);
 
-			//apply snap
-			var snap_info = this.calc_snap(e, config.layer.x, config.layer.y);
-			if(snap_info != null){
-				if(snap_info.x != null) {
-					config.layer.x = snap_info.x;
-				}
-				if(snap_info.y != null) {
-					config.layer.y = snap_info.y;
+				//apply snap
+				var snap_info = this.calc_snap(e, config.layer.x, config.layer.y);
+				if(snap_info != null){
+					if(snap_info.x != null) {
+						config.layer.x = snap_info.x;
+					}
+					if(snap_info.y != null) {
+						config.layer.y = snap_info.y;
+					}
 				}
 			}
 
-			config.need_render = true;
+			if (this.Base_layers.render_interactive_layer) {
+				this.Base_layers.render_interactive_layer(config.layer.id);
+			}
+			this.Base_layers.render();
 		}
 	}
 
@@ -286,50 +306,70 @@ class Select_tool_class extends Base_tools_class {
 			this.resizing = false;
 		}
 		else if (this.moving) {
-			var new_x = Math.round(mouse.x - mouse.click_x + this.mousedown_dimensions.x);
-			var new_y = Math.round(mouse.y - mouse.click_y + this.mousedown_dimensions.y);
-			config.layer.x = this.mousedown_dimensions.x;
-			config.layer.y = this.mousedown_dimensions.y;
-			if (this.mousedown_mask_dimensions != null) {
-				Object.assign(config.layer.mask, this.mousedown_mask_dimensions);
-			}
+			if (config.mask_active === true && config.layer && config.layer.mask && config.layer.mask.linked === false && this.mousedown_mask_dimensions) {
+				var new_mask_x = Math.round(mouse.x - mouse.click_x + this.mousedown_mask_dimensions.x);
+				var new_mask_y = Math.round(mouse.y - mouse.click_y + this.mousedown_mask_dimensions.y);
+				config.layer.mask.x = this.mousedown_mask_dimensions.x;
+				config.layer.mask.y = this.mousedown_mask_dimensions.y;
 
-			if(mouse.x - mouse.click_x || mouse.y - mouse.click_y) {
-				var snap_info = this.calc_snap(e, new_x, new_y);
-				if (snap_info != null) {
-					if (snap_info.x != null) {
-						new_x = snap_info.x;
-					}
-					if (snap_info.y != null) {
-						new_y = snap_info.y;
+				if (this.mousedown_mask_dimensions.x !== new_mask_x || this.mousedown_mask_dimensions.y !== new_mask_y) {
+					await app.State.do_action(
+						new app.Actions.Update_layer_mask_action(config.layer.id, {
+							x: new_mask_x,
+							y: new_mask_y
+						})
+					);
+				}
+			} else {
+				var new_x = Math.round(mouse.x - mouse.click_x + this.mousedown_dimensions.x);
+				var new_y = Math.round(mouse.y - mouse.click_y + this.mousedown_dimensions.y);
+				config.layer.x = this.mousedown_dimensions.x;
+				config.layer.y = this.mousedown_dimensions.y;
+				if (this.mousedown_mask_dimensions != null) {
+					Object.assign(config.layer.mask, this.mousedown_mask_dimensions);
+				}
+
+				if(mouse.x - mouse.click_x || mouse.y - mouse.click_y) {
+					var snap_info = this.calc_snap(e, new_x, new_y);
+					if (snap_info != null) {
+						if (snap_info.x != null) {
+							new_x = snap_info.x;
+						}
+						if (snap_info.y != null) {
+							new_y = snap_info.y;
+						}
 					}
 				}
-			}
 
-			if (this.mousedown_dimensions.x !== new_x || this.mousedown_dimensions.y !== new_y) {
-				var move_actions = [
-					new app.Actions.Update_layer_action(config.layer.id, {
-						x: new_x,
-						y: new_y
-					})
-				];
-				//keep a linked mask in sync
-				move_actions = move_actions.concat(
-					this.Mask.get_linked_mask_actions(config.layer, this.mousedown_dimensions, {
-						x: new_x,
-						y: new_y,
-						width: this.mousedown_dimensions.width,
-						height: this.mousedown_dimensions.height
-					})
-				);
-				await app.State.do_action(
-					new app.Actions.Bundle_action('move_layer', 'Move Layer', move_actions)
-				);
+				if (this.mousedown_dimensions.x !== new_x || this.mousedown_dimensions.y !== new_y) {
+					var move_actions = [
+						new app.Actions.Update_layer_action(config.layer.id, {
+							x: new_x,
+							y: new_y
+						})
+					];
+					//keep a linked mask in sync
+					move_actions = move_actions.concat(
+						this.Mask.get_linked_mask_actions(config.layer, this.mousedown_dimensions, {
+							x: new_x,
+							y: new_y,
+							width: this.mousedown_dimensions.width,
+							height: this.mousedown_dimensions.height
+						})
+					);
+					await app.State.do_action(
+						new app.Actions.Bundle_action('move_layer', 'Move Layer', move_actions)
+					);
+				}
 			}
 		}
 		this.moving = false;
 		this.resizing = false;
 		this.mousedown_mask_dimensions = null;
+
+		if (app.GUI && app.GUI.GUI_tools && typeof app.GUI.GUI_tools.update_transform_indicators === 'function') {
+			app.GUI.GUI_tools.update_transform_indicators();
+		}
 	}
 
 	render_overlay(ctx){

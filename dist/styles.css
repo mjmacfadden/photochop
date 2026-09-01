@@ -2087,10 +2087,20 @@ body.tool-pan.pan-dragging #canvas_minipaint{
 	width: 18px;
 	height: 18px;
 	margin-right: 4px;
+	border: 1px solid #555555;
+	border-radius: 2px;
+	background-color: #2b2b2b;
+	box-sizing: border-box;
+	cursor: pointer;
+}
+.layers_list .layer_thumb.active_thumb{
+	border-color: #ffffff;
+	opacity: 1;
+	box-shadow: 0 0 0 1px #ffffff;
 }
 .layers_list .thumb_icon{
-	width: 16px;
-	height: 16px;
+	width: 14px;
+	height: 14px;
 	vertical-align: middle;
 }
 .layers_list .thumb_text{
@@ -2118,6 +2128,31 @@ body.tool-pan.pan-dragging #canvas_minipaint{
 .layers_list .item.active .thumb_shape,
 .layers_list .item.active .thumb_adjustment{
 	color: #cccccc;
+}
+.layers_list .mask_link_icon{
+	flex-shrink: 0;
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	width: 11px;
+	height: 18px;
+	margin-left: -1px;
+	margin-right: 5px;
+	cursor: pointer;
+	color: #999999;
+}
+.layers_list .mask_link_icon:hover{
+	color: #ffffff;
+}
+.layers_list .mask_link_icon.unlinked .unlinked_space{
+	display: inline-block;
+	width: 7px;
+	height: 14px;
+	border-radius: 2px;
+}
+.layers_list .mask_link_icon.unlinked:hover .unlinked_space{
+	border: 1px dashed rgba(255, 255, 255, 0.4);
+	background: rgba(255, 255, 255, 0.08);
 }
 .layers_list .mask_thumb{
 	flex-shrink: 0;
@@ -2664,6 +2699,29 @@ visible around/outside the canvas edge; never blocks pointer events */
 	right: -4px;
 	height: 1px;
 	transform: translateY(-50%);
+}
+.transform_dimensions_group {
+	margin-left: 8px;
+}
+.transform_dimensions_group input[type="number"] {
+	height: 24px;
+	padding: 2px 4px;
+	font-size: 11px;
+}
+button.aspect_ratio_lock {
+	min-width: 24px;
+	height: 24px;
+	border-radius: 3px;
+	border: 1px solid var(--button-border-color, #444);
+	background: var(--button-background-color, #2b2b2b);
+	color: #bbb;
+	transition: background 0.1s, color 0.1s;
+}
+button.aspect_ratio_lock[aria-pressed="true"],
+button.aspect_ratio_lock.active {
+	background: var(--button-background-color-active, #186bf4);
+	color: #fff;
+	box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.4);
 }
 .transparent-grid{
 	width: 100%;
