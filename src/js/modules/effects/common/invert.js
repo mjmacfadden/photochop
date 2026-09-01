@@ -11,6 +11,11 @@ class Effects_invert_class extends Effects_common_class {
 	}
 
 	invert(filter_id) {
+		if (app.GUI && app.GUI.modules && app.GUI.modules['layer/adjustment']) {
+			app.GUI.modules['layer/adjustment'].create_or_edit('invert');
+			return;
+		}
+
 		if (config.layer.type == null) {
 			alertify.error('Layer is empty.');
 			return;
