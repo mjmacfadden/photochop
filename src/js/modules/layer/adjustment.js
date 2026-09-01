@@ -14,11 +14,12 @@ class Layer_adjustment_class {
 
 		this.ADJUSTMENT_TYPES = {
 			'brightness': {
-				title: 'Brightness',
+				title: 'Brightness / Contrast',
 				name: 'Brightness',
-				default_params: { value: 30 },
+				default_params: { value: 0, contrast: 0 },
 				params: [
-					{ name: 'value', title: 'Percentage:', value: 30, range: [-100, 100] }
+					{ name: 'value', title: 'Brightness (%):', value: 0, range: [-100, 100] },
+					{ name: 'contrast', title: 'Contrast (%):', value: 0, range: [-100, 100] }
 				]
 			},
 			'contrast': {

@@ -713,6 +713,65 @@ class Base_documents_class {
 		}
 	}
 
+	async create_document_from_psd_data(docData) {
+		const w = parseInt(docData.width) || config.WIDTH || 800;
+		const h = parseInt(docData.height) || config.HEIGHT || 600;
+		const docTitle = docData.title || ('Untitled-' + this.auto_title_count++);
+		const layers = docData.layers || [];
+		let max_id_order = 0;
+		for (let l of layers) {
+			if (l.id > max_id_order) max_id_order = l.id;
+			if (l.order != null && l.order > max_id_order) max_id_order = l.order;
+		}
+
+		let activeLayer = layers[layers.length - 1] || layers[0] || null;
+
+		const isPristine = this.is_active_document_empty();
+		if (isPristine) {
+			const doc = this.get_active_document();
+			doc.title = docTitle;
+			doc.width = w;
+			doc.height = h;
+			doc.layers = layers;
+			doc.layer = activeLayer;
+			doc.auto_increment = max_id_order + 1;
+			doc.guides = [];
+			doc.user_fonts = {};
+			doc.transparency = true;
+			doc.action_history = [];
+			doc.action_history_index = 0;
+			doc.is_dirty = false;
+			doc.selection = null;
+
+			await this.restore_state(doc);
+			this.render_tabs();
+			return doc;
+		} else {
+			this.save_current_state();
+
+			const newDoc = this._create_doc_model({
+				title: docTitle,
+				width: w,
+				height: h,
+				layers: layers,
+				layer: activeLayer,
+				auto_increment: max_id_order + 1,
+				action_history: [],
+				action_history_index: 0,
+				selection: null,
+				transparency: true,
+				guides: [],
+				user_fonts: {},
+			});
+
+			this.documents.push(newDoc);
+			this.active_id = newDoc.id;
+			await this.restore_state(newDoc);
+			this.render_tabs();
+			return newDoc;
+		}
+	}
+
 	update_zoom_display() {
 		const doc = this.get_active_document();
 		if (!doc) return;
