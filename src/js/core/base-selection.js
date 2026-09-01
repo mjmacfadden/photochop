@@ -1344,7 +1344,15 @@ class Base_selection_class {
 				}
 			}
 			else if (e.buttons == 1 || typeof e.buttons == "undefined") {
-				// Do transformations
+				const is_corner = (is_drag_type_left || is_drag_type_right) && (is_drag_type_top || is_drag_type_bottom);
+				const is_side_horizontal = (is_drag_type_left || is_drag_type_right) && !is_drag_type_top && !is_drag_type_bottom;
+				const is_side_vertical = (is_drag_type_top || is_drag_type_bottom) && !is_drag_type_left && !is_drag_type_right;
+
+				const is_shift = (e.shiftKey === true) || (app.GUI && app.GUI.GUI_shortcuts && app.GUI.GUI_shortcuts.is_shift_down);
+				const base_lock = (config.aspect_lock !== undefined) ? config.aspect_lock : (settings.keep_ratio !== undefined ? settings.keep_ratio : true);
+				// Maintain aspect ratio on all handles unless shift is held
+				const keep_ratio = is_shift ? !base_lock : base_lock;
+
 				var is_alt = (e.altKey === true);
 				var dx = Math.round(mouse.x - mouse.click_x);
 				var dy = Math.round(mouse.y - mouse.click_y);
@@ -1373,18 +1381,25 @@ class Base_selection_class {
 						width = this.click_details.width - dx;
 				}
 
-				// Keep ratio - (if drag_type power of 2, only dragging on single axis)
-				if (drag_type && (drag_type & (drag_type - 1)) !== 0 && (settings.keep_ratio == true && is_ctrl == false) 
-					|| (settings.keep_ratio !== true && is_ctrl == true)){
-					var ratio = this.click_details.width / this.click_details.height;
-					var width_new = Math.round(height * ratio);
-					var height_new = Math.round(width / ratio);
+				var orig_w = Math.max(1, this.click_details.width || 1);
+				var orig_h = Math.max(1, this.click_details.height || 1);
+				var ratio = orig_w / orig_h;
 
-					if (Math.abs(width * 100 / width_new) > Math.abs(height * 100 / height_new)) {
-						height = height_new;
-					}
-					else {
-						width = width_new;
+				if (keep_ratio) {
+					if (is_corner) {
+						var width_new = Math.round(height * ratio);
+						var height_new = Math.round(width / ratio);
+
+						if (Math.abs(width * 100 / width_new) > Math.abs(height * 100 / height_new)) {
+							height = height_new;
+						}
+						else {
+							width = width_new;
+						}
+					} else if (is_side_horizontal) {
+						height = Math.max(1, Math.round(width / ratio));
+					} else if (is_side_vertical) {
+						width = Math.max(1, Math.round(height * ratio));
 					}
 				}
 
@@ -1392,41 +1407,39 @@ class Base_selection_class {
 					var cx = this.click_details.x + this.click_details.width / 2;
 					var cy = this.click_details.y + this.click_details.height / 2;
 
-					if (is_drag_type_left || is_drag_type_right) {
-						settings.data.width = width;
-						settings.data.x = Math.round(cx - width / 2);
+					settings.data.width = width;
+					settings.data.height = height;
+					settings.data.x = Math.round(cx - width / 2);
+					settings.data.y = Math.round(cy - height / 2);
+				} else {
+					settings.data.width = width;
+					settings.data.height = height;
+
+					if (is_corner) {
+						settings.data.x = is_drag_type_left ? (this.click_details.x - (width - this.click_details.width)) : this.click_details.x;
+						settings.data.y = is_drag_type_top ? (this.click_details.y - (height - this.click_details.height)) : this.click_details.y;
+					} else if (is_side_horizontal) {
+						settings.data.x = is_drag_type_left ? (this.click_details.x - (width - this.click_details.width)) : this.click_details.x;
+						if (keep_ratio) {
+							settings.data.y = Math.round(this.click_details.y - (height - this.click_details.height) / 2);
+						} else {
+							settings.data.y = this.click_details.y;
+						}
+					} else if (is_side_vertical) {
+						settings.data.y = is_drag_type_top ? (this.click_details.y - (height - this.click_details.height)) : this.click_details.y;
+						if (keep_ratio) {
+							settings.data.x = Math.round(this.click_details.x - (width - this.click_details.width) / 2);
+						} else {
+							settings.data.y = this.click_details.y;
+						}
 					} else {
 						settings.data.x = this.click_details.x;
-						settings.data.width = this.click_details.width;
-					}
-
-					if (is_drag_type_top || is_drag_type_bottom) {
-						settings.data.height = height;
-						settings.data.y = Math.round(cy - height / 2);
-					} else {
 						settings.data.y = this.click_details.y;
-						settings.data.height = this.click_details.height;
 					}
+				}
 
-					// When both axes were scaled (e.g. corner handles or keep_ratio)
-					if ((is_drag_type_left || is_drag_type_right) && (is_drag_type_top || is_drag_type_bottom)) {
-						settings.data.width = width;
-						settings.data.height = height;
-						settings.data.x = Math.round(cx - width / 2);
-						settings.data.y = Math.round(cy - height / 2);
-					}
-				} else {
-					// Set values
-					settings.data.x = this.click_details.x;
-					settings.data.y = this.click_details.y;
-					if (is_drag_type_top)
-						settings.data.y = this.click_details.y - (height - this.click_details.height);
-					if (is_drag_type_left)
-						settings.data.x = this.click_details.x - (width - this.click_details.width);
-					if (is_drag_type_left || is_drag_type_right)
-						settings.data.width = width;
-					if (is_drag_type_top || is_drag_type_bottom)
-						settings.data.height = height;
+				if (app.GUI && app.GUI.GUI_tools && typeof app.GUI.GUI_tools.update_transform_indicators === 'function') {
+					app.GUI.GUI_tools.update_transform_indicators(settings.data.width, settings.data.height);
 				}
 
 				// Don't allow negative width/height on most layers
