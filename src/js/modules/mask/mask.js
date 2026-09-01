@@ -184,8 +184,8 @@ class Mask_class {
 	 * @returns {object}
 	 */
 	create_mask(layer, reveal) {
-		var w = config.WIDTH || 1;
-		var h = config.HEIGHT || 1;
+		var w = (layer && layer.width != null && layer.width > 0) ? layer.width : (config.WIDTH || 1);
+		var h = (layer && layer.height != null && layer.height > 0) ? layer.height : (config.HEIGHT || 1);
 
 		var canvas = document.createElement('canvas');
 		canvas.width = Math.max(1, Math.round(w));
@@ -196,12 +196,12 @@ class Mask_class {
 
 		return {
 			link: canvas,
-			x: 0,
-			y: 0,
+			x: (layer && layer.x != null) ? Math.round(layer.x) : 0,
+			y: (layer && layer.y != null) ? Math.round(layer.y) : 0,
 			width: canvas.width,
 			height: canvas.height,
 			enabled: true,
-			linked: false,
+			linked: true,
 		};
 	}
 
@@ -238,6 +238,7 @@ class Mask_class {
 		var selection_module = app.GUI.GUI_tools.tools_modules['selection'].object;
 
 		ctx.save();
+		ctx.translate(-mask.x, -mask.y);
 		ctx.beginPath();
 		selection_module.build_selection_path(ctx, selection);
 		ctx.fillStyle = (reveal === false) ? '#000000' : '#ffffff';
@@ -344,7 +345,7 @@ class Mask_class {
 		cctx.setTransform(a, b, c, d, e, f);
 		cctx.imageSmoothingEnabled = (mw !== sw || mh !== sh || rad !== 0);
 
-		if (rad !== 0 && mask.linked === true) {
+		if (rad !== 0 && mask.linked !== false) {
 			cctx.translate(lx + lw / 2, ly + lh / 2);
 			cctx.rotate(rad);
 			cctx.translate(-lw / 2, -lh / 2);
@@ -412,7 +413,7 @@ class Mask_class {
 	 */
 	get_linked_mask_actions(layer, old_props, new_props) {
 		var actions = [];
-		if (layer == null || layer.mask == null || layer.mask.linked !== true)
+		if (layer == null || layer.mask == null || layer.mask.linked === false)
 			return actions;
 
 		var new_settings = this.get_linked_mask_settings(layer, old_props, new_props);
@@ -424,7 +425,7 @@ class Mask_class {
 	}
 
 	get_linked_mask_settings(layer, old_props, new_props) {
-		if (layer == null || layer.mask == null || layer.mask.linked !== true)
+		if (layer == null || layer.mask == null || layer.mask.linked === false)
 			return null;
 
 		var mask = (old_props && old_props.mask) ? old_props.mask : layer.mask;
@@ -506,6 +507,19 @@ class Mask_class {
 		return app.State.do_action(
 			new app.Actions.Update_layer_mask_action(layer_id, {
 				enabled: layer.mask.enabled === false,
+			})
+		);
+	}
+
+	async toggle_linked(layer_id) {
+		if (layer_id == null)
+			layer_id = config.layer.id;
+		var layer = app.Layers.get_layer(layer_id);
+		if (layer == null || layer.mask == null)
+			return;
+		return app.State.do_action(
+			new app.Actions.Update_layer_mask_action(layer_id, {
+				linked: layer.mask.linked === false,
 			})
 		);
 	}
@@ -688,7 +702,7 @@ class Mask_class {
 
 		var px = x;
 		var py = y;
-		if (layer.rotate && layer.mask && layer.mask.linked === true) {
+		if (layer.rotate && layer.mask && layer.mask.linked !== false) {
 			var rad = -layer.rotate * Math.PI / 180;
 			var cx = (layer.x || 0) + (layer.width || 0) / 2;
 			var cy = (layer.y || 0) + (layer.height || 0) / 2;

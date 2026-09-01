@@ -193,7 +193,7 @@ class Image_resize_class {
 				})
 			];
 			//keep a linked mask in sync
-			if (layer.mask != null && layer.mask.linked === true) {
+			if (layer.mask != null && layer.mask.linked !== false) {
 				actions = actions.concat(this.Mask.get_linked_mask_actions(layer,
 					{ x: layer.x, y: layer.y, width: layer.width, height: layer.height },
 					{ x: new_x, y: new_y, width: layer.width * xratio, height: layer.height * yratio }));
@@ -213,7 +213,7 @@ class Image_resize_class {
 				})
 			];
 			//keep a linked mask in sync
-			if (layer.mask != null && layer.mask.linked === true) {
+			if (layer.mask != null && layer.mask.linked !== false) {
 				actions = actions.concat(this.Mask.get_linked_mask_actions(layer,
 					{ x: layer.x, y: layer.y, width: layer.width, height: layer.height },
 					{ x: new_x, y: new_y, width: layer.width * xratio, height: layer.height * yratio }));
@@ -293,7 +293,7 @@ class Image_resize_class {
 			})
 		];
 		//keep a linked mask in sync
-		if (layer.mask != null && layer.mask.linked === true) {
+		if (layer.mask != null && layer.mask.linked !== false) {
 			actions = actions.concat(this.Mask.get_linked_mask_actions(layer,
 				{ x: layer.x, y: layer.y, width: layer.width, height: layer.height },
 				{ x: new_x, y: new_y, width: canvas.width, height: canvas.height }));

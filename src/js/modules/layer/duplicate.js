@@ -87,7 +87,7 @@ class Layer_duplicate_class {
 				width: config.layer.mask.width,
 				height: config.layer.mask.height,
 				enabled: config.layer.mask.enabled,
-				linked: config.layer.mask.linked,
+				linked: config.layer.mask.linked !== false,
 			};
 		}
 

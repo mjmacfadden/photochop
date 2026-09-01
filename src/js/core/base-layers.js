@@ -103,6 +103,9 @@ class Base_layers_class {
 			enable_rotation: false,
 			enable_move: false,
 			data_function: function () {
+				if (config.mask_active === true && config.layer && config.layer.mask && config.layer.mask.linked === false) {
+					return config.layer.mask;
+				}
 				return config.layer;
 			},
 		};
@@ -154,6 +157,11 @@ class Base_layers_class {
 	 */
 	invalidate(request = {}) {
 		const cache = this.Composite_cache;
+		if (request.viewport === true && !request.document && !request.full) {
+			cache.viewportOnly = true;
+		} else {
+			cache.viewportOnly = false;
+		}
 		cache.explicitRequest = true;
 		if (request.document === true || request.full === true)
 			cache.invalidate_document();
@@ -282,11 +290,14 @@ class Base_layers_class {
 			// A direct write to config.need_render is an old, unclassified
 			// invalidation. It must stay conservative. Explicit invalidations can
 			// safely request a viewport-only frame.
-			if (!cache.explicitRequest) {
-				cache.invalidate_document();
+			if (!cache.viewportOnly && (!cache.explicitRequest || cache.pendingInteractiveLayerId != null)) {
+				if (cache.pendingInteractiveLayerId == null) {
+					cache.invalidate_document();
+				}
 				cache.detailsDirty = true;
 				cache.rulerDirty = true;
 			}
+			cache.viewportOnly = false;
 			cache.explicitRequest = false;
 			cache.ensure_size(config.WIDTH, config.HEIGHT);
 			this.render_success = null;
@@ -323,9 +334,9 @@ class Base_layers_class {
 			// composition modes, etc.)
 			var renderer = get_renderer();
 			var webgl_usable = renderer && renderer.type === 'webgl' && renderer.available
-				&& cache.pendingInteractiveLayerId == null
 				&& (!renderer.can_render_layers || renderer.can_render_layers(layers_sorted, this.disabled_filter_id));
 			if (webgl_usable) {
+				cache.pendingInteractiveLayerId = null;
 				// ---- WebGL rendering path ----
 				// Renders layers to offscreen WebGL canvas, then composites
 				// onto main canvas. Overlays remain Canvas 2D.

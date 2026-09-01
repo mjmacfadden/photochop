@@ -41,7 +41,7 @@ export class Update_layer_action extends Base_action {
 		}
 
 		// Keep linked mask synchronized with layer transformations if not explicitly specified in settings
-		if (this.reference_layer.mask && this.reference_layer.mask.linked === true && !('mask' in this.settings)) {
+		if (this.reference_layer.mask && this.reference_layer.mask.linked !== false && !('mask' in this.settings)) {
 			var new_x = (this.reference_layer.x != null) ? this.reference_layer.x : 0;
 			var new_y = (this.reference_layer.y != null) ? this.reference_layer.y : 0;
 			var new_w = (this.reference_layer.width != null) ? this.reference_layer.width : 0;
