@@ -398,7 +398,8 @@ class File_open_class {
 
 		for (var i = 0; i < files.length; i++) {
 			var f = files[i];
-			if (!f.type.match('image.*') && !f.name.match('.json') && !f.name.match(/\.(png|jpg|jpeg|webp|gif|avif)/g)) {
+			var isJson = f.name.toLowerCase().endsWith('.json') || f.type === 'application/json' || f.type === 'text/json';
+			if (!f.type.match('image.*') && !isJson && !f.name.match(/\.(png|jpg|jpeg|webp|gif|avif)/i)) {
 				if(dir_opened == false) {
 					alertify.error('Wrong file type, must be image or json.');
 				}
@@ -408,10 +409,22 @@ class File_open_class {
 				this.SAVE_NAME = f.name.split('.')[f.name.split('.').length - 2];
 			}
 
-			var readAs = (f.type == "text/plain" || f.name.match('.json')) ? 'text' : 'dataURL';
+			var readAs = isJson ? 'text' : 'dataURL';
 			try {
 				var readResult = await this.read_file_async(f, readAs);
-				if (f.type.match('image.*') || (f.type == '' && f.name.match(/\.(png|jpg|jpeg|webp|gif|avif)/g))) {
+				if (isJson) {
+					var content = readResult.result;
+					if (typeof content === 'string' && content.startsWith('data:')) {
+						try {
+							content = atob(content.split(',')[1]);
+						} catch (e) {}
+					}
+					if (app.Documents) {
+						await app.Documents.create_document_from_json(content, f.name);
+					} else {
+						await _this.load_json(content, f.name);
+					}
+				} else if (f.type.match('image.*') || (f.type == '' && f.name.match(/\.(png|jpg|jpeg|webp|gif|avif)/i))) {
 					if (app.Documents) {
 						await app.Documents.create_document_from_image({
 							name: f.name,
@@ -432,11 +445,6 @@ class File_open_class {
 								new app.Actions.Insert_layer_action(new_layer)
 							])
 						);
-					}
-				} else {
-					var response = _this.load_json(readResult.result);
-					if (response === true) {
-						return false;
 					}
 				}
 			} catch (err) {
@@ -604,7 +612,10 @@ class File_open_class {
 		img.src = url;
 	}
 
-	async load_json(data) {
+	async load_json(data, filename) {
+		if (app.Documents) {
+			return await app.Documents.create_document_from_json(data, filename);
+		}
 		var json;
 		if(typeof data == 'string')
 			json = JSON.parse(data);
@@ -614,8 +625,10 @@ class File_open_class {
 			json.info.version = "3.0.0";
 		}
 
+		const isLegacyMiniPaint = json.info.about && json.info.about.includes('miniPaint') && !json.info.about.includes('PhotoChop') && !json.info.about.includes('Vantage');
+
 		//migration
-		if(semver_compare(json.info.version, '4.0.0') < 0) {
+		if(isLegacyMiniPaint && json.image_data && !json.data && semver_compare(json.info.version, '4.0.0') < 0) {
 			//convert from v3 to v4
 			for (var i in json.layers) {
 				//layers data
@@ -646,7 +659,7 @@ class File_open_class {
 				);
 			}
 		}
-		if(semver_compare(json.info.version, '4.5.0') < 0) {
+		if(isLegacyMiniPaint && semver_compare(json.info.version, '4.5.0') < 0) {
 			//migrate "rectangle", "circle" and "line" types to "shape"
 			for (var i in json.layers) {
 				var old_type = json.layers[i].type;
@@ -680,7 +693,7 @@ class File_open_class {
 				}
 			}
 		}
-		if(semver_compare(json.info.version, '4.8.0') < 0) {
+		if(isLegacyMiniPaint && semver_compare(json.info.version, '4.8.0') < 0) {
 			//migrate "borders" layer to rectangle
 			for (var i in json.layers) {
 				var old_type = json.layers[i].type;
@@ -701,7 +714,7 @@ class File_open_class {
 				}
 			}
 		}
-		if(semver_compare(json.info.version, '4.11.0') < 0) {
+		if(isLegacyMiniPaint && semver_compare(json.info.version, '4.11.0') < 0) {
 			//migrate star and star24 objects
 			for (var i in json.layers) {
 				var old_type = json.layers[i].type;

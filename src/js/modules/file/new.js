@@ -77,7 +77,7 @@ class File_new_class {
 		var transparency_cookie = this.Helper.getCookie('transparency');
 		if (transparency_cookie === null) {
 			//default
-			transparency_cookie = false;
+			transparency_cookie = true;
 		}
 		if (transparency_cookie) {
 			var transparency = true;
@@ -161,13 +161,22 @@ class File_new_class {
 				force_new: true
 			});
 		} else {
+			var bgCanvas = document.createElement('canvas');
+			bgCanvas.width = parseInt(width);
+			bgCanvas.height = parseInt(height);
+			var bgCtx = bgCanvas.getContext('2d');
+			if (!transparency) {
+				bgCtx.fillStyle = '#ffffff';
+				bgCtx.fillRect(0, 0, parseInt(width), parseInt(height));
+			}
+
 			// Prepare layers		
 			app.State.do_action(
 				new app.Actions.Bundle_action('new_file', 'New File', [
 					new app.Actions.Refresh_action_attributes_action('undo'),
 					new app.Actions.Prepare_canvas_action('undo'),
 					new app.Actions.Update_config_action({
-						TRANSPARENCY: !!transparency,
+						TRANSPARENCY: true,
 						WIDTH: parseInt(width),
 						HEIGHT: parseInt(height),
 						ALPHA: 255,
@@ -181,7 +190,16 @@ class File_new_class {
 					new app.Actions.Refresh_action_attributes_action('do'),
 					new app.Actions.Reset_layers_action(),
 					new app.Actions.Init_canvas_zoom_action(),
-					new app.Actions.Insert_layer_action({})
+					new app.Actions.Insert_layer_action(
+						transparency
+							? {}
+							: {
+								name: 'Background',
+								locked: true,
+								type: 'image',
+								data: bgCanvas.toDataURL(),
+							}
+					)
 				])
 			);
 
@@ -193,7 +211,7 @@ class File_new_class {
 					}
 					doc.width = parseInt(width);
 					doc.height = parseInt(height);
-					doc.transparency = !!transparency;
+					doc.transparency = true;
 					doc.action_history = [];
 					doc.action_history_index = 0;
 					doc.is_dirty = false;

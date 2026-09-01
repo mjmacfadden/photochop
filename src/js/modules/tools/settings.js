@@ -131,7 +131,7 @@ class Tools_settings_class {
 	get_setting(key) {
 		var default_values = {
 			'theme': null,
-			'transparency': false,
+			'transparency': true,
 			'snap': true,
 			'guides': true,
 			'safe_search': true,

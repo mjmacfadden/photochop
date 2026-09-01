@@ -1,8 +1,8 @@
 {
-  "name": "PhotoChop",
+  "name": "vantage-point",
   "version": "1.0.0",
   "author": "Based on miniPaint by Vilius L.",
-  "description": "PhotoChop - Online image editor forked from miniPaint.",
+  "description": "Vantage Point - Online image editor.",
   "keywords": [
     "canvas",
     "drawing",

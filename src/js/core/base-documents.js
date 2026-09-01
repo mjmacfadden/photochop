@@ -8,6 +8,10 @@ import Base_layers_class from './base-layers.js';
 import Base_gui_class from './base-gui.js';
 import zoomView from '../libs/zoomView.js';
 import Helper_class from '../libs/helpers.js';
+import Mask_class from '../modules/mask/mask.js';
+import alertify from './../../../node_modules/alertifyjs/build/alertify.min.js';
+import semver_compare from './../../../node_modules/semver-compare/';
+import { get_renderer } from './renderer/index.js';
 
 var instance = null;
 
@@ -121,7 +125,7 @@ class Base_documents_class {
 			action_history: options.action_history || [],
 			action_history_index: options.action_history_index || 0,
 			auto_increment: options.auto_increment || 2,
-			transparency: transp,
+			transparency: true,
 			is_dirty: options.is_dirty || false,
 			selection: options.selection || null,
 			Composite_cache: options.Composite_cache || null,
@@ -243,6 +247,10 @@ class Base_documents_class {
 		config.guides = doc.guides || [];
 		config.user_fonts = doc.user_fonts || {};
 		config.TRANSPARENCY = doc.transparency !== false;
+		if (this.Base_gui && this.Base_gui.render_canvas_background) {
+			this.Base_gui.render_canvas_background('canvas_minipaint');
+			this.Base_gui.render_canvas_background('canvas_preview', 8);
+		}
 
 		// 4. Restore Undo/Redo State
 		if (app.State) {
@@ -257,6 +265,10 @@ class Base_documents_class {
 		if (this.Base_layers) {
 			this.Base_layers.auto_increment = doc.auto_increment || (config.layers ? config.layers.length + 1 : 2);
 			this.Base_layers.stable_dimensions = [doc.width, doc.height];
+			var renderer = (typeof get_renderer === 'function') ? get_renderer() : null;
+			if (renderer && renderer.clear_texture_cache) {
+				renderer.clear_texture_cache();
+			}
 		}
 
 		// 6. Restore Selection state (isolated per document)
@@ -387,6 +399,9 @@ class Base_documents_class {
 					_exif: exif,
 				};
 
+				config.TRANSPARENCY = true;
+				this.Helper.setCookie('transparency', 1);
+
 				if (isPristine) {
 					// Update existing tab in place
 					const doc = this.get_active_document();
@@ -400,6 +415,7 @@ class Base_documents_class {
 					doc.action_history_index = 0;
 					doc.is_dirty = false;
 					doc.selection = null;
+					doc.transparency = true;
 
 					await this.restore_state(doc);
 					this.render_tabs();
@@ -418,6 +434,7 @@ class Base_documents_class {
 						action_history: [],
 						action_history_index: 0,
 						selection: null,
+						transparency: true,
 					});
 
 					this.documents.push(newDoc);
@@ -429,6 +446,258 @@ class Base_documents_class {
 			};
 			img.src = data;
 		});
+	}
+
+	async create_document_from_json(jsonOrString, filename) {
+		let json = jsonOrString;
+		if (typeof json === 'string') {
+			let raw = json.trim();
+			if (raw.startsWith('data:')) {
+				try {
+					raw = atob(raw.split(',')[1]);
+				} catch (e) {}
+			}
+			try {
+				json = JSON.parse(raw);
+			} catch (err) {
+				console.error('Invalid JSON content:', err);
+				if (typeof alertify !== 'undefined') {
+					alertify.error('Failed to parse JSON file.');
+				}
+				return null;
+			}
+		}
+
+		if (!json || !json.info) {
+			if (typeof alertify !== 'undefined') {
+				alertify.error('Invalid document JSON structure.');
+			}
+			return null;
+		}
+		if (json.info.version == undefined) {
+			json.info.version = "3.0.0";
+		}
+
+		const isLegacyMiniPaint = json.info.about && json.info.about.includes('miniPaint') && !json.info.about.includes('PhotoChop') && !json.info.about.includes('Vantage');
+
+		// Migrations - ONLY run on actual legacy miniPaint files, never on PhotoChop / VantagePoint 1.x files
+		if (isLegacyMiniPaint && json.image_data && !json.data && semver_compare(json.info.version, '4.0.0') < 0) {
+			for (let i in json.layers) {
+				json.layers[i].id = (parseInt(i) + 1);
+				json.layers[i].opacity = json.layers[i].opacity * 100 || 100;
+				json.layers[i].type = "image";
+				json.layers[i].width = json.info.width;
+				json.layers[i].height = json.info.height;
+				json.layers[i].visible = (json.layers[i].visible == true);
+				delete json.layers[i].title;
+			}
+			json.data = [];
+			for (let i in json.image_data) {
+				let new_id = null;
+				for (let j in json.layers) {
+					if (json.layers[j].name == json.image_data[i].name) {
+						new_id = json.layers[j].id;
+					}
+				}
+				if (new_id == null) continue;
+				json.data.push({
+					id: new_id,
+					data: json.image_data[i].data,
+				});
+			}
+		}
+
+		if (isLegacyMiniPaint && semver_compare(json.info.version, '4.5.0') < 0) {
+			for (let i in json.layers) {
+				let old_type = json.layers[i].type;
+				if (old_type == 'line' && json.layers[i].params && json.layers[i].params.type && json.layers[i].params.type.value == "Arrow") {
+					json.layers[i].type = 'arrow';
+					delete json.layers[i].params.type;
+					json.layers[i].render_function = ["arrow", "render"];
+				}
+				if (old_type == 'rectangle' || old_type == 'circle') {
+					if (json.layers[i].params) {
+						json.layers[i].params.border_size = json.layers[i].params.size;
+						delete json.layers[i].params.size;
+						if (json.layers[i].params.fill == true) {
+							json.layers[i].params.border = false;
+						} else {
+							json.layers[i].params.border = true;
+						}
+						json.layers[i].params.border_color = json.layers[i].color;
+						json.layers[i].params.fill_color = json.layers[i].color;
+					}
+					json.layers[i].color = null;
+				}
+				if (old_type == 'circle') {
+					json.layers[i].type = 'ellipse';
+					json.layers[i].render_function = ["ellipse", "render"];
+				}
+			}
+		}
+
+		if (isLegacyMiniPaint && semver_compare(json.info.version, '4.8.0') < 0) {
+			for (let i in json.layers) {
+				if (json.layers[i].type == 'borders') {
+					json.layers[i].type = 'rectangle';
+					json.layers[i].name += ' (legacy)';
+					json.layers[i].params = {
+						radius: 0,
+						fill: false,
+						square: false,
+						border_size: (json.layers[i].params ? json.layers[i].params.size : 1),
+						border: true,
+						border_color: json.layers[i].color,
+						fill_color: "#000000",
+					};
+					json.layers[i].render_function = ["rectangle", "render"];
+				}
+			}
+		}
+
+		if (isLegacyMiniPaint && semver_compare(json.info.version, '4.11.0') < 0) {
+			for (let i in json.layers) {
+				if (json.layers[i].type == 'star' && (!json.layers[i].params || typeof json.layers[i].params.corners == "undefined")) {
+					json.layers[i].params = json.layers[i].params || {};
+					json.layers[i].params.corners = 5;
+					json.layers[i].params.inner_radius = 40;
+					json.layers[i].render_function = ["star", "render"];
+				} else if (json.layers[i].type == 'star24') {
+					json.layers[i].type = 'star';
+					json.layers[i].params = json.layers[i].params || {};
+					json.layers[i].params.corners = 24;
+					json.layers[i].params.inner_radius = 80;
+					json.layers[i].render_function = ["star", "render"];
+				}
+			}
+		}
+
+		const w = parseInt(json.info.width) || config.WIDTH || 800;
+		const h = parseInt(json.info.height) || config.HEIGHT || 600;
+		const docTitle = filename ? filename.replace(/\.json$/i, '') : (json.info.name || ('Untitled-' + this.auto_title_count++));
+		const docTransp = (json.info.transparency !== false);
+
+		let max_id_order = 0;
+		const layers = [];
+		for (let l of json.layers) {
+			if (l.id > max_id_order) max_id_order = l.id;
+			if (l.order != null && l.order > max_id_order) max_id_order = l.order;
+
+			// Clean DOM links so no invalid objects remain
+			l.link = null;
+			l.link_canvas = null;
+
+			// Ensure layer has essential default properties
+			if (l.visible === undefined || l.visible === null) l.visible = true;
+			if (l.opacity === undefined || l.opacity === null) l.opacity = 100;
+			if (l.composition === undefined || l.composition === null) l.composition = 'source-over';
+			if (l.rotate === undefined || l.rotate === null) l.rotate = 0;
+			if (l.locked === undefined || l.locked === null) l.locked = false;
+			if (l.x === undefined || l.x === null) l.x = 0;
+			if (l.y === undefined || l.y === null) l.y = 0;
+			if (!l.filters) l.filters = [];
+			if (!l.params) l.params = {};
+
+			// Match image data
+			let dataUrl = null;
+			if (json.data && Array.isArray(json.data)) {
+				const d = json.data.find(item => item.id == l.id);
+				if (d && d.data) dataUrl = d.data;
+			}
+			if (!dataUrl && typeof l.data === 'string' && l.data.startsWith('data:image')) {
+				dataUrl = l.data;
+			}
+
+			if (dataUrl) {
+				const img = new Image();
+				await new Promise((res) => {
+					img.onload = () => {
+						if (img.decode) {
+							img.decode().then(res).catch(res);
+						} else {
+							res();
+						}
+					};
+					img.onerror = () => res();
+					img.src = dataUrl;
+					if (img.complete) {
+						if (img.decode) {
+							img.decode().then(res).catch(res);
+						} else {
+							res();
+						}
+					}
+				});
+				l.link = img;
+				l.data = dataUrl;
+				if (l.width == null || l.width == 0) l.width = img.width;
+				if (l.height == null || l.height == 0) l.height = img.height;
+				if (l.width_original == null) l.width_original = l.width;
+				if (l.height_original == null) l.height_original = l.height;
+
+				if (l.type === 'brush' || l.type === 'pencil') {
+					const c = document.createElement('canvas');
+					c.width = l.width_original || l.width;
+					c.height = l.height_original || l.height;
+					c.getContext('2d').drawImage(img, 0, 0);
+					l.link_canvas = c;
+				}
+			}
+
+			// Restore mask if any
+			if (l.mask != null && typeof l.mask === 'object') {
+				l.mask = await new Mask_class().restore(l, l.mask);
+			}
+
+			layers.push(l);
+		}
+
+		let activeLayer = layers.find(l => l.id == json.info.layer_active) || layers[layers.length - 1] || layers[0] || null;
+
+		const isPristine = this.is_active_document_empty();
+		if (isPristine) {
+			const doc = this.get_active_document();
+			doc.title = docTitle;
+			doc.width = w;
+			doc.height = h;
+			doc.layers = layers;
+			doc.layer = activeLayer;
+			doc.auto_increment = max_id_order + 1;
+			doc.guides = json.info.guides || [];
+			doc.user_fonts = json.user_fonts || {};
+			doc.transparency = docTransp;
+			doc.action_history = [];
+			doc.action_history_index = 0;
+			doc.is_dirty = false;
+			doc.selection = null;
+
+			await this.restore_state(doc);
+			this.render_tabs();
+			return doc;
+		} else {
+			this.save_current_state();
+
+			const newDoc = this._create_doc_model({
+				title: docTitle,
+				width: w,
+				height: h,
+				layers: layers,
+				layer: activeLayer,
+				auto_increment: max_id_order + 1,
+				action_history: [],
+				action_history_index: 0,
+				selection: null,
+				transparency: docTransp,
+				guides: json.info.guides || [],
+				user_fonts: json.user_fonts || {},
+			});
+
+			this.documents.push(newDoc);
+			this.active_id = newDoc.id;
+			await this.restore_state(newDoc);
+			this.render_tabs();
+			return newDoc;
+		}
 	}
 
 	update_zoom_display() {

@@ -14,8 +14,8 @@ class Help_about_class {
 		var settings = {
 			title: 'About',
 			params: [
-				{title: "", html: '<img style="width:64px;" class="about-logo" alt="" src="images/logo-colors.png" />'},
-				{title: "Name:", html: '<span class="about-name">PhotoChop</span>'},
+				{title: "", html: '<img style="width:64px;" class="about-logo" alt="" src="images/vantage_logo.png" />'},
+				{title: "Name:", html: '<span class="about-name">Vantage Point</span>'},
 				{title: "Version:", value: VERSION},
 				{title: "Description:", value: "Online image editor."},
 				{title: "Based on:", html: '<a href="https://github.com/viliusle/miniPaint">miniPaint</a>'},

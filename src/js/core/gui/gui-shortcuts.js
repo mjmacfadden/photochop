@@ -313,15 +313,15 @@ class GUI_shortcuts_class {
 			return;
 		}
 		if (this.logo_omarchy) {
-			//switch back to the original PhotoChop logo
-			img.src = 'images/photochop_logo.png';
-			img.alt = 'PhotoChop';
+			//switch back to the original Vantage Point logo
+			img.src = 'images/vantage_logo.png';
+			img.alt = 'Vantage Point';
 			var logoLink = document.querySelector('.logo');
-			if (logoLink) logoLink.title = 'PhotoChop';
+			if (logoLink) logoLink.title = 'Vantage Point';
 		}
 		else {
 			//easter egg: show the Omarchy logo
-			img.src = 'images/omarchy-logo.svg';
+			img.src = 'images/omarchy-logo.png';
 			img.alt = 'Omarchy';
 			var logoLink = document.querySelector('.logo');
 			if (logoLink) logoLink.title = 'Omarchy';
@@ -332,7 +332,7 @@ class GUI_shortcuts_class {
 
 	save_logo_preference() {
 		try {
-			localStorage.setItem('photochop_logo', this.logo_omarchy ? 'omarchy' : 'photochop');
+			localStorage.setItem('photochop_logo', this.logo_omarchy ? 'omarchy' : 'vantage');
 		} catch (error) {
 			//localStorage unavailable - ignore
 		}
@@ -341,6 +341,8 @@ class GUI_shortcuts_class {
 	restore_logo_preference() {
 		window.togglePhotoChopLogo = () => this.toggle_logo();
 		window.PhotoChop_toggle_logo = () => this.toggle_logo();
+		window.toggleVantageLogo = () => this.toggle_logo();
+		window.toggleVantagePointLogo = () => this.toggle_logo();
 
 		var saved = null;
 		try {
@@ -356,13 +358,18 @@ class GUI_shortcuts_class {
 		var img = document.querySelector('.logo img, a.logo img');
 		if (img != null) {
 			if (show_omarchy) {
-				img.src = 'images/omarchy-logo.svg';
+				img.src = 'images/omarchy-logo.png';
 				img.alt = 'Omarchy';
 				var logoLink = document.querySelector('.logo');
 				if (logoLink) logoLink.title = 'Omarchy';
+			} else {
+				img.src = 'images/vantage_logo.png';
+				img.alt = 'Vantage Point';
+				var logoLink = document.querySelector('.logo');
+				if (logoLink) logoLink.title = 'Vantage Point';
 			}
 			//reveal the logo (CSS keeps it hidden until the preference is applied,
-			//so the default PhotoChop logo never flashes when Omarchy is selected)
+			//so the default logo never flashes when Omarchy is selected)
 			img.style.visibility = 'visible';
 		}
 

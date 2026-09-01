@@ -6,8 +6,9 @@ var APP_SHELL = [
 	'./dist/bundle.js',
 	'./dist/styles.css',
 	'./images/favicon.png',
+	'./images/vantage_logo.png',
 	'./images/photochop_logo.png',
-	'./images/omarchy-logo.svg',
+	'./images/omarchy-logo.png',
 	'./images/manifest/192x192.png'
 ];
 
