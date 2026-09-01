@@ -963,12 +963,27 @@ class Base_layers_class {
 			case 'brightness': {
 				let v = (value !== undefined) ? value : 0;
 				let sysVal = v / 100 + 1;
-				return `brightness(${sysVal})`;
+				let res = `brightness(${sysVal})`;
+				if (params && params.contrast) {
+					let cVal = params.contrast / 100 + 1;
+					res += ` contrast(${cVal})`;
+				}
+				return res;
 			}
 			case 'contrast': {
 				let v = (value !== undefined) ? value : 0;
 				let sysVal = v / 100 + 1;
 				return `contrast(${sysVal})`;
+			}
+			case 'brightness/contrast':
+			case 'brightness-contrast': {
+				let b = (params && params.brightness !== undefined) ? params.brightness : ((params && params.value !== undefined) ? params.value : 0);
+				let c = (params && params.contrast !== undefined) ? params.contrast : 0;
+				let bVal = b / 100 + 1;
+				let cVal = c / 100 + 1;
+				let res = `brightness(${bVal})`;
+				if (c !== 0) res += ` contrast(${cVal})`;
+				return res;
 			}
 			case 'hue-rotate':
 			case 'hue_rotate': {

@@ -959,10 +959,14 @@ body.tool-pan.pan-dragging #canvas_minipaint{
 	margin-right: 4px;
 	width: 18px;
 	height: 18px;
-	opacity: 0.3;
+	opacity: 0;
 	border: none;
 	background: transparent;
 	box-shadow: none;
+	transition: opacity 0.1s ease;
+}
+.layers_list .visibility:hover{
+	opacity: 0.35;
 }
 .layers_list .visibility:after{
 	position: absolute;
@@ -976,6 +980,7 @@ body.tool-pan.pan-dragging #canvas_minipaint{
 	filter: invert(0.7);
 }
 .layers_list .visible{ opacity: 0.8; }
+.layers_list .visible:hover{ opacity: 1; }
 .layers_list .layer_thumb{
 	flex-shrink: 0;
 	display: flex;

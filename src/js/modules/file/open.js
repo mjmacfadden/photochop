@@ -10,6 +10,7 @@ import alertify from './../../../../node_modules/alertifyjs/build/alertify.min.j
 import EXIF from './../../../../node_modules/exif-js/exif.js';
 import GUI_tools_class from "../../core/gui/gui-tools";
 import semver_compare from './../../../../node_modules/semver-compare/';
+import { load_psd } from './../../libs/psd.js';
 
 var instance = null;
 
@@ -101,6 +102,7 @@ class File_open_class {
 		a.setAttribute("id", "file_open_as_layer");
 		a.type = 'file';
 		a.multiple = 'multiple';
+		a.accept = 'image/*,.psd,image/vnd.adobe.photoshop,image/x-photoshop';
 		document.getElementById("tmp").appendChild(a);
 		document.getElementById('file_open_as_layer').addEventListener('change', function (e) {
 			_this.open_handler_as_layer(e);
@@ -136,8 +138,26 @@ class File_open_class {
 
 		for (var i = 0, f; i < files.length; i++) {
 			f = files[i];
-			if (!f.type.match('image.*')) {
-				alertify.error('Wrong file type, must be image.');
+			var isPsd = (f.name && f.name.toLowerCase().endsWith('.psd')) ||
+				f.type === 'image/vnd.adobe.photoshop' ||
+				f.type === 'image/x-photoshop' ||
+				f.type === 'application/x-photoshop' ||
+				f.type === 'application/photoshop' ||
+				f.type === 'application/psd';
+
+			if (isPsd) {
+				try {
+					var readResult = await this.read_file_async(f, 'arrayBuffer');
+					await load_psd(readResult.result, f.name, { asLayers: true });
+				} catch (err) {
+					console.error('[PSD] Error importing as layer:', err);
+					alertify.error('Failed to import PSD: ' + (err.message || err));
+				}
+				continue;
+			}
+
+			if (!f.type.match('image.*') && !f.name.match(/\.(png|jpg|jpeg|webp|gif|avif)/i)) {
+				alertify.error('Wrong file type, must be image or psd.');
 				continue;
 			}
 
@@ -175,6 +195,7 @@ class File_open_class {
 		a.setAttribute("id", "file_open");
 		a.type = 'file';
 		a.multiple = 'multiple';
+		a.accept = 'image/*,.json,.psd,application/json,image/vnd.adobe.photoshop,image/x-photoshop';
 		document.getElementById("tmp").appendChild(a);
 		document.getElementById('file_open').addEventListener('change', function (e) {
 			_this.open_handler(e);
@@ -356,6 +377,8 @@ class File_open_class {
 			FR.onerror = (e) => reject(e);
 			if (readAs === 'text') {
 				FR.readAsText(file);
+			} else if (readAs === 'arrayBuffer') {
+				FR.readAsArrayBuffer(file);
 			} else {
 				FR.readAsDataURL(file);
 			}
@@ -399,9 +422,16 @@ class File_open_class {
 		for (var i = 0; i < files.length; i++) {
 			var f = files[i];
 			var isJson = f.name.toLowerCase().endsWith('.json') || f.type === 'application/json' || f.type === 'text/json';
-			if (!f.type.match('image.*') && !isJson && !f.name.match(/\.(png|jpg|jpeg|webp|gif|avif)/i)) {
+			var isPsd = (f.name && f.name.toLowerCase().endsWith('.psd')) ||
+				f.type === 'image/vnd.adobe.photoshop' ||
+				f.type === 'image/x-photoshop' ||
+				f.type === 'application/x-photoshop' ||
+				f.type === 'application/photoshop' ||
+				f.type === 'application/psd';
+
+			if (!f.type.match('image.*') && !isJson && !isPsd && !f.name.match(/\.(png|jpg|jpeg|webp|gif|avif|psd)/i)) {
 				if(dir_opened == false) {
-					alertify.error('Wrong file type, must be image or json.');
+					alertify.error('Wrong file type, must be image, json, or psd.');
 				}
 				continue;
 			}
@@ -409,7 +439,7 @@ class File_open_class {
 				this.SAVE_NAME = f.name.split('.')[f.name.split('.').length - 2];
 			}
 
-			var readAs = isJson ? 'text' : 'dataURL';
+			var readAs = isJson ? 'text' : (isPsd ? 'arrayBuffer' : 'dataURL');
 			try {
 				var readResult = await this.read_file_async(f, readAs);
 				if (isJson) {
@@ -424,6 +454,8 @@ class File_open_class {
 					} else {
 						await _this.load_json(content, f.name);
 					}
+				} else if (isPsd) {
+					await load_psd(readResult.result, f.name);
 				} else if (f.type.match('image.*') || (f.type == '' && f.name.match(/\.(png|jpg|jpeg|webp|gif|avif)/i))) {
 					if (app.Documents) {
 						await app.Documents.create_document_from_image({

@@ -8,6 +8,7 @@ import alertify from './../../../../node_modules/alertifyjs/build/alertify.min.j
 import canvasToBlob from './../../../../node_modules/blueimp-canvas-to-blob/js/canvas-to-blob.min.js';
 import filesaver from './../../../../node_modules/file-saver/dist/FileSaver.min.js';
 import Tools_settings_class from "../tools/settings";
+import { export_psd } from './../../libs/psd.js';
 
 var instance = null;
 
@@ -38,6 +39,7 @@ class File_save_class {
 			JPG: "JPG/JPEG Format",
 			//AVIF: "AV1 Image File Format", //just uncomment it in future to make it work
 			JSON: "Full layers data",
+			PSD: "Photoshop Document",
 			WEBP: "Weppy File Format",
 			GIF: "Graphics Interchange Format",
 			BMP: "Windows Bitmap",
@@ -73,7 +75,7 @@ class File_save_class {
 	save(){
 		var types = JSON.parse(JSON.stringify(this.SAVE_TYPES));
 		for(var i in types){
-			if(i != 'JSON'){
+			if(i != 'JSON' && i != 'PSD'){
 				delete types[i];
 			}
 		}
@@ -276,7 +278,7 @@ class File_save_class {
 		else
 			document.getElementById('popup-tr-delay').style.display = 'none';
 
-		if (type == 'JSON' || type == 'GIF')
+		if (type == 'JSON' || type == 'GIF' || type == 'PSD')
 			document.getElementById('popup-tr-layers').style.display = 'none';
 		else
 			document.getElementById('popup-tr-layers').style.display = '';
@@ -576,6 +578,12 @@ class File_save_class {
 			CanvasToTIFF.toBlob(canvas, function(blob) {
 				filesaver.saveAs(blob, fname);
 			}, data_header);
+		}
+		else if (type == 'PSD') {
+			//psd - Photoshop Document
+			if (this.Helper.strpos(fname, '.psd') == false)
+				fname = fname + ".psd";
+			await export_psd(config.layers, config.WIDTH, config.HEIGHT, { filename: fname });
 		}
 		else if (type == 'JSON') {
 			//json - full data with layers
