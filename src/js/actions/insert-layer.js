@@ -31,18 +31,28 @@ export class Insert_layer_action extends Base_action {
 		this.previous_selected_layer = config.layer;
 		let autoresize_as = null;
 
+		// Only trust selection if that layer still exists (group delete can leave a stale ref).
+		const active_layer = (config.layer && app.Layers.get_layer(config.layer.id))
+			? config.layer
+			: null;
+		if (config.layer && !active_layer) {
+			config.layer = null;
+			config.selected_layer_ids = [];
+			config.layer_select_anchor_id = null;
+		}
+
 		// Default parent (group-aware)
 		const default_parent = (this.settings && this.settings.parent_id != null)
 			? this.settings.parent_id
-			: resolve_insert_parent_id(config.layer);
+			: resolve_insert_parent_id(active_layer, config.layers);
 
-		// Default order: directly above selected layer (PS paste / New Layer)
+		// Default order: above selected layer; if none selected → top of stack (next_order)
 		this.order_shifts = null;
 		let target_order;
 		if (this.settings && this.settings.order != null) {
 			target_order = this.settings.order;
 		} else {
-			target_order = resolve_insert_order(config.layer, default_parent, config.layers);
+			target_order = resolve_insert_order(active_layer, default_parent, config.layers);
 		}
 
 		const layer = {
@@ -94,7 +104,7 @@ export class Insert_layer_action extends Base_action {
 				layer.is_vector = true;
 			}
 
-			if (config.layers.length == 1 && (config.layer.width == 0 || config.layer.width === null)
+			if (config.layer && config.layers.length == 1 && (config.layer.width == 0 || config.layer.width === null)
 					&& (config.layer.height == 0 || config.layer.height === null) && config.layer.data == null) {
 				// Remove first empty layer
 
@@ -151,7 +161,7 @@ export class Insert_layer_action extends Base_action {
 			}
 		}
 
-		if (this.settings != undefined && config.layers.length > 0
+		if (this.settings != undefined && config.layer && config.layers.length > 0
 			&& (config.layer.width == 0 || config.layer.width === null) && (config.layer.height == 0 || config.layer.height === null)
 			&& config.layer.data == null && layer.type != 'image' && this.can_automate !== false) {
 			// Update existing layer, because it's empty

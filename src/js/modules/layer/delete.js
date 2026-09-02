@@ -131,15 +131,32 @@ class Layer_delete_class {
 		app.State.do_action(
 			new app.Actions.Bundle_action(name, label, actions)
 		).then(() => {
-			config.selected_layer_ids = config.layer && config.layer.id != null
-				? [config.layer.id]
-				: [];
-			config.layer_select_anchor_id = config.layer ? config.layer.id : null;
+			// Reconcile selection: drop stale refs so New Layer / UI keep working.
+			let live = (config.layer && app.Layers.get_layer(config.layer.id)) || null;
+			if (!live && config.layers && config.layers.length) {
+				live = app.Layers.get_sorted_layers()[0] || config.layers[0];
+				config.layer = live;
+			}
+			if (!live) {
+				config.layer = null;
+			}
+			config.selected_layer_ids = live ? [live.id] : [];
+			config.layer_select_anchor_id = live ? live.id : null;
 			if (app.GUI && app.GUI.GUI_layers) {
 				app.GUI.GUI_layers.render_layers();
 			}
 		}).catch(() => {
 			// Aborted (e.g. last layer) — Delete_layer_action throws; Bundle may surface it
+			let live = (config.layer && app.Layers.get_layer(config.layer.id)) || null;
+			if (!live && config.layers && config.layers.length) {
+				live = app.Layers.get_sorted_layers()[0] || config.layers[0];
+				config.layer = live;
+			}
+			config.selected_layer_ids = live ? [live.id] : [];
+			config.layer_select_anchor_id = live ? live.id : null;
+			if (app.GUI && app.GUI.GUI_layers) {
+				app.GUI.GUI_layers.render_layers();
+			}
 		});
 	}
 

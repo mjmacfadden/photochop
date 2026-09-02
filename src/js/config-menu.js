@@ -331,7 +331,7 @@ const menuDefinition = [
 		children: [
 			{
 				name: 'New',
-				shortcut: 'Shift + N',
+				shortcut: 'Ctrl + Shift + N',
 				target: 'layer/new.new'
 			},
 			{

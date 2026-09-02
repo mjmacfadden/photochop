@@ -156,7 +156,7 @@ export function next_order(layers) {
  * - Active group (inserting inside it): above the current topmost child,
  *   or just above the group header if empty.
  * - Otherwise: active.order + 1
- * - Fallback: next_order()
+ * - No selection: next_order() → top of the stack
  */
 export function resolve_insert_order(active_layer, parent_id, layers) {
 	const list = layers || config.layers || [];
@@ -182,11 +182,24 @@ export function resolve_insert_order(active_layer, parent_id, layers) {
  * Resolve parent for a newly inserted layer:
  * - If active layer is a group → insert inside it.
  * - Else → same parent as active layer.
+ * - Stale / deleted active or parent → root (0).
  */
-export function resolve_insert_parent_id(active_layer) {
+export function resolve_insert_parent_id(active_layer, layers) {
+	const list = layers || config.layers || [];
 	if (!active_layer) return 0;
-	if (is_group(active_layer)) return active_layer.id;
-	return get_parent_id(active_layer);
+
+	// Ignore selection that no longer exists (common after group delete).
+	const live = list.find((l) => l && l.id == active_layer.id);
+	if (!live) return 0;
+
+	if (is_group(live)) {
+		return live.id;
+	}
+
+	const pid = get_parent_id(live);
+	if (!pid) return 0;
+	const parent_live = list.find((l) => l && l.id == pid);
+	return parent_live ? pid : 0;
 }
 
 export default {

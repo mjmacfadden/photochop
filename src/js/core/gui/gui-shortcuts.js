@@ -203,8 +203,9 @@ class GUI_shortcuts_class {
 				return;
 			}
 
-			// Shift + N = New Layer
-			if (event.shiftKey && (event.code === 'KeyN' || event.key === 'N' || event.key === 'n' || event.keyCode === 78)) {
+			// Ctrl/Cmd + Shift + N = New Layer
+			if ((event.ctrlKey || event.metaKey) && event.shiftKey && !event.altKey
+				&& (event.code === 'KeyN' || event.key === 'N' || event.key === 'n' || event.keyCode === 78)) {
 				event.preventDefault();
 				event.stopImmediatePropagation();
 				app.State.do_action(
@@ -221,6 +222,17 @@ class GUI_shortcuts_class {
 				if (app.GUI && app.GUI.modules && app.GUI.modules['file/new']) {
 					app.GUI.modules['file/new'].new();
 				}
+				return;
+			}
+
+			// Shift + N = New Layer (no modifiers besides Shift)
+			if (event.shiftKey && !event.ctrlKey && !event.metaKey && !event.altKey
+				&& (event.code === 'KeyN' || event.key === 'N' || event.key === 'n' || event.keyCode === 78)) {
+				event.preventDefault();
+				event.stopImmediatePropagation();
+				app.State.do_action(
+					new app.Actions.Insert_layer_action()
+				);
 				return;
 			}
 

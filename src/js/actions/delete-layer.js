@@ -1,7 +1,7 @@
 import config from '../config.js';
 import app from './../app.js';
 import { Base_action } from './base.js';
-import { is_group, get_children } from './../libs/layer-tree.js';
+import { is_group, get_children, get_descendant_ids } from './../libs/layer-tree.js';
 
 export class Delete_layer_action extends Base_action {
 	/**
@@ -55,16 +55,31 @@ export class Delete_layer_action extends Base_action {
 			}
 		}
 
-		if (config.layers.length > 1 && config.layer.id == id) {
-			// Select next or previous layer
-			try {
-				const select_action = new app.Actions.Select_next_layer_action(id);
-				await select_action.do();
-				this.select_layer_action = select_action;
-			} catch (error) {
-				const select_action = new app.Actions.Select_previous_layer_action(id);
-				await select_action.do();
-				this.select_layer_action = select_action;
+		// Layers that will disappear with this delete (group + contents).
+		const target_pre = config.layers[this.delete_index];
+		const doomed = new Set([id]);
+		if (target_pre && is_group(target_pre)) {
+			for (const did of get_descendant_ids(id)) {
+				doomed.add(parseInt(did, 10));
+			}
+		}
+
+		// Always move selection off anything about to be deleted. Plain
+		// find_next/previous often lands on a child inside a group, which then
+		// gets deleted too — leaving config.layer stale. New Layer then parents
+		// under a dead group and never shows up in the tree.
+		if (config.layer && doomed.has(parseInt(config.layer.id, 10))) {
+			const survivor = this._find_survivor(doomed);
+			if (survivor) {
+				try {
+					const select_action = new app.Actions.Select_layer_action(survivor.id, true);
+					await select_action.do();
+					this.select_layer_action = select_action;
+				} catch (error) {
+					config.layer = survivor;
+					config.selected_layer_ids = [survivor.id];
+					config.layer_select_anchor_id = survivor.id;
+				}
 			}
 		}
 
@@ -101,8 +116,38 @@ export class Delete_layer_action extends Base_action {
 			this.memory_estimate = new Blob([this.deleted_layer.link.src]).size;
 		}
 
+		// Final safety: never leave config.layer pointing at a removed object.
+		if (!config.layer || !app.Layers.get_layer(config.layer.id)) {
+			const survivor = config.layers.length ? (app.Layers.get_sorted_layers()[0] || config.layers[0]) : null;
+			config.layer = survivor;
+			config.selected_layer_ids = survivor ? [survivor.id] : [];
+			config.layer_select_anchor_id = survivor ? survivor.id : null;
+		}
+
 		app.Layers.render();
 		app.GUI.GUI_layers.render_layers();
+	}
+
+	/**
+	 * Pick a layer that will survive this delete (not in doomed ids).
+	 * Prefer neighbors of the primary id in stack order, then any leftover.
+	 */
+	_find_survivor(doomed) {
+		const sorted = app.Layers.get_sorted_layers();
+		const alive = sorted.filter((l) => !doomed.has(parseInt(l.id, 10)));
+		if (!alive.length) return null;
+
+		// Prefer the layer that sat just above / below the deleted id in the stack.
+		const idx = sorted.findIndex((l) => parseInt(l.id, 10) === this.layer_id);
+		if (idx !== -1) {
+			for (let i = idx - 1; i >= 0; i--) {
+				if (!doomed.has(parseInt(sorted[i].id, 10))) return sorted[i];
+			}
+			for (let i = idx + 1; i < sorted.length; i++) {
+				if (!doomed.has(parseInt(sorted[i].id, 10))) return sorted[i];
+			}
+		}
+		return alive[0];
 	}
 
 	async undo() {

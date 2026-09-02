@@ -972,7 +972,7 @@ class GUI_layers_class {
 		}
 		var html = '';
 
-		if (config.layer) {
+		if (config.layers && config.layers.length) {
 			var rows = get_tree_rows(config.layers);
 			var layers_top_first = rows.map(function (r) { return r.layer; });
 
@@ -1008,7 +1008,7 @@ class GUI_layers_class {
 				}
 				var selected_ids = (Array.isArray(config.selected_layer_ids) && config.selected_layer_ids.length)
 					? config.selected_layer_ids
-					: [config.layer.id];
+					: (config.layer ? [config.layer.id] : []);
 				if (selected_ids.indexOf(value.id) !== -1){
 					class_extra += ' active';
 				}
