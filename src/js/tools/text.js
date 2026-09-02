@@ -2471,12 +2471,19 @@ class Text_class extends Base_tools_class {
 				this.focusedWidth = this.layer.width;
 				this.focusedHeight = this.layer.height;
 			}
-			await app.State.do_action(
-				new app.Actions.Bundle_action('select_text_layer', 'Select Text Layer', [
-					new app.Actions.Select_layer_action(existingLayer.id),
-					new app.Actions.Set_selection_action(this.layer.x, this.layer.y, this.layer.width, this.layer.height)
-				])
-			);
+			const selectActions = [
+					new app.Actions.Select_layer_action(existingLayer.id)
+				];
+				// Point text: caret only (no rectangular selection chrome).
+				// Paragraph/box: keep a selection matching the text box.
+				if (this.layer.params && this.layer.params.boundary === 'box') {
+					selectActions.push(new app.Actions.Set_selection_action(this.layer.x, this.layer.y, this.layer.width, this.layer.height));
+				} else {
+					selectActions.push(new app.Actions.Reset_selection_action());
+				}
+				await app.State.do_action(
+					new app.Actions.Bundle_action('select_text_layer', 'Select Text Layer', selectActions)
+				);
 		}
 		else {
 			await this.commit_text_changes();
