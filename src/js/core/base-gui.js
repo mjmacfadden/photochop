@@ -8,6 +8,7 @@ import Base_layers_class from './base-layers.js';
 import GUI_tools_class from './gui/gui-tools.js';
 import GUI_preview_class from './gui/gui-preview.js';
 import GUI_colors_class from './gui/gui-colors.js';
+import GUI_swatches_class from './gui/gui-swatches.js';
 import GUI_layers_class from './gui/gui-layers.js';
 import GUI_information_class from './gui/gui-information.js';
 import GUI_details_class from './gui/gui-details.js';
@@ -62,6 +63,7 @@ class Base_gui_class {
 		this.GUI_tools = new GUI_tools_class(this);
 		this.GUI_preview = new GUI_preview_class(this);
 		this.GUI_colors = new GUI_colors_class(this);
+		this.GUI_swatches = new GUI_swatches_class(this);
 		this.GUI_layers = new GUI_layers_class(this);
 		this.GUI_information = new GUI_information_class(this);
 		this.GUI_details = new GUI_details_class(this);
@@ -175,11 +177,13 @@ class Base_gui_class {
 		this.GUI_tools.render_main_tools();
 		this.GUI_preview.render_main_preview();
 		this.GUI_colors.render_main_colors();
+		this.GUI_swatches.render_main_swatches();
 		this.GUI_layers.render_main_layers();
 		this.GUI_information.render_main_information();
 		this.GUI_details.render_main_details();
 		this.GUI_adjustments.render_main_adjustments();
 		this.GUI_menu.render_main();
+		this.init_panel_tabs();
 		this.load_saved_changes();
 
 		this.set_events();
@@ -264,6 +268,55 @@ class Base_gui_class {
 		document.getElementById('canvas_minipaint').addEventListener('contextmenu', function (e) {
 			e.preventDefault();
 		}, false);
+	}
+
+	init_panel_tabs() {
+		const tabColor = document.getElementById('tab_btn_color');
+		const tabSwatches = document.getElementById('tab_btn_swatches');
+		const paneColor = document.getElementById('toggle_colors');
+		const paneSwatches = document.getElementById('toggle_swatches');
+		const wrapper = document.getElementById('toggle_colors_wrapper');
+		const collapseHeader = document.querySelector('.colors.block h2.toggle');
+
+		if (!tabColor || !tabSwatches || !paneColor || !paneSwatches) return;
+
+		const activateTab = (tab) => {
+			if (wrapper && wrapper.classList.contains('hidden')) {
+				wrapper.classList.remove('hidden');
+				if (collapseHeader) collapseHeader.classList.remove('toggled');
+				this.Helper.setCookie('toggle_colors_wrapper', 1);
+			}
+
+			if (tab === 'swatches') {
+				tabColor.classList.remove('active');
+				tabSwatches.classList.add('active');
+				paneColor.classList.add('hidden');
+				paneSwatches.classList.remove('hidden');
+				try { localStorage.setItem('vantage_active_color_tab', 'swatches'); } catch (e) {}
+			} else {
+				tabSwatches.classList.remove('active');
+				tabColor.classList.add('active');
+				paneSwatches.classList.add('hidden');
+				paneColor.classList.remove('hidden');
+				try { localStorage.setItem('vantage_active_color_tab', 'color'); } catch (e) {}
+			}
+		};
+
+		tabColor.addEventListener('click', (e) => {
+			e.stopPropagation();
+			activateTab('color');
+		});
+
+		tabSwatches.addEventListener('click', (e) => {
+			e.stopPropagation();
+			activateTab('swatches');
+		});
+
+		let savedTab = 'color';
+		try { savedTab = localStorage.getItem('vantage_active_color_tab') || 'color'; } catch (e) {}
+		if (savedTab === 'swatches') {
+			activateTab('swatches');
+		}
 	}
 
 	check_canvas_offset() {
