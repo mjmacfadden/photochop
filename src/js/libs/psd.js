@@ -202,7 +202,7 @@ export async function load_psd(buffer, filename, options = {}) {
 				width_original: docWidth,
 				height_original: docHeight,
 				link: psd.canvas,
-				data: safeToDataURL(psd.canvas),
+				data: null,
 				opacity: 100,
 				visible: true,
 				order: 1,
@@ -218,11 +218,16 @@ export async function load_psd(buffer, filename, options = {}) {
 
 	// If imported via "Open as Layer" (into current document)
 	if (options.asLayers) {
-		for (let l of layers) {
-			app.State.do_action(
-				new app.Actions.Insert_layer_action(l, false)
-			);
-		}
+		const insertActions = layers.map(
+			(l) => new app.Actions.Insert_layer_action(l, false)
+		);
+		await app.State.do_action(
+			new app.Actions.Bundle_action(
+				'open_psd_as_layers',
+				'Open PSD as Layers',
+				insertActions
+			)
+		);
 		alertify.success(`Added ${layers.length} layers from "${title}.psd".`);
 		return;
 	}
@@ -338,7 +343,8 @@ function convert_psd_layer(psdLayer, id, docWidth, docHeight) {
 		width_original: width,
 		height_original: height,
 		link: canvas,
-		data: safeToDataURL(canvas),
+		// Prefer live canvas link; avoid dual bitmap+dataURL memory spike
+		data: null,
 		opacity: opacity,
 		visible: visible,
 		composition: composition,
