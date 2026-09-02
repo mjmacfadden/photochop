@@ -2803,6 +2803,15 @@ canvas{
 	background-color: rgba(0, 0, 0, 0.55) !important;
 	animation: alertifyDimmerFadeIn 140ms ease forwards !important;
 }
+.alertify .ajs-ok {
+	background: #c62828 !important;
+	border-color: #c62828 !important;
+	color: #fff !important;
+}
+.alertify .ajs-ok:hover {
+	background: #b71c1c !important;
+	border-color: #b71c1c !important;
+}
 @keyframes alertifyDimmerFadeIn {
 	from {
 		opacity: 0;

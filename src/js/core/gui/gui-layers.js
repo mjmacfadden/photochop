@@ -13,6 +13,7 @@ import Effects_browser_class from './../../modules/effects/browser.js';
 import Layer_duplicate_class from './../../modules/layer/duplicate.js';
 import Layer_raster_class from './../../modules/layer/raster.js';
 import Layer_group_class from './../../modules/layer/group.js';
+import Layer_delete_class from './../../modules/layer/delete.js';
 import Tools_translate_class from './../../modules/tools/translate.js';
 import { is_group, get_tree_rows, get_parent_id, would_cycle } from './../../libs/layer-tree.js';
 
@@ -85,6 +86,7 @@ class GUI_layers_class {
 		this.Layer_duplicate = new Layer_duplicate_class();
 		this.Layer_raster = new Layer_raster_class();
 		this.Layer_group = new Layer_group_class();
+		this.Layer_delete = new Layer_delete_class();
 		this.Tools_translate = new Tools_translate_class();
 		this.mask_context_menu = null;
 		this.mask_context_menu_open = false;
@@ -599,7 +601,12 @@ class GUI_layers_class {
 		});
 		if (!layer.locked) {
 			button(is_group(layer) ? 'Delete Group' : 'Delete Layer', () => {
-				app.State.do_action(new app.Actions.Delete_layer_action(layer_id));
+				const selected = (config.selected_layer_ids || []).map((id) => parseInt(id, 10));
+				if (selected.length > 1 && selected.includes(parseInt(layer_id, 10))) {
+					_this.Layer_delete.delete(selected);
+				} else {
+					_this.Layer_delete.delete([layer_id]);
+				}
 			});
 		}
 		button(is_group(layer) ? 'Rename Group...' : 'Rename Layer...', () => {
@@ -688,11 +695,7 @@ class GUI_layers_class {
 		}
 
 		document.getElementById('status_delete_layer').addEventListener('click', function () {
-			if (config.layer && config.layer.locked !== true) {
-				app.State.do_action(
-					new app.Actions.Delete_layer_action(config.layer.id)
-				);
-			}
+			_this.Layer_delete.delete();
 		});
 	}
 
