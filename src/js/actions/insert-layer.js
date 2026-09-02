@@ -2,7 +2,7 @@ import app from './../app.js';
 import config from './../config.js';
 import { Base_action } from './base.js';
 import alertify from './../../../node_modules/alertifyjs/build/alertify.min.js';
-import { resolve_insert_parent_id } from './../libs/layer-tree.js';
+import { resolve_insert_parent_id, resolve_insert_order } from './../libs/layer-tree.js';
 
 export class Insert_layer_action extends Base_action {
 	/**
@@ -21,6 +21,7 @@ export class Insert_layer_action extends Base_action {
 		this.update_layer_action = null;
 		this.delete_layer_action = null;
 		this.autoresize_canvas_action = null;
+		this.order_shifts = null;
 	}
 
 	async do() {
@@ -30,24 +31,19 @@ export class Insert_layer_action extends Base_action {
 		this.previous_selected_layer = config.layer;
 		let autoresize_as = null;
 
-		// Calculate top order
-		let max_order = 0;
-		if (config.layers && Array.isArray(config.layers)) {
-			for (let i in config.layers) {
-				let lOrder = config.layers[i].order;
-				if (lOrder != null && lOrder > max_order) {
-					max_order = lOrder;
-				}
-			}
-		}
-		let target_order = (this.settings && this.settings.order != null)
-			? this.settings.order
-			: (max_order + 1);
-
-		// Default data
+		// Default parent (group-aware)
 		const default_parent = (this.settings && this.settings.parent_id != null)
 			? this.settings.parent_id
 			: resolve_insert_parent_id(config.layer);
+
+		// Default order: directly above selected layer (PS paste / New Layer)
+		this.order_shifts = null;
+		let target_order;
+		if (this.settings && this.settings.order != null) {
+			target_order = this.settings.order;
+		} else {
+			target_order = resolve_insert_order(config.layer, default_parent, config.layers);
+		}
 
 		const layer = {
 			id: app.Layers.auto_increment,
@@ -163,7 +159,22 @@ export class Insert_layer_action extends Base_action {
 			await this.update_layer_action.do();
 		}
 		else {
-			// Create new layer
+			// Create new layer — make room above the selection first
+			const insert_order = (layer.order != null) ? layer.order : target_order;
+			layer.order = insert_order;
+			if (config.layers && Array.isArray(config.layers)) {
+				const shifts = [];
+				for (let i = 0; i < config.layers.length; i++) {
+					const l = config.layers[i];
+					if (l.order != null && l.order >= insert_order) {
+						shifts.push({ id: l.id, old_order: l.order });
+						l.order = l.order + 1;
+					}
+				}
+				if (shifts.length) {
+					this.order_shifts = shifts;
+				}
+			}
 			config.layers.push(layer);
 			config.layer = app.Layers.get_layer(layer.id);
 			app.Layers.auto_increment++;
@@ -201,6 +212,13 @@ export class Insert_layer_action extends Base_action {
 		if (this.autoresize_canvas_action) {
 			await this.autoresize_canvas_action.undo();
 			this.autoresize_canvas_action = null;
+		}
+		if (this.order_shifts) {
+			for (const s of this.order_shifts) {
+				const layer = config.layers.find(l => l.id === s.id);
+				if (layer) layer.order = s.old_order;
+			}
+			this.order_shifts = null;
 		}
 		if (this.inserted_layer_id) {
 			const index = config.layers.findIndex(l => l.id === this.inserted_layer_id);
@@ -250,5 +268,6 @@ export class Insert_layer_action extends Base_action {
 			this.update_layer_action = null;
 		}
 		this.previous_selected_layer = null;
+		this.order_shifts = null;
 	}
 }

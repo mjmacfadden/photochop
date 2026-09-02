@@ -151,6 +151,34 @@ export function next_order(layers) {
 }
 
 /**
+ * Order for a newly inserted layer: directly above the active layer
+ * (Photoshop paste / New Layer behavior). Higher order = higher in stack.
+ * - Active group (inserting inside it): above the current topmost child,
+ *   or just above the group header if empty.
+ * - Otherwise: active.order + 1
+ * - Fallback: next_order()
+ */
+export function resolve_insert_order(active_layer, parent_id, layers) {
+	const list = layers || config.layers || [];
+	const pid = parseInt(parent_id, 10) || 0;
+
+	if (active_layer && is_group(active_layer) && active_layer.id === pid) {
+		const kids = get_children(pid, list);
+		if (kids.length) {
+			return (kids[kids.length - 1].order || 0) + 1;
+		}
+		return (active_layer.order || 0) + 1;
+	}
+
+	if (active_layer && active_layer.order != null) {
+		return (active_layer.order || 0) + 1;
+	}
+
+	return next_order(list);
+}
+
+
+/**
  * Resolve parent for a newly inserted layer:
  * - If active layer is a group → insert inside it.
  * - Else → same parent as active layer.
@@ -175,5 +203,6 @@ export default {
 	count_psd_nodes,
 	is_psd_group,
 	next_order,
+	resolve_insert_order,
 	resolve_insert_parent_id,
 };
