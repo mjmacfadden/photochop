@@ -96,7 +96,7 @@ const kerningTestCtx = kerningTestCanvas.getContext('2d');
 class Font_metrics_class {
 	constructor(family, size) {
 		this.family = family || (family = "Arial");
-		this.size = parseInt(size) || (size = 12);
+		this.size = parseFloat(size) || (size = 12);
 		this.kerningMap = new Map();
 
 		// Preparing container
@@ -2611,6 +2611,10 @@ class Text_class extends Base_tools_class {
 		if (this.resizing) {
 			if (this.mousedownBounds && config.layer && config.layer.type === 'text' && config.layer.params) {
 				const wasDynamic = this.mousedownBounds.boundary === 'dynamic';
+				const nextX = this.selection.x;
+				const nextY = this.selection.y;
+				const nextW = this.selection.width;
+				const nextH = this.selection.height;
 				config.layer.x = this.mousedownBounds.x;
 				config.layer.y = this.mousedownBounds.y;
 				config.layer.width = this.mousedownBounds.width;
@@ -2619,22 +2623,34 @@ class Text_class extends Base_tools_class {
 				// Never promote point→box on transform
 				new_params.boundary = this.mousedownBounds.boundary;
 				config.layer.params.boundary = this.mousedownBounds.boundary;
+				// End live transform before history render so scale bakes instead of snapping back
+				this.resizing = false;
 				const update = {
-					x: this.selection.x,
-					y: this.selection.y,
-					width: this.selection.width,
-					height: this.selection.height,
+					x: nextX,
+					y: nextY,
+					width: nextW,
+					height: nextH,
 					params: new_params
 				};
 				if (wasDynamic && this.mousedownBounds.width > 0) {
-					const scale = this.selection.width / this.mousedownBounds.width;
-					const scaledData = this.bake_point_text_scale(config.layer, scale, { commit: false });
-					if (scaledData) update.data = scaledData;
+					if (!this._point_resize_snapshot) {
+						this.begin_point_text_resize(config.layer);
+						this._point_resize_base_width = Math.max(1, this.mousedownBounds.width);
+						this._point_resize_base_height = Math.max(1, this.mousedownBounds.height);
+					}
+					const scaledData = this.apply_point_text_resize(config.layer, nextW, nextH);
+					if (scaledData) {
+						update.data = scaledData;
+						this.focusedValue = JSON.stringify(scaledData);
+						this.focusedWidth = nextW;
+						this.focusedHeight = nextH;
+					}
+					this.end_point_text_resize();
 				}
 				await app.State.do_action(
 					new app.Actions.Bundle_action('resize_text_layer', 'Resize Text Layer', [
 						new app.Actions.Update_layer_action(config.layer.id, update),
-						...(wasDynamic ? [] : [new app.Actions.Set_selection_action(this.selection.x, this.selection.y, this.selection.width, this.selection.height)])
+						...(wasDynamic ? [] : [new app.Actions.Set_selection_action(nextX, nextY, nextW, nextH)])
 					])
 				);
 			}
@@ -2983,19 +2999,13 @@ class Text_class extends Base_tools_class {
 	}
 
 
-	bake_point_text_scale(layer, scale, { commit = true } = {}) {
-		if (!layer || layer.type !== 'text' || !scale || !isFinite(scale) || Math.abs(scale - 1) < 1e-6) {
-			return null;
-		}
-		const editor = this.get_editor(layer);
-		const lines = editor
-			? JSON.parse(JSON.stringify(editor.document.lines))
-			: JSON.parse(JSON.stringify(layer.data || [[{ text: '', meta: {} }]]));
-		for (const line of lines) {
+	_scale_text_lines(lines, scale) {
+		const out = JSON.parse(JSON.stringify(lines || [[{ text: '', meta: {} }]]));
+		for (const line of out) {
 			for (const span of line) {
 				if (!span.meta) span.meta = {};
 				const size = (span.meta.size != null) ? span.meta.size : metaDefaults.size;
-				span.meta.size = Math.max(1, Math.round(size * scale));
+				span.meta.size = Math.max(1, Math.round(size * scale * 100) / 100);
 				if (span.meta.stroke_size != null && span.meta.stroke_size > 0) {
 					span.meta.stroke_size = Math.max(0, Math.round(span.meta.stroke_size * scale * 10) / 10);
 				}
@@ -3004,29 +3014,88 @@ class Text_class extends Base_tools_class {
 				}
 			}
 		}
-		if (commit && editor) {
-			editor.document.lines = lines;
-			editor.hasValueChanged = true;
+		return out;
+	}
+
+	bake_point_text_scale(layer, scale, { commit = true } = {}) {
+		if (!layer || layer.type !== 'text' || !scale || !isFinite(scale) || Math.abs(scale - 1) < 1e-6) {
+			return null;
+		}
+		const editor = this.get_editor(layer);
+		const source = (this._point_resize_snapshot)
+			? this._point_resize_snapshot
+			: (editor ? editor.document.lines : (layer.data || [[{ text: '', meta: {} }]]));
+		const lines = this._scale_text_lines(source, scale);
+		if (commit) {
 			layer.data = JSON.parse(JSON.stringify(lines));
+			if (editor) {
+				editor.hasValueChanged = true;
+				editor.set_lines(JSON.parse(JSON.stringify(lines)), true);
+				editor.hasValueChanged = true;
+			}
 		}
 		return lines;
 	}
 
-	is_point_text_transform_active(layer) {
-		if (!layer || layer.type !== 'text' || !layer.params || layer.params.boundary !== 'dynamic') {
-			return false;
+	/**
+	 * Start a point-text transform: remember pre-drag fonts so scale is always
+	 * relative to the drag start (not compounded each move).
+	 */
+	begin_point_text_resize(layer) {
+		if (!layer || layer.type !== 'text') return;
+		const editor = this.get_editor(layer);
+		const lines = editor ? editor.document.lines : layer.data;
+		this._point_resize_snapshot = JSON.parse(JSON.stringify(lines || [[{ text: '', meta: {} }]]));
+		this._point_resize_base_width = Math.max(1, layer.width || 1);
+		this._point_resize_base_height = Math.max(1, layer.height || 1);
+		this._point_resize_layer_id = layer.id;
+		this._point_resize_last_scale = 1;
+	}
+
+	/**
+	 * Apply point-text scale from the drag-start snapshot to real font sizes.
+	 * Uses uniform scale from width+height so handles stay proportional.
+	 */
+	apply_point_text_resize(layer, currentWidth, currentHeight) {
+		if (!layer || layer.type !== 'text' || !this._point_resize_snapshot) return null;
+		if (this._point_resize_layer_id != null && layer.id !== this._point_resize_layer_id) return null;
+		const baseW = Math.max(1, this._point_resize_base_width || 1);
+		const baseH = Math.max(1, this._point_resize_base_height || 1);
+		const w = Math.max(1, currentWidth != null ? currentWidth : (layer.width || baseW));
+		const h = Math.max(1, currentHeight != null ? currentHeight : (layer.height || baseH));
+		const scale = Math.max(0.05, Math.sqrt(Math.abs((w / baseW) * (h / baseH))));
+		this._point_resize_last_scale = scale;
+		const lines = this.bake_point_text_scale(layer, scale, { commit: true });
+		if (lines && lines[0] && lines[0][0] && lines[0][0].meta && lines[0][0].meta.size != null) {
+			const size = lines[0][0].meta.size;
+			try {
+				for (const tool of (config.TOOLS || [])) {
+					if (tool.name === 'text' && tool.attributes && tool.attributes.size) {
+						if (typeof tool.attributes.size === 'object') tool.attributes.size.value = size;
+						else tool.attributes.size = size;
+					}
+				}
+			} catch (e) { /* ignore */ }
 		}
-		if (this.resizing) return true;
-		try {
-			const sel = app.GUI && app.GUI.GUI_tools && app.GUI.GUI_tools.tools_modules
-				&& app.GUI.GUI_tools.tools_modules.select
-				&& app.GUI.GUI_tools.tools_modules.select.object;
-			if (sel && sel.resizing) return true;
-		} catch (e) { /* ignore */ }
+		return lines;
+	}
+
+	end_point_text_resize() {
+		this._point_resize_snapshot = null;
+		this._point_resize_base_width = null;
+		this._point_resize_base_height = null;
+		this._point_resize_layer_id = null;
+	}
+
+	is_point_text_transform_active(layer) {
+		// Live ctx.scale preview disabled when we bake real font sizes during drag.
+		// Returning false avoids double-scaling (fonts *and* canvas scale).
 		return false;
 	}
 
 	resize_to_dynamic_bounds(layer, editor) {
+		// During Move-handle scaling, the drag owns width/height.
+		if (this._point_resize_snapshot) return;
 		if (layer && layer.type === 'text' && layer.params && layer.params.boundary === 'dynamic' && editor) {
 			// Grow from the anchor (x,y); never mutate other layers.
 			const new_width = Math.max(1, Math.ceil(editor.textBoundaryWidth + 1));

@@ -497,7 +497,7 @@ config.TOOLS = [
 				value: 38,
 				min: 1,
 				max: 999,
-				step: 1
+				step: 0.01
 			},
 			bold: {
 				value: false,
