@@ -695,10 +695,21 @@ function convert_psd_text(psdLayer, id, name, opacity, visible, composition, mas
 
 	const left = Math.round(psdLayer.left || 0);
 	const top = Math.round(psdLayer.top || 0);
-	const width = psdLayer.canvas ? psdLayer.canvas.width : Math.max(20, (psdLayer.right - psdLayer.left) || 200);
-	const height = psdLayer.canvas ? psdLayer.canvas.height : Math.max(20, (psdLayer.bottom - psdLayer.top) || 60);
+	let width = psdLayer.canvas ? psdLayer.canvas.width : Math.max(20, (psdLayer.right - psdLayer.left) || 200);
+	let height = psdLayer.canvas ? psdLayer.canvas.height : Math.max(20, (psdLayer.bottom - psdLayer.top) || 60);
 
 	const isBox = textData.shapeType === 'box';
+	// Prefer explicit boxBounds from ag-psd when available (text-local [top,left,bottom,right]).
+	if (isBox && Array.isArray(textData.boxBounds) && textData.boxBounds.length >= 4) {
+		const bbTop = textData.boxBounds[0];
+		const bbLeft = textData.boxBounds[1];
+		const bbBottom = textData.boxBounds[2];
+		const bbRight = textData.boxBounds[3];
+		const bbW = Math.round(Math.abs(bbRight - bbLeft));
+		const bbH = Math.round(Math.abs(bbBottom - bbTop));
+		if (bbW > 1) width = bbW;
+		if (bbH > 1) height = bbH;
+	}
 
 	return {
 		id: id,
@@ -1041,9 +1052,25 @@ function export_layer_to_psd(layer, docWidth, docHeight) {
 			const fontSize = meta.size || 32;
 			const family = meta.family || 'Arial';
 			const rgb = hex_to_rgb(meta.fill_color || '#000000');
+			const params = layer.params || {};
+			const isBox = params.boundary === 'box';
+			const halign = String(params.halign || 'left').toLowerCase();
+			let justification = 'left';
+			if (halign === 'center') justification = 'center';
+			else if (halign === 'right') justification = 'right';
 
+			// Preserve point vs paragraph/box for round-trip with ag-psd.
+			// boxBounds are in text-local space [top, left, bottom, right].
+			const w = Math.max(1, Math.round(layer.width || 1));
+			const h = Math.max(1, Math.round(layer.height || 1));
 			psdLayer.text = {
 				text: textStr,
+				shapeType: isBox ? 'box' : 'point',
+				boxBounds: isBox ? [0, 0, h, w] : undefined,
+				pointBase: isBox ? undefined : [0, 0],
+				paragraphStyle: {
+					justification: justification,
+				},
 				style: {
 					font: { name: family },
 					fontSize: fontSize,

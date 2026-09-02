@@ -526,6 +526,15 @@ config.TOOLS = [
 				min: -999,
 				max: 999,
 				step: 1
+			},
+			halign: {
+				value: 'Left',
+				values: ['Left', 'Center', 'Right'],
+			},
+			boundary: {
+				title: 'Mode',
+				value: 'Point',
+				values: ['Point', 'Paragraph'],
 			}
 		},
 	},

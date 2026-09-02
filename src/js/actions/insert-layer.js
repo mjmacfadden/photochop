@@ -197,7 +197,12 @@ export class Insert_layer_action extends Base_action {
 			this.autoresize_canvas_action = null;
 		}
 		if (this.inserted_layer_id) {
-			config.layers.pop();
+			const index = config.layers.findIndex(l => l.id === this.inserted_layer_id);
+			if (index > -1) {
+				config.layers.splice(index, 1);
+			} else {
+				config.layers.pop();
+			}
 			this.inserted_layer_id = null;
 		}
 		if (this.update_layer_action) {
@@ -212,6 +217,18 @@ export class Insert_layer_action extends Base_action {
 		}
 		config.layer = this.previous_selected_layer;
 		this.previous_selected_layer = null;
+
+		if (app.GUI && app.GUI.GUI_tools && app.GUI.GUI_tools.tools_modules['text']) {
+			const textTool = app.GUI.GUI_tools.tools_modules['text'].object;
+			if (textTool) {
+				textTool.layer = config.layer;
+				if (!config.layer || config.layer.type !== 'text') {
+					if (textTool.textarea) textTool.textarea.blur();
+					textTool.focused = false;
+					textTool.focusedValue = null;
+				}
+			}
+		}
 
 		app.Layers.render();
 		app.GUI.GUI_layers.render_layers();

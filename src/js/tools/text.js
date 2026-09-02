@@ -1201,6 +1201,14 @@ class Text_editor_class {
 	 */
 	set_lines(lines) {
 		this.document.lines = lines || [[{ text: '', meta: {} }]];
+		if (this.selection) {
+			const maxLine = Math.max(0, this.document.lines.length - 1);
+			const curLine = Math.min(this.selection.end ? this.selection.end.line : 0, maxLine);
+			const lineCount = Math.max(0, this.document.get_line_character_count(curLine));
+			const curChar = Math.min(this.selection.end ? this.selection.end.character : 0, lineCount);
+			this.selection.set_position(curLine, curChar);
+		}
+		this.hasValueChanged = true;
 	}
 
 	/**
@@ -2027,6 +2035,10 @@ class Text_class extends Base_tools_class {
 		this.resizing = false;
 		this.focused = false;
 		this.focusedValue = null;
+		this.focusedWidth = null;
+		this.focusedHeight = null;
+		this.typing_commit_timer = null;
+		this.create_box_threshold = 4; // px drag before point text becomes paragraph/box
 		this.mousedownX = 0;
 		this.mousedownY = 0;
 		this.mousedownBounds = {};
@@ -2063,9 +2075,12 @@ class Text_class extends Base_tools_class {
 
 			this.textarea.addEventListener('focus', () => {
 				this.focused = true;
-				let editor = this.get_editor(this.layer);
-				if (editor) {
+				let currentLayer = (config.layer && config.layer.type === 'text') ? config.layer : this.layer;
+				let editor = this.get_editor(currentLayer);
+				if (editor && currentLayer) {
 					this.focusedValue = JSON.stringify(editor.document.lines);
+					this.focusedWidth = currentLayer.width;
+					this.focusedHeight = currentLayer.height;
 				}
 			}, true);
 
@@ -2075,17 +2090,10 @@ class Text_class extends Base_tools_class {
 					return;
 				}
 				this.focused = false;
-				let editor = this.get_editor(this.layer);
-				if (editor && this.layer && this.layer.id != null) {
-					let value = JSON.stringify(editor.document.lines);
-					if (this.focusedValue != null && this.focusedValue !== value) {
-						this.layer.data = JSON.parse(this.focusedValue);
-						app.State.do_action(
-							new app.Actions.Update_layer_action(this.layer.id, { data: JSON.parse(value) })
-						);
-					}
-				}
+				this.commit_text_changes();
 				this.focusedValue = null;
+				this.focusedWidth = null;
+				this.focusedHeight = null;
 				this.Base_layers.render();
 			}, true);
 
@@ -2109,23 +2117,53 @@ class Text_class extends Base_tools_class {
 			});
 
 			this.textarea.addEventListener('input', (e) => {
+				const inputValue = e.target.value;
 				if(isComposing){
 					const editor = this.get_editor(config.layer);
-					editor.replace_entire_IME_text(beforeImeText, e.target.value);
+					editor.replace_entire_IME_text(beforeImeText, inputValue);
 					this.Base_layers.render();
 					this.extend_fixed_bounds(config.layer, editor);
 				}
 				else if (config.layer) {
 					const editor = this.get_editor(config.layer);
-					editor.insert_text_at_current_position(e.target.value);
+					editor.insert_text_at_current_position(inputValue);
 					e.target.value = '';
 					this.Base_layers.render();
 					this.extend_fixed_bounds(config.layer, editor);
 				}
+				// Debounce auto-commit while typing
+				if (this.typing_commit_timer) {
+					clearTimeout(this.typing_commit_timer);
+				}
+				this.typing_commit_timer = setTimeout(() => {
+					this.commit_text_changes();
+				}, 600);
 			}, true);
 
 			this.textarea.addEventListener('keydown', (e) => {
 				if (config.layer) {
+					// Undo / Redo shortcuts while focused in textarea
+					if ((e.ctrlKey || e.metaKey) && (e.key === 'z' || e.key === 'Z')) {
+						e.preventDefault();
+						e.stopImmediatePropagation();
+						(async () => {
+							if (e.shiftKey) {
+								await app.State.redo();
+							} else {
+								await this.commit_text_changes();
+								await app.State.undo();
+							}
+						})();
+						return;
+					}
+					if ((e.ctrlKey || e.metaKey) && (e.key === 'y' || e.key === 'Y')) {
+						e.preventDefault();
+						e.stopImmediatePropagation();
+						(async () => {
+							await app.State.redo();
+						})();
+						return;
+					}
 					let handled = true;
 					const editor = this.get_editor(config.layer);
 					switch (e.key) {
@@ -2249,6 +2287,55 @@ class Text_class extends Base_tools_class {
 		// Event routing is handled centrally by Base_tools_class
 	}
 
+	async commit_text_changes() {
+		if (this.typing_commit_timer) {
+			clearTimeout(this.typing_commit_timer);
+			this.typing_commit_timer = null;
+		}
+		const layer = (config.layer && config.layer.type === 'text') ? config.layer : this.layer;
+		if (!layer || layer.id == null || layer.type !== 'text') {
+			this.focusedValue = null;
+			return;
+		}
+		const editor = this.get_editor(layer);
+		if (!editor) return;
+
+		// Ensure dynamic/box bounds reflect latest layout before snapshotting.
+		this.resize_to_dynamic_bounds(layer, editor);
+		this.extend_fixed_bounds(layer, editor);
+
+		const currentValue = JSON.stringify(editor.document.lines);
+		const currentWidth = layer.width;
+		const currentHeight = layer.height;
+		const dataChanged = this.focusedValue != null && this.focusedValue !== currentValue;
+		const sizeChanged = (
+			(this.focusedWidth != null && this.focusedWidth !== currentWidth) ||
+			(this.focusedHeight != null && this.focusedHeight !== currentHeight)
+		);
+		if (dataChanged || sizeChanged) {
+			const oldValue = this.focusedValue != null ? this.focusedValue : currentValue;
+			const oldWidth = this.focusedWidth != null ? this.focusedWidth : currentWidth;
+			const oldHeight = this.focusedHeight != null ? this.focusedHeight : currentHeight;
+
+			// Temporarily revert so action records the pre-edit state as old_settings
+			layer.data = JSON.parse(oldValue);
+			layer.width = oldWidth;
+			layer.height = oldHeight;
+
+			await app.State.do_action(
+				new app.Actions.Update_layer_action(layer.id, {
+					data: JSON.parse(currentValue),
+					width: currentWidth,
+					height: currentHeight
+				})
+			);
+
+			this.focusedValue = currentValue;
+			this.focusedWidth = currentWidth;
+			this.focusedHeight = currentHeight;
+		}
+	}
+
 	focus_textarea() {
 		if (!this.textarea) return;
 		this.focused = true;
@@ -2304,12 +2391,15 @@ class Text_class extends Base_tools_class {
 
 		const existingLayer = this.get_text_layer_at_mouse(e);
 		if (existingLayer) {
+			this.commit_text_changes();
 			this.selecting = true;
 			this.layer = existingLayer;
 			const editor = this.get_editor(this.layer);
 			if (editor) {
 				editor.trigger_cursor_start(this.layer, -1 + mouse.x - this.layer.x, mouse.y - this.layer.y);
 				this.focusedValue = JSON.stringify(editor.document.lines);
+				this.focusedWidth = this.layer.width;
+				this.focusedHeight = this.layer.height;
 			}
 			app.State.do_action(
 				new app.Actions.Bundle_action('select_text_layer', 'Select Text Layer', [
@@ -2319,6 +2409,7 @@ class Text_class extends Base_tools_class {
 			);
 		}
 		else {
+			this.commit_text_changes();
 			// Create a new text layer
 			this.creating = true;
 			const layer = {
@@ -2335,6 +2426,8 @@ class Text_class extends Base_tools_class {
 				render_function: [this.name, 'render'],
 				x: mouse.x,
 				y: mouse.y,
+				width: 1,
+				height: 1,
 				rotate: 0,
 				is_vector: true,
 			};
@@ -2348,6 +2441,8 @@ class Text_class extends Base_tools_class {
 			const editor = this.get_editor(this.layer);
 			if (editor) {
 				this.focusedValue = JSON.stringify(editor.document.lines);
+				this.focusedWidth = this.layer.width;
+				this.focusedHeight = this.layer.height;
 			}
 		}
 	}
@@ -2374,16 +2469,24 @@ class Text_class extends Base_tools_class {
 		else if (this.creating) {
 			const width = Math.abs(mouse.x - this.mousedownX);
 			const height = Math.abs(mouse.y - this.mousedownY);
+			const threshold = this.create_box_threshold || 4;
+			const isBoxDrag = width >= threshold || height >= threshold;
 
-			//more data
-			if (config.layer && config.layer.params && config.layer.params.boundary === 'dynamic') {
-				config.layer.params.boundary = 'box';
-			}
-			if (config.layer) {
-				config.layer.x = Math.min(mouse.x, this.mousedownX);
-				config.layer.y = Math.min(mouse.y, this.mousedownY);
-				config.layer.width = width;
-				config.layer.height = height;
+			// Photoshop-like: click = point/dynamic text; click-drag past threshold = paragraph/box
+			if (config.layer && config.layer.params) {
+				if (isBoxDrag) {
+					config.layer.params.boundary = 'box';
+					config.layer.x = Math.min(mouse.x, this.mousedownX);
+					config.layer.y = Math.min(mouse.y, this.mousedownY);
+					config.layer.width = Math.max(1, width);
+					config.layer.height = Math.max(1, height);
+				} else {
+					config.layer.params.boundary = 'dynamic';
+					config.layer.x = this.mousedownX;
+					config.layer.y = this.mousedownY;
+					config.layer.width = 1;
+					config.layer.height = 1;
+				}
 			}
 		} else {
 			const editor = this.get_editor(this.layer);
@@ -2427,20 +2530,29 @@ class Text_class extends Base_tools_class {
 		else if (this.creating) {
 			let width = Math.abs(mouse.x - this.mousedownX);
 			let height = Math.abs(mouse.y - this.mousedownY);
+			const threshold = this.create_box_threshold || 4;
+			const isBoxDrag = width >= threshold || height >= threshold;
 
-			if (width == 0 && height == 0) {
-				// Same coordinates - let render figure out dynamic width
+			if (!isBoxDrag) {
+				// Point text (Photoshop-like): keep dynamic bounds at click point
 				width = 1;
 				height = 1;
 			}
 			if (config.layer) {
+				const nextParams = JSON.parse(JSON.stringify(config.layer.params || {}));
+				nextParams.boundary = isBoxDrag ? 'box' : 'dynamic';
+				const nextX = isBoxDrag ? Math.min(mouse.x, this.mousedownX) : this.mousedownX;
+				const nextY = isBoxDrag ? Math.min(mouse.y, this.mousedownY) : this.mousedownY;
+				// Keep live params in sync before history action
+				config.layer.params.boundary = nextParams.boundary;
 				await app.State.do_action(
 					new app.Actions.Bundle_action('resize_text_layer', 'Resize Text Layer', [
 						new app.Actions.Update_layer_action(config.layer.id, {
-							x: Math.min(mouse.x, this.mousedownX),
-							y: Math.min(mouse.y, this.mousedownY),
+							x: nextX,
+							y: nextY,
 							width,
-							height
+							height,
+							params: nextParams
 						})
 					]),
 					{ merge_with_history: 'new_text_layer' }
@@ -2477,14 +2589,20 @@ class Text_class extends Base_tools_class {
 		// Center layer on mouse if not click & drag
 		if (this.creating && config.layer && config.layer.params && config.layer.params.boundary === 'dynamic') {
 			requestAnimationFrame(async () => {
-				if (config.layer && config.layer.params) {
-					await app.State.do_action(
-						new app.Actions.Update_layer_action(config.layer.id, {
-							x: config.layer.x - config.layer.width / 2,
-							y: config.layer.y - config.layer.height / 2
-						}),
-						{ merge_with_history: 'new_text_layer' }
-					);
+				if (config.layer && config.layer.params && config.layer.width != null && config.layer.height != null) {
+					const curW = parseFloat(config.layer.width) || 0;
+					const curH = parseFloat(config.layer.height) || 0;
+					const curX = parseFloat(config.layer.x) || 0;
+					const curY = parseFloat(config.layer.y) || 0;
+					if (curW > 1 || curH > 1) {
+						await app.State.do_action(
+							new app.Actions.Update_layer_action(config.layer.id, {
+								x: Math.round(curX - curW / 2),
+								y: Math.round(curY - curH / 2)
+							}),
+							{ merge_with_history: 'new_text_layer' }
+						);
+					}
 					this.focus_textarea();
 				}
 			});
@@ -2583,7 +2701,34 @@ class Text_class extends Base_tools_class {
 			case 'leading':
 				if (!isNaN(value)) meta.leading = value;
 				break;
+			case 'halign': {
+				const align = (value && value.value ? value.value : value) || 'Left';
+				if (config.layer && config.layer.params) {
+					const nextParams = JSON.parse(JSON.stringify(config.layer.params));
+					nextParams.halign = String(align).toLowerCase();
+					app.State.do_action(
+						new app.Actions.Update_layer_action(config.layer.id, { params: nextParams })
+					);
+					this.Base_layers.render();
+				}
+				return returnValue;
+			}
+			case 'boundary': {
+				const mode = (value && value.value ? value.value : value) || 'Auto';
+				const normalized = String(mode).toLowerCase();
+				const boundary = (normalized === 'box' || normalized === 'paragraph') ? 'box' : 'dynamic';
+				if (config.layer && config.layer.params) {
+					const nextParams = JSON.parse(JSON.stringify(config.layer.params));
+					nextParams.boundary = boundary;
+					app.State.do_action(
+						new app.Actions.Update_layer_action(config.layer.id, { params: nextParams })
+					);
+					this.Base_layers.render();
+				}
+				return returnValue;
+			}
 		}
+		if (!editor) return returnValue;
 		if (editor.selection.is_empty()) {
 			if (!editor.document.queuedMetaChanges) {
 				editor.document.queuedMetaChanges = {};
@@ -2620,6 +2765,13 @@ class Text_class extends Base_tools_class {
 			toolAttributes.stroke_size.value = meta.stroke_size.length === 1 ? meta.stroke_size[0] : parseFloat(null);
 			toolAttributes.kerning.value = meta.kerning.length === 1 ? meta.kerning[0] : parseFloat(null);
 			toolAttributes.leading.value = meta.leading.length === 1 ? meta.leading[0] : parseFloat(null);
+			if (toolAttributes.halign) {
+				const h = (layer.params.halign || 'left').toLowerCase();
+				toolAttributes.halign.value = h === 'center' ? 'Center' : (h === 'right' ? 'Right' : 'Left');
+			}
+			if (toolAttributes.boundary) {
+				toolAttributes.boundary.value = layer.params.boundary === 'box' ? 'Paragraph' : 'Point';
+			}
 			this.GUI_tools.show_action_attributes();
 		}
 	}
@@ -2635,7 +2787,7 @@ class Text_class extends Base_tools_class {
 
 	extend_fixed_bounds(layer, editor) {
 		if (layer && layer.params && layer.params.boundary !== 'dynamic') {
-			const isHorizontalTextDirection = ['ltr', 'rtl'].includes(layer.params.textDirection);
+			const isHorizontalTextDirection = ['ltr', 'rtl'].includes(layer.params.text_direction);
 			let new_width = layer.width;
 			let new_height = layer.height;
 			if (isHorizontalTextDirection) {
@@ -2649,12 +2801,12 @@ class Text_class extends Base_tools_class {
 	}
 
 	render(ctx, layer) {
-		if (layer.width == 0 && layer.height == 0)
+		const editor = this.get_editor(layer);
+		if (layer.width == 0 && layer.height == 0 && !layer.data)
 			return;
 		var params = layer.params;
 
 		const isActiveLayerAndTextTool = layer === config.layer && config.TOOL.name === 'text';
-		const editor = this.get_editor(layer);
 		editor.selection.set_visible(isActiveLayerAndTextTool);
 		editor.selection.set_cursor_visible(isActiveLayerAndTextTool && (this.selecting || this.focused));
 		editor.render(ctx, layer);
@@ -2769,6 +2921,11 @@ class Text_class extends Base_tools_class {
 			if (layer.data) {
 				editor.hasValueChanged = true;
 				editor.set_lines(JSON.parse(JSON.stringify(layer.data)));
+			}
+			if (layer === this.layer || layer === config.layer) {
+				this.focusedValue = JSON.stringify(editor.document.lines);
+				this.focusedWidth = layer.width;
+				this.focusedHeight = layer.height;
 			}
 		}
 		return editor;
