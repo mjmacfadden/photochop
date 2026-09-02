@@ -157,14 +157,6 @@ class Select_tool_class extends Base_tools_class {
 			// Point text stays dynamic — transform scales glyphs (Photoshop-like), not convert to box.
 			if (config.layer.type === 'text' && config.layer.params && config.layer.params.boundary === 'dynamic') {
 				this._resizing_point_text = true;
-				try {
-					const textTool = app.GUI && app.GUI.GUI_tools && app.GUI.GUI_tools.tools_modules
-						&& app.GUI.GUI_tools.tools_modules['text']
-						&& app.GUI.GUI_tools.tools_modules['text'].object;
-					if (textTool && typeof textTool.begin_point_text_resize === 'function') {
-						textTool.begin_point_text_resize(config.layer);
-					}
-				} catch (e) { /* ignore */ }
 			} else {
 				this._resizing_point_text = false;
 			}
@@ -207,6 +199,20 @@ class Select_tool_class extends Base_tools_class {
 			height: config.layer.mask.height,
 			linked: config.layer.mask.linked !== false,
 		} : null;
+		// Snapshot fonts after dimensions are frozen for this drag
+		if (this._resizing_point_text && config.layer && config.layer.type === 'text') {
+			try {
+				const textTool = app.GUI && app.GUI.GUI_tools && app.GUI.GUI_tools.tools_modules
+					&& app.GUI.GUI_tools.tools_modules['text']
+					&& app.GUI.GUI_tools.tools_modules['text'].object;
+				if (textTool && typeof textTool.begin_point_text_resize === 'function') {
+					textTool.begin_point_text_resize(config.layer);
+					textTool._point_resize_base_width = Math.max(1, this.mousedown_dimensions.width);
+					textTool._point_resize_base_height = Math.max(1, this.mousedown_dimensions.height);
+				}
+			} catch (e) { /* ignore */ }
+		}
+
 	}
 
 	mousemove(e) {
@@ -232,7 +238,7 @@ class Select_tool_class extends Base_tools_class {
 						&& app.GUI.GUI_tools.tools_modules['text']
 						&& app.GUI.GUI_tools.tools_modules['text'].object;
 					if (textTool && typeof textTool.apply_point_text_resize === 'function') {
-						textTool.apply_point_text_resize(config.layer, config.layer.width);
+						textTool.apply_point_text_resize(config.layer, config.layer.width, config.layer.height);
 					}
 				} catch (e) { /* ignore */ }
 				this.Base_layers.render();
@@ -326,7 +332,7 @@ class Select_tool_class extends Base_tools_class {
 								}
 							}
 							const scaledData = (typeof textTool.apply_point_text_resize === 'function')
-								? textTool.apply_point_text_resize(config.layer, width)
+								? textTool.apply_point_text_resize(config.layer, width, height)
 								: null;
 							if (scaledData) {
 								// Put pre-drag data back on the layer so the action's old_settings is pre-drag;

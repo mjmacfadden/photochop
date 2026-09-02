@@ -2636,8 +2636,9 @@ class Text_class extends Base_tools_class {
 					if (!this._point_resize_snapshot) {
 						this.begin_point_text_resize(config.layer);
 						this._point_resize_base_width = Math.max(1, this.mousedownBounds.width);
+						this._point_resize_base_height = Math.max(1, this.mousedownBounds.height);
 					}
-					const scaledData = this.apply_point_text_resize(config.layer, nextW);
+					const scaledData = this.apply_point_text_resize(config.layer, nextW, nextH);
 					if (scaledData) {
 						update.data = scaledData;
 						this.focusedValue = JSON.stringify(scaledData);
@@ -3026,11 +3027,12 @@ class Text_class extends Base_tools_class {
 			: (editor ? editor.document.lines : (layer.data || [[{ text: '', meta: {} }]]));
 		const lines = this._scale_text_lines(source, scale);
 		if (commit) {
+			layer.data = JSON.parse(JSON.stringify(lines));
 			if (editor) {
-				editor.document.lines = JSON.parse(JSON.stringify(lines));
+				editor.hasValueChanged = true;
+				editor.set_lines(JSON.parse(JSON.stringify(lines)), true);
 				editor.hasValueChanged = true;
 			}
-			layer.data = JSON.parse(JSON.stringify(lines));
 		}
 		return lines;
 	}
@@ -3047,18 +3049,35 @@ class Text_class extends Base_tools_class {
 		this._point_resize_base_width = Math.max(1, layer.width || 1);
 		this._point_resize_base_height = Math.max(1, layer.height || 1);
 		this._point_resize_layer_id = layer.id;
+		this._point_resize_last_scale = 1;
 	}
 
 	/**
 	 * Apply point-text scale from the drag-start snapshot to real font sizes.
-	 * Returns the scaled lines (also written onto the layer/editor).
+	 * Uses uniform scale from width+height so handles stay proportional.
 	 */
-	apply_point_text_resize(layer, currentWidth) {
+	apply_point_text_resize(layer, currentWidth, currentHeight) {
 		if (!layer || layer.type !== 'text' || !this._point_resize_snapshot) return null;
 		if (this._point_resize_layer_id != null && layer.id !== this._point_resize_layer_id) return null;
-		const base = Math.max(1, this._point_resize_base_width || 1);
-		const scale = Math.max(0.01, (currentWidth || layer.width || base) / base);
-		return this.bake_point_text_scale(layer, scale, { commit: true });
+		const baseW = Math.max(1, this._point_resize_base_width || 1);
+		const baseH = Math.max(1, this._point_resize_base_height || 1);
+		const w = Math.max(1, currentWidth != null ? currentWidth : (layer.width || baseW));
+		const h = Math.max(1, currentHeight != null ? currentHeight : (layer.height || baseH));
+		const scale = Math.max(0.05, Math.sqrt(Math.abs((w / baseW) * (h / baseH))));
+		this._point_resize_last_scale = scale;
+		const lines = this.bake_point_text_scale(layer, scale, { commit: true });
+		if (lines && lines[0] && lines[0][0] && lines[0][0].meta && lines[0][0].meta.size != null) {
+			const size = lines[0][0].meta.size;
+			try {
+				for (const tool of (config.TOOLS || [])) {
+					if (tool.name === 'text' && tool.attributes && tool.attributes.size) {
+						if (typeof tool.attributes.size === 'object') tool.attributes.size.value = size;
+						else tool.attributes.size = size;
+					}
+				}
+			} catch (e) { /* ignore */ }
+		}
+		return lines;
 	}
 
 	end_point_text_resize() {
@@ -3075,6 +3094,8 @@ class Text_class extends Base_tools_class {
 	}
 
 	resize_to_dynamic_bounds(layer, editor) {
+		// During Move-handle scaling, the drag owns width/height.
+		if (this._point_resize_snapshot) return;
 		if (layer && layer.type === 'text' && layer.params && layer.params.boundary === 'dynamic' && editor) {
 			// Grow from the anchor (x,y); never mutate other layers.
 			const new_width = Math.max(1, Math.ceil(editor.textBoundaryWidth + 1));
