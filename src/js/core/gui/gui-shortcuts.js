@@ -290,6 +290,21 @@ class GUI_shortcuts_class {
 				return;
 			}
 
+			// Ctrl/Cmd + G = Group Layers; Ctrl/Cmd + Shift + G = Ungroup
+			if ((event.ctrlKey || event.metaKey) && !event.altKey
+				&& (event.code === 'KeyG' || event.key === 'G' || event.key === 'g' || event.keyCode === 71)) {
+				event.preventDefault();
+				event.stopImmediatePropagation();
+				if (app.GUI && app.GUI.modules && app.GUI.modules['layer/group']) {
+					if (event.shiftKey) {
+						app.GUI.modules['layer/group'].ungroup();
+					} else {
+						app.GUI.modules['layer/group'].group_layers();
+					}
+				}
+				return;
+			}
+
 			if (event.ctrlKey || event.metaKey || event.altKey) return;
 
 			const key = event.key.toLowerCase();

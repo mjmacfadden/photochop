@@ -182,6 +182,10 @@ export class Insert_layer_action extends Base_action {
 			if (config.layer == null) {
 				config.layer = config.layers[0];
 			}
+			if (config.layer) {
+				config.selected_layer_ids = [config.layer.id];
+				config.layer_select_anchor_id = config.layer.id;
+			}
 
 			this.inserted_layer_id = layer.id;
 		}
@@ -241,6 +245,13 @@ export class Insert_layer_action extends Base_action {
 		}
 		config.layer = this.previous_selected_layer;
 		this.previous_selected_layer = null;
+		if (config.layer) {
+			config.selected_layer_ids = [config.layer.id];
+			config.layer_select_anchor_id = config.layer.id;
+		} else {
+			config.selected_layer_ids = [];
+			config.layer_select_anchor_id = null;
+		}
 
 		if (app.GUI && app.GUI.GUI_tools && app.GUI.GUI_tools.tools_modules['text']) {
 			const textTool = app.GUI.GUI_tools.tools_modules['text'].object;

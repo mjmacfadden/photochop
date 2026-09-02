@@ -121,16 +121,7 @@ class GUI_layers_class {
 				);
 			}
 			else if (target.id == 'layer_name') {
-				if (target.dataset.id == config.layer.id) {
-					if (config.mask_active === true) {
-						//exit mask editing - edit the layer instead
-						_this.Mask.set_active(false);
-					}
-					return;
-				}
-				app.State.do_action(
-					new app.Actions.Select_layer_action(target.dataset.id)
-				);
+				_this.select_layer_from_panel(target.dataset.id, event);
 			}
 			else if (target.id == 'filter_visibility') {
 				var layer_id = parseInt(target.dataset.pid);
@@ -247,20 +238,25 @@ class GUI_layers_class {
 			else if (target.closest('.layer_thumb') != null) {
 				var layer_id = parseInt(target.closest('.layer_thumb').dataset.id);
 				var thumb_layer = app.Layers.get_layer(layer_id);
-				if (thumb_layer && thumb_layer.type === 'adjustment') {
+				var multi = event.shiftKey || event.ctrlKey || event.metaKey;
+				if (!multi && thumb_layer && thumb_layer.type === 'adjustment') {
 					if (app.GUI && app.GUI.modules && app.GUI.modules['layer/adjustment']) {
 						app.GUI.modules['layer/adjustment'].edit(layer_id);
 						return;
 					}
 				}
-				if (config.layer && config.layer.id == layer_id && config.mask_active === true) {
+				if (!multi && config.layer && config.layer.id == layer_id && config.mask_active === true) {
 					//main thumbnail clicked - exit mask editing, edit the layer instead
 					_this.Mask.set_active(false);
+					return;
 				}
-				else if (config.layer == null || config.layer.id != layer_id) {
-					return app.State.do_action(
-						new app.Actions.Select_layer_action(layer_id)
-					);
+				_this.select_layer_from_panel(layer_id, event);
+			}
+			else if (target.closest('.item') != null && target.closest('.filters') == null) {
+				// click on empty area of a layer row
+				var item = target.closest('.item');
+				if (item && item.dataset.id) {
+					_this.select_layer_from_panel(item.dataset.id, event);
 				}
 			}
 		});
@@ -857,6 +853,85 @@ class GUI_layers_class {
 		}
 	}
 
+
+	/**
+	 * Layers panel click selection — plain / Shift range / Ctrl|Cmd toggle.
+	 * Updates config.selected_layer_ids; config.layer remains the primary.
+	 */
+	select_layer_from_panel(layer_id, event) {
+		var id = parseInt(layer_id, 10);
+		if (!id || !app.Layers.get_layer(id)) {
+			return;
+		}
+
+		var is_shift = !!(event && event.shiftKey);
+		var is_ctrl = !!(event && (event.ctrlKey || event.metaKey));
+
+		if (is_shift) {
+			var rows = get_tree_rows(config.layers);
+			var ids = rows.map(function (r) { return r.layer.id; });
+			var anchor = (config.layer_select_anchor_id != null)
+				? config.layer_select_anchor_id
+				: (config.layer ? config.layer.id : id);
+			var i0 = ids.indexOf(anchor);
+			var i1 = ids.indexOf(id);
+			if (i0 < 0) i0 = i1;
+			if (i1 < 0) return;
+			var lo = Math.min(i0, i1);
+			var hi = Math.max(i0, i1);
+			var range = ids.slice(lo, hi + 1);
+			return app.State.do_action(
+				new app.Actions.Select_layer_action(id, true, { ids: range, set_anchor: false })
+			);
+		}
+
+		if (is_ctrl) {
+			var current = (Array.isArray(config.selected_layer_ids) && config.selected_layer_ids.length)
+				? config.selected_layer_ids.slice()
+				: (config.layer ? [config.layer.id] : []);
+			var idx = current.indexOf(id);
+			var primary_id = id;
+			if (idx >= 0) {
+				if (current.length <= 1) {
+					// keep at least one selected
+					return;
+				}
+				current.splice(idx, 1);
+				if (config.layer && config.layer.id === id) {
+					primary_id = current[current.length - 1];
+				} else {
+					primary_id = config.layer ? config.layer.id : current[current.length - 1];
+				}
+			} else {
+				current.push(id);
+				primary_id = id;
+			}
+			return app.State.do_action(
+				new app.Actions.Select_layer_action(primary_id, true, { ids: current, set_anchor: false })
+			);
+		}
+
+		// Plain click: single-select and set anchor
+		if (config.layer && config.layer.id == id) {
+			if (config.mask_active === true) {
+				this.Mask.set_active(false);
+			}
+			var needs_collapse = !Array.isArray(config.selected_layer_ids)
+				|| config.selected_layer_ids.length !== 1
+				|| config.selected_layer_ids[0] !== id;
+			if (needs_collapse) {
+				config.selected_layer_ids = [id];
+				config.layer_select_anchor_id = id;
+				this.render_layers();
+			}
+			return;
+		}
+
+		return app.State.do_action(
+			new app.Actions.Select_layer_action(id)
+		);
+	}
+
 	/**
 	 * returns thumbnail HTML for layer type
 	 */
@@ -928,7 +1003,10 @@ class GUI_layers_class {
 				if (is_base) {
 					class_extra += ' is_clipping_base';
 				}
-				if (value.id == config.layer.id){
+				var selected_ids = (Array.isArray(config.selected_layer_ids) && config.selected_layer_ids.length)
+					? config.selected_layer_ids
+					: [config.layer.id];
+				if (selected_ids.indexOf(value.id) !== -1){
 					class_extra += ' active';
 				}
 
@@ -951,7 +1029,7 @@ class GUI_layers_class {
 				}
 
 				var layer_thumb_class = 'layer_thumb';
-				if (config.layer && value.id == config.layer.id && config.mask_active !== true) {
+				if (selected_ids.indexOf(value.id) !== -1 && !(config.layer && value.id == config.layer.id && config.mask_active === true)) {
 					layer_thumb_class += ' active_thumb';
 				}
 				html += '	<span class="' + layer_thumb_class + '" data-id="' + value.id + '">' + this.get_layer_thumb(value) + '</span>';

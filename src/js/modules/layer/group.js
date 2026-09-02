@@ -48,25 +48,46 @@ class Layer_group_class {
 	}
 
 	/**
-	 * Wrap the currently selected layer in a new group (PS "Group Layers"
-	 * for a single selection — multi-select is not implemented yet).
+	 * Wrap currently selected layer(s) in a new group (Photoshop "Group Layers").
+	 * Uses config.selected_layer_ids when multi-select is active.
 	 */
 	group_layers() {
-		const active = config.layer;
-		if (!active) {
+		const id_list = (Array.isArray(config.selected_layer_ids) && config.selected_layer_ids.length)
+			? config.selected_layer_ids.slice()
+			: (config.layer ? [config.layer.id] : []);
+
+		const layers = [];
+		for (const raw of id_list) {
+			const layer = app.Layers.get_layer(parseInt(raw, 10));
+			if (!layer) continue;
+			if (layer.locked) {
+				alertify.error('Cannot group a locked layer.');
+				return;
+			}
+			layers.push(layer);
+		}
+
+		if (!layers.length) {
 			alertify.error('No layer selected.');
 			return;
 		}
-		if (active.locked) {
-			alertify.error('Cannot group a locked layer.');
-			return;
-		}
-		if (is_group(active)) {
-			alertify.error('Select a non-group layer to wrap, or use New Group.');
-			return;
+
+		const parent_id = get_parent_id(layers[0]);
+		for (let i = 1; i < layers.length; i++) {
+			if (get_parent_id(layers[i]) !== parent_id) {
+				alertify.error('Selected layers must share the same parent to group.');
+				return;
+			}
 		}
 
-		const parent_id = get_parent_id(active);
+		// Preserve relative stack order (ascending = bottom → top)
+		layers.sort((a, b) => (a.order || 0) - (b.order || 0));
+
+		let max_order = 0;
+		for (const l of layers) {
+			if ((l.order || 0) > max_order) max_order = l.order || 0;
+		}
+
 		const group_id = app.Layers.auto_increment;
 		const group_settings = {
 			id: group_id,
@@ -77,7 +98,7 @@ class Layer_group_class {
 			composition: 'pass-through',
 			opacity: 100,
 			visible: true,
-			order: (active.order || 0) + 1,
+			order: max_order + 1,
 			width: null,
 			height: null,
 			data: null,
@@ -85,12 +106,22 @@ class Layer_group_class {
 			is_vector: false,
 		};
 
+		const actions = [
+			new app.Actions.Insert_layer_action(group_settings, false),
+		];
+		for (const l of layers) {
+			actions.push(new app.Actions.Update_layer_action(l.id, { parent_id: group_id }));
+		}
+
 		app.State.do_action(
-			new app.Actions.Bundle_action('group_layers', 'Group Layers', [
-				new app.Actions.Insert_layer_action(group_settings, false),
-				new app.Actions.Update_layer_action(active.id, { parent_id: group_id }),
-			])
-		);
+			new app.Actions.Bundle_action('group_layers', 'Group Layers', actions)
+		).then(() => {
+			config.selected_layer_ids = [group_id];
+			config.layer_select_anchor_id = group_id;
+			if (app.GUI && app.GUI.GUI_layers) {
+				app.GUI.GUI_layers.render_layers();
+			}
+		});
 	}
 
 	/**
