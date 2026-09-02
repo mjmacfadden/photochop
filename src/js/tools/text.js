@@ -2249,6 +2249,10 @@ class Text_class extends Base_tools_class {
 									ed.selection.set_position(line, ch, false);
 								}
 								this.Base_layers.render();
+								// Photoshop-like: leave Type tool for Move/select
+								if (app.GUI && app.GUI.GUI_tools) {
+									await app.GUI.GUI_tools.activate_tool('select');
+								}
 							})();
 							return;
 						case 'Backspace':
