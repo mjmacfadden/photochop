@@ -22,6 +22,10 @@ export class Activate_tool_action extends Base_action {
 		this.old_key = app.GUI.GUI_tools.active_tool;
 
 		if (this.key !== this.old_key || this.ignore_same_tool) {
+			if (key !== 'pick_color' && app.GUI && app.GUI.GUI_shortcuts && app.GUI.GUI_shortcuts.alt_eyedropper_tool && app.GUI.GUI_shortcuts.alt_eyedropper_tool !== key) {
+				app.GUI.GUI_shortcuts.alt_eyedropper_tool = null;
+				app.GUI.GUI_shortcuts._restore_eyedropper_pending = false;
+			}
 
 			var oldOwner = app.GUI.GUI_tools.get_button_id_for_tool(this.old_key);
 
@@ -72,6 +76,8 @@ export class Activate_tool_action extends Base_action {
 				defaultCursor = 'text';
 			} else if (config.TOOL && crosshairTools.includes(config.TOOL.name)) {
 				defaultCursor = 'crosshair';
+			} else if (config.TOOL && config.TOOL.name === 'pick_color') {
+				defaultCursor = "url('images/icons/cursor-eyedropper.svg') 2 22, crosshair";
 			}
 
 			if (mainWrapper && mainWrapper.style.cursor != defaultCursor) {
@@ -168,6 +174,8 @@ export class Activate_tool_action extends Base_action {
 			defaultCursor = 'text';
 		} else if (config.TOOL && crosshairTools.includes(config.TOOL.name)) {
 			defaultCursor = 'crosshair';
+		} else if (config.TOOL && config.TOOL.name === 'pick_color') {
+			defaultCursor = "url('images/icons/cursor-eyedropper.svg') 2 22, crosshair";
 		}
 
 		if (mainWrapper && mainWrapper.style.cursor != defaultCursor) {

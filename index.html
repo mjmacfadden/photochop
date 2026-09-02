@@ -68,8 +68,16 @@
 			</div>
 			
 			<div class="colors block">
-				<h2 class="trn toggle" data-target="toggle_colors">Colors</h2>
-				<div class="content" id="toggle_colors"></div>
+				<h2 class="trn toggle panel_tabs_header" data-target="toggle_colors_wrapper">
+					<span class="panel_tabs">
+						<button type="button" class="panel_tab_btn active" id="tab_btn_color">Color</button>
+						<button type="button" class="panel_tab_btn" id="tab_btn_swatches">Swatches</button>
+					</span>
+				</h2>
+				<div class="content panel_tabs_content" id="toggle_colors_wrapper">
+					<div id="toggle_colors" class="panel_tab_pane"></div>
+					<div id="toggle_swatches" class="panel_tab_pane hidden"></div>
+				</div>
 			</div>
 			
 			<div class="details block hidden" id="details_base">
