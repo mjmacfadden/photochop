@@ -48,3 +48,6 @@ temp/
 # Keep committing dist/ for now so Live Server / static hosting works without
 # CI-published artifacts. Do NOT add dist/ here and do NOT untrack dist/.
 # Revisit when CI builds and deploys bundle.js.
+
+# Local API keys (copy from config.keys.local.example.js)
+src/js/config.keys.local.js
