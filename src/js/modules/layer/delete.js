@@ -61,7 +61,10 @@ class Layer_delete_class {
 				this._perform_delete(roots.map((l) => l.id));
 			},
 			() => { /* cancel */ }
-		).set('labels', { ok: 'Delete', cancel: 'Cancel' });
+		).set({
+			labels: { ok: 'Delete', cancel: 'Cancel' },
+			defaultFocus: 'ok',
+		});
 	}
 
 	_resolve_ids(ids_or_id) {

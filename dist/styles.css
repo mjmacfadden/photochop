@@ -2778,12 +2778,86 @@ canvas{
 	border: none;
 }
 .alertify-notifier{
-	color: #cccccc;
+	color: var(--text-color);
+}
+/* Match #popups .popup theme (colors, type, radius, buttons) */
+.alertify .ajs-dimmer {
+	background-color: rgba(0, 0, 0, 0.55) !important;
+	animation: alertifyDimmerFadeIn 140ms ease forwards !important;
 }
 .alertify .ajs-dialog {
+	background-color: var(--block-background-color) !important;
+	border: 1px solid var(--border-color) !important;
 	border-radius: 12px !important;
 	box-shadow: 0 20px 60px rgba(0, 0, 0, 0.45), 0 4px 14px rgba(0, 0, 0, 0.25) !important;
+	color: var(--text-color) !important;
+	font-size: 13px !important;
+	font-family: inherit !important;
+	padding: 0 !important;
+	overflow: hidden !important;
 	animation: alertifySpringPop 240ms cubic-bezier(0.2, 0.8, 0.2, 1) forwards !important;
+}
+.alertify .ajs-header {
+	margin: 0 !important;
+	padding: 0 1rem !important;
+	height: 4rem !important;
+	line-height: 4rem !important;
+	font-size: 1.2rem !important;
+	font-weight: 100 !important;
+	color: var(--text-color) !important;
+	background-color: var(--header-background-color) !important;
+	border: none !important;
+	border-bottom: none !important;
+}
+.alertify .ajs-body {
+	color: var(--text-color) !important;
+	font-size: 13px !important;
+}
+.alertify .ajs-content {
+	padding: 1rem 1.25rem !important;
+	color: var(--text-color) !important;
+	line-height: 1.45 !important;
+}
+.alertify .ajs-content b {
+	color: var(--text-color-active) !important;
+	font-weight: 600 !important;
+}
+.alertify .ajs-footer {
+	background-color: var(--block-background-color) !important;
+	border-top: 1px solid var(--header-background-color) !important;
+	padding: 0.75rem 1rem !important;
+	text-align: center !important;
+}
+.alertify .ajs-footer .ajs-buttons .ajs-button,
+.alertify .ajs-button {
+	background-color: var(--button-background-color) !important;
+	border: 1px solid var(--border-color) !important;
+	border-radius: 2px !important;
+	color: var(--text-color) !important;
+	font-size: 13px !important;
+	font-family: inherit !important;
+	font-weight: normal !important;
+	min-width: 5.5rem !important;
+	padding: 0.45rem 1rem !important;
+	margin: 0 0.35rem !important;
+	box-shadow: none !important;
+	text-shadow: none !important;
+}
+.alertify .ajs-button:hover {
+	background-color: var(--button-background-color-hover) !important;
+}
+.alertify .ajs-button.ajs-ok {
+	background-color: var(--button-background-color) !important;
+	border-color: var(--border-color) !important;
+	color: var(--text-color-active) !important;
+	font-weight: 600 !important;
+}
+.alertify .ajs-button.ajs-ok:hover {
+	background-color: var(--button-background-color-hover) !important;
+}
+.alertify .ajs-button:focus {
+	outline: 1px solid var(--text-color-blue) !important;
+	outline-offset: 1px !important;
 }
 @keyframes alertifySpringPop {
 	0% {
@@ -2798,19 +2872,6 @@ canvas{
 		opacity: 1;
 		transform: scale(1);
 	}
-}
-.alertify .ajs-dimmer {
-	background-color: rgba(0, 0, 0, 0.55) !important;
-	animation: alertifyDimmerFadeIn 140ms ease forwards !important;
-}
-.alertify .ajs-ok {
-	background: #c62828 !important;
-	border-color: #c62828 !important;
-	color: #fff !important;
-}
-.alertify .ajs-ok:hover {
-	background: #b71c1c !important;
-	border-color: #b71c1c !important;
 }
 @keyframes alertifyDimmerFadeIn {
 	from {
