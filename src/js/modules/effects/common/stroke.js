@@ -30,7 +30,7 @@ class Effects_stroke_class extends Effects_common_class {
 		var filter = this.Base_layers.find_filter_by_id(filter_id, 'stroke');
 
 		var params = [
-			{name: "size", title: "Size:", value: filter.size ??= 3, range: [1, 50]},
+			{name: "size", title: "Size:", value: filter.size ??= 3, range: [1, 100]},
 			{name: "position", title: "Position:", value: filter.position || "outside", values: ["outside", "inside", "center"]},
 			{name: "opacity", title: "Opacity:", value: filter.opacity ??= 100, range: [0, 100]},
 			{name: "color", title: "Color:", value: filter.color ??= "#000000", type: 'color'},

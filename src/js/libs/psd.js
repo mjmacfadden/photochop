@@ -442,11 +442,16 @@ function convert_psd_effects_to_filters(psdLayer) {
 			if (opacity <= 1) opacity = Math.round(opacity * 100);
 			const color = parse_psd_color(stroke.color) || '#000000';
 
+			const positionRaw = (stroke.position || 'outside').toLowerCase();
+			const position = (positionRaw === 'inside' || positionRaw === 'center' || positionRaw === 'outside')
+				? positionRaw : 'outside';
+
 			filters.push({
 				id: 'filter_' + Math.random().toString(36).substr(2, 9),
 				name: 'stroke',
 				params: {
 					size: size,
+					position: position,
 					opacity: opacity,
 					color: color,
 				}
@@ -1065,13 +1070,15 @@ function export_layer_to_psd(layer, docWidth, docHeight) {
 		}
 	}
 
-	// Export layer effects (e.g. Drop Shadow)
+	// Export layer effects (Drop Shadow, Outer/Inner Glow, Stroke)
 	if (layer.filters && layer.filters.length > 0) {
 		for (const f of layer.filters) {
-			if (f.name === 'shadow' || f.name === 'drop-shadow') {
+			const p = f.params || {};
+			const fname = f.name;
+
+			if (fname === 'shadow' || fname === 'drop-shadow') {
 				if (!psdLayer.effects) psdLayer.effects = {};
 				if (!psdLayer.effects.dropShadow) psdLayer.effects.dropShadow = [];
-				const p = f.params || {};
 				const x = p.x || 0;
 				const y = p.y || 0;
 				const dist = Math.round(Math.hypot(x, y));
@@ -1081,10 +1088,51 @@ function export_layer_to_psd(layer, docWidth, docHeight) {
 				const rgb = hex_to_rgb(p.color || '#000000');
 				psdLayer.effects.dropShadow.push({
 					enabled: !f.disabled,
+					present: true,
+					showInDialog: true,
 					angle: angleDeg,
 					distance: { units: 'Pixels', value: dist },
 					size: { units: 'Pixels', value: p.value || 5 },
 					opacity: (p.opacity != null ? p.opacity : 75) / 100,
+					color: rgb,
+				});
+			} else if (fname === 'outer_glow') {
+				if (!psdLayer.effects) psdLayer.effects = {};
+				const rgb = hex_to_rgb(p.color || '#ffff00');
+				psdLayer.effects.outerGlow = {
+					enabled: !f.disabled,
+					present: true,
+					showInDialog: true,
+					size: { units: 'Pixels', value: p.value != null ? p.value : 10 },
+					opacity: (p.opacity != null ? p.opacity : 75) / 100,
+					color: rgb,
+				};
+			} else if (fname === 'inner_glow') {
+				if (!psdLayer.effects) psdLayer.effects = {};
+				const rgb = hex_to_rgb(p.color || '#ffffff');
+				psdLayer.effects.innerGlow = {
+					enabled: !f.disabled,
+					present: true,
+					showInDialog: true,
+					size: { units: 'Pixels', value: p.value != null ? p.value : 10 },
+					opacity: (p.opacity != null ? p.opacity : 75) / 100,
+					color: rgb,
+				};
+			} else if (fname === 'stroke') {
+				if (!psdLayer.effects) psdLayer.effects = {};
+				if (!psdLayer.effects.stroke) psdLayer.effects.stroke = [];
+				const rgb = hex_to_rgb(p.color || '#000000');
+				const positionRaw = (p.position || 'outside').toLowerCase();
+				const position = (positionRaw === 'inside' || positionRaw === 'center' || positionRaw === 'outside')
+					? positionRaw : 'outside';
+				psdLayer.effects.stroke.push({
+					enabled: !f.disabled,
+					present: true,
+					showInDialog: true,
+					size: { units: 'Pixels', value: p.size != null ? p.size : 3 },
+					position: position,
+					fillType: 'color',
+					opacity: (p.opacity != null ? p.opacity : 100) / 100,
 					color: rgb,
 				});
 			}

@@ -173,8 +173,8 @@ class Layer_styles_class {
 			fields = `
 				<div class="ls_row">
 					<span class="ls_label">Size:</span>
-					<input type="range" class="ls_range" id="ls_stroke_size" min="1" max="50" value="${size}" />
-					<input type="number" class="ls_num" id="ls_num_stroke_size" min="1" max="50" value="${size}" />
+					<input type="range" class="ls_range" id="ls_stroke_size" min="1" max="100" value="${size}" />
+					<input type="number" class="ls_num" id="ls_num_stroke_size" min="1" max="100" value="${size}" />
 					<span class="ls_unit">px</span>
 				</div>
 				<div class="ls_row">
