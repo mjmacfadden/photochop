@@ -1128,6 +1128,11 @@ class GUI_tools_class {
 		if (bgSwatch) {
 			bgSwatch.style.background = config.COLOR_BG;
 		}
+		// Type Tool fill inherits foreground
+		if (config.TOOL && config.TOOL.name === 'text' && this.tools_modules['text'] && this.tools_modules['text'].object
+			&& typeof this.tools_modules['text'].object.sync_fill_from_foreground === 'function') {
+			this.tools_modules['text'].object.sync_fill_from_foreground();
+		}
 	}
 
 }

@@ -1759,7 +1759,7 @@ class Text_editor_class {
 							' ' + (bold ? 'bold' : '') +
 							' ' + Math.round(span.meta.size || metaDefaults.size) + 'px' +
 							' ' + family;
-						const fill_color = span.meta.fill_color || metaDefaults.fill_color;
+						const fill_color = span.meta.fill_color || config.COLOR || metaDefaults.fill_color;
 						let fillStyle;
 						if (fill_color.startsWith('#')) {
 							fillStyle = fill_color;
@@ -2893,7 +2893,16 @@ class Text_class extends Base_tools_class {
 				meta.strikethrough = value;
 				break;
 			case 'fill':
-				if (value) meta.fill_color = value;
+				if (value) {
+					meta.fill_color = value;
+					config.COLOR = value;
+					if (app.GUI && app.GUI.GUI_tools && app.GUI.GUI_tools.update_toolbar_swatches) {
+						app.GUI.GUI_tools.update_toolbar_swatches();
+					}
+					if (app.GUI && app.GUI.GUI_colors && typeof app.GUI.GUI_colors.render_selected_color === 'function') {
+						try { app.GUI.GUI_colors.render_selected_color(); } catch (e) { /* ignore */ }
+					}
+				}
 				break;
 			case 'stroke':
 				if (value) meta.stroke_color = value;
@@ -2957,7 +2966,7 @@ class Text_class extends Base_tools_class {
 			toolAttributes.italic.value = meta.italic.includes(false) ? false : true;
 			toolAttributes.underline.value = meta.underline.includes(false) ? false : true;
 			toolAttributes.strikethrough.value = meta.strikethrough.includes(false) ? false : true;
-			toolAttributes.fill = meta.fill_color.length === 1 ? meta.fill_color[0] : '#000000';
+			toolAttributes.fill = meta.fill_color.length === 1 ? meta.fill_color[0] : (config.COLOR || '#000000');
 			toolAttributes.stroke = meta.stroke_color.length === 1 ? meta.stroke_color[0] : '#000000';
 			toolAttributes.stroke_size.value = meta.stroke_size.length === 1 ? meta.stroke_size[0] : parseFloat(null);
 			toolAttributes.kerning.value = meta.kerning.length === 1 ? meta.kerning[0] : parseFloat(null);
@@ -3094,12 +3103,46 @@ class Text_class extends Base_tools_class {
 		const params = this.getParams ? this.getParams() : {};
 		const fontVal = params.font && (params.font.value || params.font);
 		const sizeVal = (params.size && typeof params.size === 'object') ? params.size.value : params.size;
-		const fillVal = params.fill || config.COLOR || metaDefaults.fill_color;
+		// Always inherit the current foreground color for new text
+		const fillVal = config.COLOR || metaDefaults.fill_color;
 		return {
 			family: fontVal || metaDefaults.family,
 			size: (!isNaN(sizeVal) && sizeVal != null) ? sizeVal : metaDefaults.size,
-			fill_color: fillVal || config.COLOR || metaDefaults.fill_color,
+			fill_color: fillVal,
 		};
+	}
+
+	/**
+	 * Keep Type Tool fill attribute (and options-bar swatch) in sync with foreground.
+	 * @param {{rebuild?: boolean}} options - rebuild re-renders the whole attributes bar (tool activate).
+	 */
+	sync_fill_from_foreground(options = {}) {
+		const color = config.COLOR;
+		if (!color || !config.TOOL || config.TOOL.name !== 'text') return;
+		try {
+			const toolAttributes = this.GUI_tools && this.GUI_tools.action_data
+				? this.GUI_tools.action_data().attributes
+				: null;
+			if (!toolAttributes) return;
+			if (toolAttributes.fill === color && !options.rebuild) {
+				// Still refresh the visible swatch if the widget exists
+			} else {
+				toolAttributes.fill = color;
+			}
+			if (options.rebuild && this.GUI_tools.show_action_attributes) {
+				this.GUI_tools.show_action_attributes();
+				return;
+			}
+			// Lightweight: update existing fill color input without rebuilding the bar
+			const $fill = $('#action_attributes .item.fill input');
+			if ($fill.length && typeof $fill.uiColorInput === 'function') {
+				try {
+					$fill.uiColorInput('set_value', color);
+				} catch (e) {
+					$fill.val(color);
+				}
+			}
+		} catch (e) { /* ignore */ }
 	}
 
 	/**
