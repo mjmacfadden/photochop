@@ -412,28 +412,33 @@ class Base_tools_class {
 		if (!element) return;
 
 		if (config.mouse && config.mouse.valid === false) {
+			this._pending_cursor = null;
 			element.className = '';
 			return;
 		}
 
-		//fix coordinates, because of scroll
-		var start_pos = this.Base_layers.get_world_coords(0, 0);
-		x = x - start_pos.x;
-		y = y - start_pos.y;
+		this._pending_cursor = { x, y, size, type, zoom: config.ZOOM };
+		if (this._cursor_raf != null) return;
+		this._cursor_raf = requestAnimationFrame(() => {
+			this._cursor_raf = null;
+			if (!this._pending_cursor) return;
+			var { x, y, size, type, zoom } = this._pending_cursor;
+			var start_pos = this.Base_layers.get_world_coords(0, 0);
+			x = x - start_pos.x;
+			y = y - start_pos.y;
 
-		var display_size = Math.max(2, Math.round((size || 1) * config.ZOOM));
-		x = x * config.ZOOM;
-		y = y * config.ZOOM;
+			var display_size = Math.max(2, Math.round((size || 1) * zoom));
+			x = x * zoom;
+			y = y * zoom;
 
-		element.style.width = display_size + 'px';
-		element.style.height = display_size + 'px';
+			element.style.width = display_size + 'px';
+			element.style.height = display_size + 'px';
+			element.style.left = Math.round(x - display_size / 2) + 'px';
+			element.style.top = Math.round(y - display_size / 2) + 'px';
 
-		element.style.left = Math.round(x - display_size / 2) + 'px';
-		element.style.top = Math.round(y - display_size / 2) + 'px';
-
-		//add style
-		element.className = '';
-		element.classList.add(type);
+			element.className = '';
+			element.classList.add(type);
+		});
 	}
 
 	getParams() {
