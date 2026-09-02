@@ -259,7 +259,7 @@ function convert_psd_layer(psdLayer, id, docWidth, docHeight) {
 			width: maskCanvas.width,
 			height: maskCanvas.height,
 			enabled: !psdLayer.mask.disabled,
-			linked: psdLayer.mask.relative !== false,
+			linked: psdLayer.mask.positionRelativeToLayer !== false,
 		};
 	}
 
@@ -858,15 +858,15 @@ export async function export_psd(layers, docWidth, docHeight, options = {}) {
 	alertify.message('Generating Photoshop Document...');
 
 	let compositeCanvas = null;
-	if (app.Base_layers && app.Base_layers.Composite_cache && app.Base_layers.Composite_cache.documentCanvas) {
-		compositeCanvas = app.Base_layers.Composite_cache.documentCanvas;
+	if (app.Layers && app.Layers.Composite_cache && app.Layers.Composite_cache.documentCanvas) {
+		compositeCanvas = app.Layers.Composite_cache.documentCanvas;
 	} else {
 		compositeCanvas = document.createElement('canvas');
 		compositeCanvas.width = w;
 		compositeCanvas.height = h;
 		const compCtx = compositeCanvas.getContext('2d');
-		if (app.Base_layers) {
-			app.Base_layers.convert_layers_to_canvas(compCtx, null, false);
+		if (app.Layers) {
+			app.Layers.convert_layers_to_canvas(compCtx, null, false);
 		}
 	}
 
@@ -965,7 +965,7 @@ function export_layer_to_psd(layer, docWidth, docHeight) {
 					left: Math.round(layer.mask.x || 0),
 					top: Math.round(layer.mask.y || 0),
 					disabled: layer.mask.enabled === false,
-					relative: layer.mask.linked === false,
+					positionRelativeToLayer: layer.mask.linked !== false,
 				};
 			}
 		}
@@ -998,7 +998,7 @@ function export_layer_to_psd(layer, docWidth, docHeight) {
 				left: Math.round(layer.mask.x != null ? layer.mask.x : left),
 				top: Math.round(layer.mask.y != null ? layer.mask.y : top),
 				disabled: layer.mask.enabled === false,
-				relative: layer.mask.linked === false,
+				positionRelativeToLayer: layer.mask.linked !== false,
 			};
 		}
 	}
