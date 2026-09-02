@@ -1674,6 +1674,17 @@ class Text_editor_class {
 			this.calculate_text_placement(ctx, layer);
 		}
 
+		this._livePointScale = null;
+		if (this._pointTransforming && this.textBoundaryWidth > 0 && this.textBoundaryHeight > 0) {
+			const bw = Math.max(1, this.textBoundaryWidth);
+			const bh = Math.max(1, this.textBoundaryHeight);
+			const sx = layer.width / bw;
+			const sy = layer.height / bh;
+			if (Math.abs(sx - 1) > 0.01 || Math.abs(sy - 1) > 0.01) {
+				this._livePointScale = { sx, sy };
+			}
+		}
+
 		if (!this.lineRenderInfo) return;
 
 		try {
@@ -1706,6 +1717,12 @@ class Text_editor_class {
 				// Move it back after it
 				ctx.translate(-layer.x - layer.width / 2, -layer.y - layer.height / 2);
 
+			}
+			if (this._livePointScale) {
+				const { sx, sy } = this._livePointScale;
+				ctx.translate(layer.x, layer.y);
+				ctx.scale(sx, sy);
+				ctx.translate(-layer.x, -layer.y);
 			}
 			for (let line of this.lineRenderInfo.lines) {
 				let lineLetterCount = 0;
@@ -2541,9 +2558,8 @@ class Text_class extends Base_tools_class {
 				config.layer.y = this.selection.y;
 				config.layer.width = this.selection.width;
 				config.layer.height = this.selection.height;
-				if (config.layer.params && config.layer.params.boundary === 'dynamic') {
-					config.layer.params.boundary = 'box';
-				}
+				// Point (dynamic): keep dynamic — transform scales glyphs (see bake_point_text_scale).
+				// Paragraph (box): only the frame changes; glyphs reflow / clip.
 			}
 		}
 		else if (this.creating) {
@@ -2590,23 +2606,31 @@ class Text_class extends Base_tools_class {
 
 		if (this.resizing) {
 			if (this.mousedownBounds && config.layer && config.layer.type === 'text' && config.layer.params) {
+				const wasDynamic = this.mousedownBounds.boundary === 'dynamic';
 				config.layer.x = this.mousedownBounds.x;
 				config.layer.y = this.mousedownBounds.y;
 				config.layer.width = this.mousedownBounds.width;
 				config.layer.height = this.mousedownBounds.height;
 				const new_params = JSON.parse(JSON.stringify(config.layer.params));
-				new_params.boundary = config.layer.params.boundary;
+				// Never promote point→box on transform
+				new_params.boundary = this.mousedownBounds.boundary;
 				config.layer.params.boundary = this.mousedownBounds.boundary;
+				const update = {
+					x: this.selection.x,
+					y: this.selection.y,
+					width: this.selection.width,
+					height: this.selection.height,
+					params: new_params
+				};
+				if (wasDynamic && this.mousedownBounds.width > 0) {
+					const scale = this.selection.width / this.mousedownBounds.width;
+					const scaledData = this.bake_point_text_scale(config.layer, scale, { commit: false });
+					if (scaledData) update.data = scaledData;
+				}
 				await app.State.do_action(
 					new app.Actions.Bundle_action('resize_text_layer', 'Resize Text Layer', [
-						new app.Actions.Update_layer_action(config.layer.id, {
-							x: this.selection.x,
-							y: this.selection.y,
-							width: this.selection.width,
-							height: this.selection.height,
-							params: new_params
-						}),
-						new app.Actions.Set_selection_action(this.selection.x, this.selection.y, this.selection.width, this.selection.height)
+						new app.Actions.Update_layer_action(config.layer.id, update),
+						...(wasDynamic ? [] : [new app.Actions.Set_selection_action(this.selection.x, this.selection.y, this.selection.width, this.selection.height)])
 					])
 				);
 			}
@@ -2945,6 +2969,50 @@ class Text_class extends Base_tools_class {
 		}
 	}
 
+
+	bake_point_text_scale(layer, scale, { commit = true } = {}) {
+		if (!layer || layer.type !== 'text' || !scale || !isFinite(scale) || Math.abs(scale - 1) < 1e-6) {
+			return null;
+		}
+		const editor = this.get_editor(layer);
+		const lines = editor
+			? JSON.parse(JSON.stringify(editor.document.lines))
+			: JSON.parse(JSON.stringify(layer.data || [[{ text: '', meta: {} }]]));
+		for (const line of lines) {
+			for (const span of line) {
+				if (!span.meta) span.meta = {};
+				const size = (span.meta.size != null) ? span.meta.size : metaDefaults.size;
+				span.meta.size = Math.max(1, Math.round(size * scale));
+				if (span.meta.stroke_size != null && span.meta.stroke_size > 0) {
+					span.meta.stroke_size = Math.max(0, Math.round(span.meta.stroke_size * scale * 10) / 10);
+				}
+				if (span.meta.leading != null) {
+					span.meta.leading = Math.max(0, Math.round(span.meta.leading * scale));
+				}
+			}
+		}
+		if (commit && editor) {
+			editor.document.lines = lines;
+			editor.hasValueChanged = true;
+			layer.data = JSON.parse(JSON.stringify(lines));
+		}
+		return lines;
+	}
+
+	is_point_text_transform_active(layer) {
+		if (!layer || layer.type !== 'text' || !layer.params || layer.params.boundary !== 'dynamic') {
+			return false;
+		}
+		if (this.resizing) return true;
+		try {
+			const sel = app.GUI && app.GUI.GUI_tools && app.GUI.GUI_tools.tools_modules
+				&& app.GUI.GUI_tools.tools_modules.select
+				&& app.GUI.GUI_tools.tools_modules.select.object;
+			if (sel && sel.resizing) return true;
+		} catch (e) { /* ignore */ }
+		return false;
+	}
+
 	resize_to_dynamic_bounds(layer, editor) {
 		if (layer && layer.type === 'text' && layer.params && layer.params.boundary === 'dynamic' && editor) {
 			// Grow from the anchor (x,y); never mutate other layers.
@@ -2972,6 +3040,7 @@ class Text_class extends Base_tools_class {
 
 		const isActiveLayerAndTextTool = layer === config.layer && config.TOOL.name === 'text';
 		const isBoxBoundary = layer.params && layer.params.boundary === 'box';
+		const pointTransforming = this.is_point_text_transform_active(layer);
 		editor.selection.set_visible(isActiveLayerAndTextTool);
 		// Caret for point & paragraph while active with Type tool
 		editor.selection.set_cursor_visible(isActiveLayerAndTextTool && (this.selecting || this.creating || this.focused));
@@ -2982,9 +3051,13 @@ class Text_class extends Base_tools_class {
 			ctx.rect(layer.x, layer.y, layer.width, layer.height);
 			ctx.clip();
 		}
+		editor._pointTransforming = pointTransforming;
 		editor.render(ctx, layer);
+		editor._pointTransforming = false;
+		editor._livePointScale = null;
 		ctx.restore();
-		if (layer === config.layer) {
+		// Don't snap dynamic bounds while a transform drag is controlling width/height
+		if (layer === config.layer && !pointTransforming) {
 			this.resize_to_dynamic_bounds(layer, editor);
 		}
 		if (isActiveLayerAndTextTool && !isBoxBoundary && (this.focused || this.selecting || this.creating)) {

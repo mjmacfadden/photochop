@@ -153,8 +153,11 @@ class Select_tool_class extends Base_tools_class {
 			this.moving = false;
 			const aspect_lock = (config.aspect_lock !== undefined) ? config.aspect_lock : true;
 			this.Base_selection.find_settings().keep_ratio = aspect_lock;
+			// Point text stays dynamic — transform scales glyphs (Photoshop-like), not convert to box.
 			if (config.layer.type === 'text' && config.layer.params && config.layer.params.boundary === 'dynamic') {
-				config.layer.params.boundary = 'box';
+				this._resizing_point_text = true;
+			} else {
+				this._resizing_point_text = false;
 			}
 		}
 		else {
@@ -260,6 +263,8 @@ class Select_tool_class extends Base_tools_class {
 			let y = config.layer.y;
 			let width = config.layer.width;
 			let height = config.layer.height;
+			const resizingPointText = !!this._resizing_point_text
+				|| (config.layer.type === 'text' && config.layer.params && config.layer.params.boundary === 'dynamic');
 
 			//reset values
 			config.layer.x = this.mousedown_dimensions.x;
@@ -272,10 +277,22 @@ class Select_tool_class extends Base_tools_class {
 			if (this.mousedown_dimensions.x !== x || this.mousedown_dimensions.y !== y ||
 				this.mousedown_dimensions.width !== width || this.mousedown_dimensions.height !== height
 			) {
+				var layerUpdate = { x, y, width, height };
+				// Point text: bake glyph scale into font sizes (box text only changes the frame)
+				if (resizingPointText && this.mousedown_dimensions.width > 0) {
+					const scale = width / this.mousedown_dimensions.width;
+					try {
+						const textTool = app.GUI && app.GUI.GUI_tools && app.GUI.GUI_tools.tools_modules
+							&& app.GUI.GUI_tools.tools_modules.text
+							&& app.GUI.GUI_tools.tools_modules.text.object;
+						if (textTool && typeof textTool.bake_point_text_scale === 'function') {
+							const scaledData = textTool.bake_point_text_scale(config.layer, scale, { commit: false });
+							if (scaledData) layerUpdate.data = scaledData;
+						}
+					} catch (e) { console.warn('point text scale bake failed', e); }
+				}
 				var resize_actions = [
-					new app.Actions.Update_layer_action(config.layer.id, {
-						x, y, width, height
-					})
+					new app.Actions.Update_layer_action(config.layer.id, layerUpdate)
 				];
 				//keep a linked mask in sync
 				resize_actions = resize_actions.concat(
@@ -287,6 +304,7 @@ class Select_tool_class extends Base_tools_class {
 					new app.Actions.Bundle_action('resize_layer', 'Resize Layer', resize_actions)
 				);
 			}
+			this._resizing_point_text = false;
 
 			//also handle rotation
 			let rotate = this.Base_selection.current_angle;
