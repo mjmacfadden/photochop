@@ -329,8 +329,17 @@ class Base_selection_class {
 		//borders - centered on the layer bounds so no padding is added
 		if (settings.enable_borders == true && (x != 0 || y != 0 || w != config.WIDTH || h != config.HEIGHT)) {
 			this.ctx.lineWidth = wholeLineWidth;
-			this.ctx.strokeStyle = '#3f8ff7';
-			this.ctx.strokeRect(x, y, w, h);
+			if (settings.border_style === 'dashed_light') {
+				// Type tool paragraph box: light dashed (not marching ants)
+				const dash = 4 / config.ZOOM;
+				this.ctx.strokeStyle = 'rgba(0, 0, 0, 0.35)';
+				this.ctx.setLineDash([dash, dash]);
+				this.ctx.strokeRect(x, y, w, h);
+				this.ctx.setLineDash([]);
+			} else {
+				this.ctx.strokeStyle = '#3f8ff7';
+				this.ctx.strokeRect(x, y, w, h);
+			}
 		}
 
 		//show crop lines
@@ -374,10 +383,15 @@ class Base_selection_class {
 		const hitsRightEdge = isRotated ? false : x + w > config.WIDTH - handle_size;
 		const hitsBottomEdge = isRotated ? false : y + h > config.HEIGHT - handle_size;
 
-		//draw corners - square handles with blue outline, white fill
+		//draw corners - square handles (default blue; Type tool uses black stroke / white fill)
 		var corner = (x, y, dx, dy, drag_type, cursor) => {
-			this.ctx.strokeStyle = "#3f8ff7";
-			this.ctx.fillStyle = "#ffffff";
+			if (settings.handle_style === 'bw_square') {
+				this.ctx.strokeStyle = "#000000";
+				this.ctx.fillStyle = "#ffffff";
+			} else {
+				this.ctx.strokeStyle = "#3f8ff7";
+				this.ctx.fillStyle = "#ffffff";
+			}
 			this.ctx.lineWidth = 1 / config.ZOOM;
 
 			var center_x = x + dx * block_size;

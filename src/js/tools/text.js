@@ -22,18 +22,20 @@ import alertify from './../../../node_modules/alertifyjs/build/alertify.min.js';
 // WARNING - changing this could break backwards compatibility!
 // Defaults aren't saved in text layer in order to reduce data size and increase meta comparison performance.
 export const metaDefaults = {
-	size: 40,
-	family: 'Arial',
+	size: 38,
+	family: 'Roboto',
 	kerning: 0,
 	leading: 0,
 	bold: false,
 	italic: false,
 	underline: false,
 	strikethrough: false,
-	fill_color: '#008800',
+	fill_color: '#008000',
 	stroke_size: 0,
 	stroke_color: '#000000'
 };
+
+const LOREM_IPSUM = 'Lorem ipsum';
 
 // Global map of font name to font metrics information.
 const fontMetricsMap = new Map();
@@ -1807,12 +1809,9 @@ class Text_editor_class {
 								const letterStartY = isHorizontalTextDirection ? lineStart : textDirectionOffset;
 								const letterSizeX = isHorizontalTextDirection ? letterWidth : letterHeight;
 								const letterSizeY = isHorizontalTextDirection ? letterHeight : letterWidth;
-								ctx.fillStyle = this.selectionBackgroundColor + '22';
+								// Solid highlight (no per-glyph stroke that splits letters)
+								ctx.fillStyle = this.selectionBackgroundColor + '55';
 								ctx.fillRect(letterStartX, letterStartY, letterSizeX, letterSizeY);
-								ctx.strokeStyle = this.selectionBackgroundColor;
-								ctx.lineWidth = 0.75;
-								ctx.strokeRect(letterStartX, letterStartY, letterSizeX, letterSizeY);
-								ctx.lineWidth = stroke_size;
 							}
 							ctx.fillStyle = fillStyle;
 							ctx.strokeStyle = strokeStyle;
@@ -1850,32 +1849,14 @@ class Text_editor_class {
 						}
 					}
 
-					// Draw cursor
-					if (this.selection.isCursorVisible && cursorStartX && (!this.Base_layers || ctx !== this.Base_layers.ctx_preview)) {
+					// Draw caret (black I-beam)
+					if (this.selection.isCursorVisible && cursorStartX != null && (!this.Base_layers || ctx !== this.Base_layers.ctx_preview)) {
 						ctx.lineCap = 'butt';
-						ctx.strokeStyle = '#55555577';
-						ctx.lineWidth = 3;
+						ctx.strokeStyle = '#000000';
+						ctx.lineWidth = 1;
 						ctx.beginPath();
 						ctx.moveTo(cursorStartX, cursorStartY + 1);
 						ctx.lineTo(cursorStartX, cursorStartY + cursorSize - 1);
-						if (cursorSize > 14) {
-							ctx.moveTo(cursorStartX - 3, cursorStartY + 2);
-							ctx.lineTo(cursorStartX + 3, cursorStartY + 2);
-							ctx.moveTo(cursorStartX - 3, cursorStartY + cursorSize - 2);
-							ctx.lineTo(cursorStartX + 3, cursorStartY + cursorSize - 2);
-						}
-						ctx.stroke();
-						ctx.strokeStyle = '#ffffffff';
-						ctx.lineWidth = 1;
-						ctx.beginPath();
-						ctx.moveTo(cursorStartX, cursorStartY + 2);
-						ctx.lineTo(cursorStartX, cursorStartY + cursorSize - 2);
-						if (cursorSize > 14) {
-							ctx.moveTo(cursorStartX - 2, cursorStartY + 2);
-							ctx.lineTo(cursorStartX + 2, cursorStartY + 2);
-							ctx.moveTo(cursorStartX - 2, cursorStartY + cursorSize - 2);
-							ctx.lineTo(cursorStartX + 2, cursorStartY + cursorSize - 2);
-						}
 						ctx.stroke();
 					}
 					wrapIndex++;
@@ -2234,6 +2215,25 @@ class Text_class extends Base_tools_class {
 					let handled = true;
 					const editor = this.get_editor(config.layer);
 					switch (e.key) {
+						case 'Escape':
+							e.preventDefault();
+							e.stopImmediatePropagation();
+							(async () => {
+								await this.commit_text_changes();
+								this.focused = false;
+								this.selecting = false;
+								this.creating = false;
+								if (this.textarea) this.textarea.blur();
+								const ed = this.get_editor(config.layer);
+								if (ed && ed.selection) {
+									// Collapse selection to caret at end
+									const line = ed.selection.end.line;
+									const ch = ed.selection.end.character;
+									ed.selection.set_position(line, ch, false);
+								}
+								this.Base_layers.render();
+							})();
+							return;
 						case 'Backspace':
 							editor.delete_character_at_current_position(false);
 							break;
@@ -2521,10 +2521,9 @@ class Text_class extends Base_tools_class {
 			this.layer = config.layer;
 			const editor = this.get_editor(this.layer);
 			if (editor) {
-				this.focusedValue = JSON.stringify(editor.document.lines);
-				this.focusedWidth = this.layer.width;
-				this.focusedHeight = this.layer.height;
+				this.seed_placeholder_text(this.layer, editor, { selectAll: true });
 			}
+			this.focus_textarea();
 		}
 	}
 
@@ -2626,21 +2625,34 @@ class Text_class extends Base_tools_class {
 			if (config.layer && config.layer.type === 'text') {
 				const nextParams = JSON.parse(JSON.stringify(config.layer.params || {}));
 				nextParams.boundary = isBoxDrag ? 'box' : 'dynamic';
+				nextParams.wrap = isBoxDrag ? 'word' : 'letter';
 				const nextX = isBoxDrag ? Math.min(mouse.x, this.mousedownX) : this.mousedownX;
 				const nextY = isBoxDrag ? Math.min(mouse.y, this.mousedownY) : this.mousedownY;
 				config.layer.params.boundary = nextParams.boundary;
+				config.layer.params.wrap = nextParams.wrap;
 				await app.State.do_action(
 					new app.Actions.Bundle_action('resize_text_layer', 'Resize Text Layer', [
 						new app.Actions.Update_layer_action(config.layer.id, {
 							x: nextX,
 							y: nextY,
-							width,
-							height,
+							width: isBoxDrag ? Math.max(1, width) : 1,
+							height: isBoxDrag ? Math.max(1, height) : 1,
 							params: nextParams
 						})
 					]),
 					{ merge_with_history: 'new_text_layer' }
 				);
+				const ed = this.get_editor(config.layer);
+				if (ed) {
+					// Ensure placeholder + full selection for both point and paragraph create
+					this.seed_placeholder_text(config.layer, ed, { selectAll: true });
+				}
+				if (isBoxDrag) {
+					await app.State.do_action(
+						new app.Actions.Set_selection_action(nextX, nextY, Math.max(1, width), Math.max(1, height)),
+						{ merge_with_history: 'new_text_layer' }
+					);
+				}
 			}
 			this.focus_textarea();
 		}
@@ -2684,6 +2696,10 @@ class Text_class extends Base_tools_class {
 		if (this.fonts_preloaded) return;
 		this.fonts_preloaded = true;
 		const systemFonts = ["Arial", "Courier", "Impact", "Helvetica", "Monospace", "Tahoma", "Times New Roman", "Verdana"];
+		// Prefer Roboto early — default Type face
+		load_font_family({ family: 'Roboto' }, () => {
+			if (this.Base_layers) this.Base_layers.render();
+		});
 		const googleFonts = config.FONTS ? config.FONTS.filter(f => !systemFonts.includes(f)) : [];
 		if (googleFonts.length > 0) {
 			try {
@@ -2903,7 +2919,12 @@ class Text_class extends Base_tools_class {
 			const meta = editor.document.get_meta_range(editor.selection.start.line, editor.selection.start.character, editor.selection.end.line, editor.selection.end.character);
 			const toolAttributes = this.GUI_tools.action_data().attributes;
 			toolAttributes.font.value = meta.family.length === 1 ? meta.family[0] : '';
-			toolAttributes.size = meta.size.length === 1 ? meta.size[0] : parseFloat(null);
+			const sizeVal = meta.size.length === 1 ? meta.size[0] : parseFloat(null);
+			if (toolAttributes.size && typeof toolAttributes.size === 'object') {
+				toolAttributes.size.value = sizeVal;
+			} else {
+				toolAttributes.size = sizeVal;
+			}
 			toolAttributes.bold.value = meta.bold.includes(false) ? false : true;
 			toolAttributes.italic.value = meta.italic.includes(false) ? false : true;
 			toolAttributes.underline.value = meta.underline.includes(false) ? false : true;
@@ -2935,18 +2956,9 @@ class Text_class extends Base_tools_class {
 	}
 
 	extend_fixed_bounds(layer, editor) {
-		if (layer && layer.type === 'text' && layer.params && layer.params.boundary !== 'dynamic' && editor) {
-			const isHorizontalTextDirection = ['ltr', 'rtl'].includes(layer.params.text_direction);
-			let new_width = layer.width;
-			let new_height = layer.height;
-			if (isHorizontalTextDirection) {
-				new_width = Math.max(editor.textBoundaryWidth + 1, new_width);
-			} else {
-				new_height = Math.max(editor.textBoundaryHeight + 1, new_height);
-			}
-			layer.width = new_width;
-			layer.height = new_height;
-		}
+		// Paragraph/box: keep the box size fixed and clip overflowing glyphs in render().
+		// (Growing the box here made overflow fight the handles.)
+		return;
 	}
 
 	render(ctx, layer) {
@@ -2963,16 +2975,29 @@ class Text_class extends Base_tools_class {
 		editor.selection.set_visible(isActiveLayerAndTextTool);
 		// Caret for point & paragraph while active with Type tool
 		editor.selection.set_cursor_visible(isActiveLayerAndTextTool && (this.selecting || this.creating || this.focused));
+		ctx.save();
+		if (isBoxBoundary && layer.width > 0 && layer.height > 0) {
+			// Clip overflowing paragraph text inside the box
+			ctx.beginPath();
+			ctx.rect(layer.x, layer.y, layer.width, layer.height);
+			ctx.clip();
+		}
 		editor.render(ctx, layer);
+		ctx.restore();
 		if (layer === config.layer) {
 			this.resize_to_dynamic_bounds(layer, editor);
 		}
-		// Point text: no wrap-box chrome/handles. Paragraph/box: show handles.
+		if (isActiveLayerAndTextTool && !isBoxBoundary && (this.focused || this.selecting || this.creating)) {
+			this.draw_point_text_chrome(ctx, layer, editor);
+		}
+		// Point text: no wrap-box chrome/handles. Paragraph/box: dashed box + square handles.
 		if (this._selection_config) {
 			const showBoxChrome = isActiveLayerAndTextTool && isBoxBoundary;
 			this._selection_config.enable_borders = showBoxChrome;
 			this._selection_config.enable_controls = showBoxChrome;
 			this._selection_config.enable_rotation = showBoxChrome;
+			this._selection_config.border_style = showBoxChrome ? 'dashed_light' : null;
+			this._selection_config.handle_style = showBoxChrome ? 'bw_square' : null;
 		}
 		if (!this.resizing && isActiveLayerAndTextTool && isBoxBoundary) {
 			this.selection.x = layer.x;
@@ -2988,7 +3013,76 @@ class Text_class extends Base_tools_class {
 		}
 	}
 
+	build_default_span_meta() {
+		const params = this.getParams ? this.getParams() : {};
+		const fontVal = params.font && (params.font.value || params.font);
+		const sizeVal = (params.size && typeof params.size === 'object') ? params.size.value : params.size;
+		const fillVal = params.fill || config.COLOR || metaDefaults.fill_color;
+		return {
+			family: fontVal || metaDefaults.family,
+			size: (!isNaN(sizeVal) && sizeVal != null) ? sizeVal : metaDefaults.size,
+			fill_color: fillVal || config.COLOR || metaDefaults.fill_color,
+		};
+	}
+
+	/**
+	 * Seed "Lorem ipsum", select all, use FG color / Roboto / 38.
+	 */
+	seed_placeholder_text(layer, editor, { selectAll = true } = {}) {
+		if (!layer || !editor) return;
+		load_font_family({ family: metaDefaults.family }, () => {
+			this.hasValueChanged = true;
+			if (this.Base_layers) this.Base_layers.render();
+		});
+		const meta = this.build_default_span_meta();
+		editor.document.lines = [[{ text: LOREM_IPSUM, meta }]];
+		editor.hasValueChanged = true;
+		layer.data = editor.document.lines;
+		editor.set_lines(editor.document.lines, false);
+		if (selectAll) {
+			const lastLine = editor.document.lines.length - 1;
+			editor.selection.set_position(0, 0, false);
+			editor.selection.set_position(lastLine, editor.document.get_line_character_count(lastLine), true);
+		}
+		this.focusedValue = JSON.stringify(editor.document.lines);
+		this.focusedWidth = layer.width;
+		this.focusedHeight = layer.height;
+		this.resize_to_dynamic_bounds(layer, editor);
+	}
+
+	/**
+	 * Point-text chrome: black square anchor at baseline start + light underline.
+	 */
+	draw_point_text_chrome(ctx, layer, editor) {
+		if (!layer || !editor || !layer.params || layer.params.boundary !== 'dynamic') return;
+		if (!editor.lineRenderInfo || !editor.lineRenderInfo.wrapSizes || !editor.lineRenderInfo.wrapSizes.length) return;
+		const wrap0 = editor.lineRenderInfo.wrapSizes[0];
+		const line0 = editor.lineRenderInfo.lines && editor.lineRenderInfo.lines[0];
+		const offsets = line0 && line0.wraps && line0.wraps[0] ? line0.wraps[0].characterOffsets : [0, 0];
+		const textWidth = Math.max(0, (offsets[offsets.length - 1] || 0));
+		const ax = layer.x + 1;
+		const baselineY = layer.y + 1 + wrap0.offset + wrap0.baseline;
+		const underlineY = baselineY + 2;
+		// Light baseline under the text
+		ctx.save();
+		ctx.strokeStyle = 'rgba(0,0,0,0.2)';
+		ctx.lineWidth = 1;
+		ctx.beginPath();
+		ctx.moveTo(ax, underlineY);
+		ctx.lineTo(ax + Math.max(textWidth, 8), underlineY);
+		ctx.stroke();
+		// Black filled square anchor at the point
+		const s = 5;
+		ctx.fillStyle = '#000000';
+		ctx.strokeStyle = '#ffffff';
+		ctx.lineWidth = 1;
+		ctx.fillRect(ax - s / 2, baselineY - s / 2, s, s);
+		ctx.strokeRect(ax - s / 2, baselineY - s / 2, s, s);
+		ctx.restore();
+	}
+
 	get_editor(layer) {
+
 		if (!layer || layer.type !== 'text') return null;
 		let editor = layerEditors.get(layer);
 		if (!editor) {
@@ -3053,22 +3147,9 @@ class Text_class extends Base_tools_class {
 
 			// Create initial layer data if new layer
 			if (!layer.data) {
-				const params = this.getParams();
 				layer.data = [[{
 					text: '',
-					meta: {
-						family: params.font.value !== metaDefaults.family && params.font.value ? params.font.value : undefined,
-						size: params.size !== metaDefaults.size && !isNaN(params.size) ? params.size : undefined,
-						bold: params.bold.value !== metaDefaults.bold ? params.bold.value : undefined,
-						italic: params.italic.value !== metaDefaults.italic ? params.italic.value : undefined,
-						underline: params.underline.value !== metaDefaults.underline ? params.underline.value : undefined,
-						strikethrough: params.strikethrough.value !== metaDefaults.strikethrough ? params.strikethrough.value : undefined,
-						fill_color: params.fill !== metaDefaults.fill_color ? params.fill : undefined,
-						stroke_color: params.stroke !== metaDefaults.stroke_color ? params.stroke : undefined,
-						stroke_size: params.stroke_size !== metaDefaults.stroke_size && !isNaN(params.stroke_size) ? params.stroke_size : undefined,
-						kerning: params.kerning !== metaDefaults.kerning && !isNaN(params.kerning) ? params.kerning : undefined,
-						leading: params.leading !== metaDefaults.leading && !isNaN(params.leading) ? params.leading : undefined
-					}
+					meta: this.build_default_span_meta()
 				}]];
 			}
 
