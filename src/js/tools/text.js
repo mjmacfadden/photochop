@@ -96,7 +96,7 @@ const kerningTestCtx = kerningTestCanvas.getContext('2d');
 class Font_metrics_class {
 	constructor(family, size) {
 		this.family = family || (family = "Arial");
-		this.size = parseInt(size) || (size = 12);
+		this.size = parseFloat(size) || (size = 12);
 		this.kerningMap = new Map();
 
 		// Preparing container
@@ -3005,7 +3005,7 @@ class Text_class extends Base_tools_class {
 			for (const span of line) {
 				if (!span.meta) span.meta = {};
 				const size = (span.meta.size != null) ? span.meta.size : metaDefaults.size;
-				span.meta.size = Math.max(1, Math.round(size * scale));
+				span.meta.size = Math.max(1, Math.round(size * scale * 100) / 100);
 				if (span.meta.stroke_size != null && span.meta.stroke_size > 0) {
 					span.meta.stroke_size = Math.max(0, Math.round(span.meta.stroke_size * scale * 10) / 10);
 				}
