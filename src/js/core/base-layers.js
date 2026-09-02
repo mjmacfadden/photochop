@@ -1054,6 +1054,18 @@ class Base_layers_class {
 				if (c !== 0) res += ` contrast(${cVal})`;
 				return res;
 			}
+			case 'hue-saturation':
+			case 'hue/saturation':
+			case 'huesaturation': {
+				let hue = (params && params.hue !== undefined) ? params.hue : ((value !== undefined) ? value : 0);
+				let sat = (params && params.saturation !== undefined) ? params.saturation : 0;
+				let light = (params && params.lightness !== undefined) ? params.lightness : 0;
+				let parts = [`hue-rotate(${hue}deg)`];
+				parts.push(`saturate(${(sat / 100) + 1})`);
+				// Approximate lightness with brightness (CSS has no direct lightness filter)
+				if (light) parts.push(`brightness(${(light / 100) + 1})`);
+				return parts.join(' ');
+			}
 			case 'hue-rotate':
 			case 'hue_rotate': {
 				let v = (value !== undefined) ? value : 0;

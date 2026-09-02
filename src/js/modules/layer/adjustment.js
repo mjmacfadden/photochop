@@ -30,6 +30,17 @@ class Layer_adjustment_class {
 					{ name: 'value', title: 'Percentage:', value: 30, range: [-100, 100] }
 				]
 			},
+			'hue-saturation': {
+				title: 'Hue / Saturation',
+				name: 'Hue/Saturation',
+				default_params: { hue: 0, saturation: 0, lightness: 0 },
+				params: [
+					{ name: 'hue', title: 'Hue:', value: 0, range: [-180, 180] },
+					{ name: 'saturation', title: 'Saturation:', value: 0, range: [-100, 100] },
+					{ name: 'lightness', title: 'Lightness:', value: 0, range: [-100, 100] }
+				]
+			},
+			// Legacy single-channel types (still editable / PSD-exportable)
 			'hue-rotate': {
 				title: 'Hue Rotate',
 				name: 'Hue Rotate',
@@ -93,6 +104,9 @@ class Layer_adjustment_class {
 		if (!type) return 'brightness';
 		type = type.toLowerCase().replace(/_/g, '-');
 		if (type === 'hue_rotate') type = 'hue-rotate';
+		if (type === 'hue/saturation' || type === 'huesaturation' || type === 'hue_saturation') {
+			type = 'hue-saturation';
+		}
 		return type;
 	}
 
@@ -127,12 +141,17 @@ class Layer_adjustment_class {
 		this.create_or_edit('contrast');
 	}
 
+	hue_saturation() {
+		this.create_or_edit('hue-saturation');
+	}
+
 	hue_rotate() {
-		this.create_or_edit('hue-rotate');
+		// Prefer combined Hue/Saturation for new layers
+		this.create_or_edit('hue-saturation');
 	}
 
 	saturate() {
-		this.create_or_edit('saturate');
+		this.create_or_edit('hue-saturation');
 	}
 
 	grayscale() {

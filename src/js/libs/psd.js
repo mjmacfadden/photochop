@@ -485,13 +485,28 @@ function convert_psd_adjustment(psdLayer, id, name, opacity, visible, compositio
 			break;
 		}
 		case 'hue/saturation': {
-			if (adj.hue != null && adj.hue !== 0) {
-				adjustment_type = 'hue-rotate';
-				params = { value: Math.round((adj.hue + 360) % 360) };
-			} else {
-				adjustment_type = 'saturate';
-				params = { value: Math.max(-100, Math.min(100, Math.round(adj.saturation || 0))) };
-			}
+			const master = adj.master || {};
+			const rawHue = (adj.hue != null) ? adj.hue : (master.hue != null ? master.hue : 0);
+			const rawSat = (adj.saturation != null) ? adj.saturation : (master.saturation != null ? master.saturation : 0);
+			const rawLight = (adj.lightness != null) ? adj.lightness : (master.lightness != null ? master.lightness : 0);
+			// PSD hue is typically -180..180; keep as-signed for CSS hue-rotate
+			let hue = Math.round(rawHue);
+			if (hue > 180) hue -= 360;
+			if (hue < -180) hue += 360;
+			adjustment_type = 'hue-saturation';
+			params = {
+				hue: Math.max(-180, Math.min(180, hue)),
+				saturation: Math.max(-100, Math.min(100, Math.round(rawSat))),
+				lightness: Math.max(-100, Math.min(100, Math.round(rawLight))),
+			};
+			break;
+		}
+		case 'photo filter': {
+			// Approximate sepia-like photo filters as VP sepia (density 0..100)
+			adjustment_type = 'sepia';
+			let density = adj.density != null ? adj.density : 100;
+			if (density > 0 && density <= 1) density = Math.round(density * 100);
+			params = { value: Math.max(0, Math.min(100, Math.round(density))) };
 			break;
 		}
 		case 'invert': {
@@ -993,25 +1008,72 @@ function export_layer_to_psd(layer, docWidth, docHeight) {
 	if (layer.type === 'adjustment') {
 		const normType = (layer.adjustment_type || 'brightness').toLowerCase().replace(/_/g, '-');
 		let adjObj = { type: 'brightness/contrast' };
+		const p = layer.params || {};
 		if (normType === 'brightness') {
 			adjObj = {
 				type: 'brightness/contrast',
-				brightness: (layer.params && layer.params.value !== undefined) ? layer.params.value : 0,
-				contrast: (layer.params && layer.params.contrast !== undefined) ? layer.params.contrast : 0,
+				brightness: (p.value !== undefined) ? p.value : 0,
+				contrast: (p.contrast !== undefined) ? p.contrast : 0,
 			};
 		} else if (normType === 'contrast') {
 			adjObj = {
 				type: 'brightness/contrast',
 				brightness: 0,
-				contrast: (layer.params && layer.params.value !== undefined) ? layer.params.value : 0,
+				contrast: (p.value !== undefined) ? p.value : 0,
+			};
+		} else if (normType === 'hue-saturation' || normType === 'hue/saturation' || normType === 'huesaturation') {
+			let hue = (p.hue !== undefined) ? p.hue : 0;
+			let sat = (p.saturation !== undefined) ? p.saturation : 0;
+			let light = (p.lightness !== undefined) ? p.lightness : 0;
+			// Normalize hue into PSD -180..180
+			hue = ((Math.round(hue) % 360) + 360) % 360;
+			if (hue > 180) hue -= 360;
+			adjObj = {
+				type: 'hue/saturation',
+				master: {
+					a: 0, b: 0, c: 0, d: 0,
+					hue: hue,
+					saturation: Math.max(-100, Math.min(100, Math.round(sat))),
+					lightness: Math.max(-100, Math.min(100, Math.round(light))),
+				},
+			};
+		} else if (normType === 'hue-rotate') {
+			// Legacy single-channel → PSD hue/saturation master
+			let hue = (p.value !== undefined) ? p.value : 0;
+			hue = ((Math.round(hue) % 360) + 360) % 360;
+			if (hue > 180) hue -= 360;
+			adjObj = {
+				type: 'hue/saturation',
+				master: { a: 0, b: 0, c: 0, d: 0, hue: hue, saturation: 0, lightness: 0 },
+			};
+		} else if (normType === 'saturate') {
+			const sat = (p.value !== undefined) ? p.value : 0;
+			adjObj = {
+				type: 'hue/saturation',
+				master: {
+					a: 0, b: 0, c: 0, d: 0,
+					hue: 0,
+					saturation: Math.max(-100, Math.min(100, Math.round(sat))),
+					lightness: 0,
+				},
+			};
+		} else if (normType === 'sepia') {
+			// No native sepia adjustment in PSD — approximate as Photo Filter
+			const density = (p.value !== undefined) ? p.value : 100;
+			adjObj = {
+				type: 'photo filter',
+				color: { r: 112, g: 66, b: 20 },
+				density: Math.max(0, Math.min(100, Math.round(density))),
+				preserveLuminosity: true,
 			};
 		} else if (normType === 'invert') {
 			adjObj = { type: 'invert' };
 		} else if (normType === 'threshold') {
-			adjObj = { type: 'threshold', level: layer.params?.value ?? 128 };
+			adjObj = { type: 'threshold', level: p.value ?? 128 };
 		} else if (normType === 'grayscale') {
 			adjObj = { type: 'black & white' };
 		}
+		// blur: no PSD adjustment mapping — skipped (documented in audit)
 
 		const psdLayer = {
 			name: layer.name || 'Adjustment',

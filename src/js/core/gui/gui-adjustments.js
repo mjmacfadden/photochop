@@ -27,14 +27,9 @@ class GUI_adjustments_class {
 				icon: `<svg width="18" height="18" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" fill="none"><circle cx="12" cy="12" r="9"/><path d="M12 3a9 9 0 0 1 0 18z" fill="currentColor"/></svg>`
 			},
 			{
-				name: 'Hue Rotate',
-				target: 'layer/adjustment.hue_rotate',
+				name: 'Hue / Saturation',
+				target: 'layer/adjustment.hue_saturation',
 				icon: `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 2a10 10 0 0 1 10 10c0 4-2.5 7.5-6 9"/><path d="M12 2A10 10 0 0 0 2 12c0 4 2.5 7.5 6 9"/><circle cx="12" cy="12" r="3.5" fill="currentColor"/><path d="M19 16l3 5-5-1"/></svg>`
-			},
-			{
-				name: 'Saturate',
-				target: 'layer/adjustment.saturate',
-				icon: `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2.69l5.66 5.66a8 8 0 1 1-11.31 0z"/><path d="M12 2.69v18.62a8 8 0 0 0 5.66-13z" fill="currentColor"/></svg>`
 			},
 			{
 				name: 'Grayscale',
