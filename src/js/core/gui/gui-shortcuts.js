@@ -319,6 +319,27 @@ class GUI_shortcuts_class {
 				return;
 			}
 
+			// Delete/Backspace = delete selected layer(s)
+			// (Skip when marquee/lasso has an active selection — that clears pixels instead.)
+			if (!event.ctrlKey && !event.metaKey && !event.altKey
+				&& (event.code === 'Delete' || event.code === 'Backspace'
+					|| event.key === 'Delete' || event.key === 'Backspace'
+					|| event.keyCode === 46 || event.keyCode === 8)) {
+				const selMod = app.GUI && app.GUI.GUI_tools && app.GUI.GUI_tools.tools_modules
+					&& app.GUI.GUI_tools.tools_modules['selection'];
+				const selTool = selMod && selMod.object;
+				const hasMarquee = config.TOOL && config.TOOL.name === 'selection'
+					&& selTool && selTool.Base_selection && selTool.Base_selection.has_selection;
+				if (!hasMarquee) {
+					event.preventDefault();
+					event.stopImmediatePropagation();
+					if (app.GUI && app.GUI.modules && app.GUI.modules['layer/delete']) {
+						app.GUI.modules['layer/delete'].delete();
+					}
+					return;
+				}
+			}
+
 			// Ctrl/Cmd + G = Group Layers; Ctrl/Cmd + Shift + G = Ungroup
 			if ((event.ctrlKey || event.metaKey) && !event.altKey
 				&& (event.code === 'KeyG' || event.key === 'G' || event.key === 'g' || event.keyCode === 71)) {

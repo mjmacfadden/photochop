@@ -72,7 +72,8 @@ class Select_tool_class extends Base_tools_class {
 		else if (k == "ArrowLeft") {
 			this.move(-1, 0, event);
 		}
-		if (k == "Delete") {
+		if (k == "Delete" || k == "Backspace") {
+			event.preventDefault();
 			if (app.GUI && app.GUI.modules && app.GUI.modules['layer/delete']) {
 				app.GUI.modules['layer/delete'].delete();
 			}
