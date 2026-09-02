@@ -94,17 +94,17 @@ class Layer_delete_class {
 			const layer = roots[0];
 			if (is_group(layer)) {
 				title = 'Delete Group?';
-				message = 'Delete group <b>' + this._escape(layer.name) + '</b> and everything inside it? This can be undone.';
+				message = 'Delete group <b>' + this._escape(layer.name) + '</b> and everything inside it?';
 			} else {
 				title = 'Delete Layer?';
-				message = 'Delete layer <b>' + this._escape(layer.name) + '</b>? This can be undone.';
+				message = 'Delete layer <b>' + this._escape(layer.name) + '</b>?';
 			}
 		} else {
 			title = 'Delete ' + count + ' Layers?';
 			const group_note = has_group
 				? ' Groups in the selection will also remove their contents.'
 				: '';
-			message = 'Delete <b>' + count + '</b> selected layers?' + group_note + ' This can be undone.';
+			message = 'Delete <b>' + count + '</b> selected layers?' + group_note;
 		}
 
 		if (locked_skipped > 0) {

@@ -2780,12 +2780,13 @@ canvas{
 .alertify-notifier{
 	color: var(--text-color);
 }
-/* Match #popups .popup theme (colors, type, radius, buttons) */
+/* Match #popups .popup: colors, type, radius, close (×), footer buttons */
 .alertify .ajs-dimmer {
 	background-color: rgba(0, 0, 0, 0.55) !important;
 	animation: alertifyDimmerFadeIn 140ms ease forwards !important;
 }
 .alertify .ajs-dialog {
+	position: relative !important;
 	background-color: var(--block-background-color) !important;
 	border: 1px solid var(--border-color) !important;
 	border-radius: 12px !important;
@@ -2799,7 +2800,7 @@ canvas{
 }
 .alertify .ajs-header {
 	margin: 0 !important;
-	padding: 0 1rem !important;
+	padding: 0 3rem 0 1rem !important;
 	height: 4rem !important;
 	line-height: 4rem !important;
 	font-size: 1.2rem !important;
@@ -2807,13 +2808,45 @@ canvas{
 	color: var(--text-color) !important;
 	background-color: var(--header-background-color) !important;
 	border: none !important;
-	border-bottom: none !important;
+	border-radius: 0 !important;
+}
+/* Close × — same corner as #popups .popup .close */
+.alertify .ajs-commands {
+	position: absolute !important;
+	top: 0 !important;
+	right: 0 !important;
+	margin: 10px 10px 0 0 !important;
+	z-index: 5 !important;
+}
+.alertify .ajs-commands button {
+	display: none;
+}
+.alertify.ajs-closable .ajs-commands button.ajs-close {
+	display: inline-block !important;
+	width: auto !important;
+	height: auto !important;
+	min-width: 0 !important;
+	margin: 0 !important;
+	padding: 5px !important;
+	border: none !important;
+	background: none !important;
+	background-image: none !important;
+	color: var(--text-color) !important;
+	font-size: 16px !important;
+	line-height: 0.5 !important;
+	opacity: 0.9;
+	cursor: pointer;
+}
+.alertify.ajs-closable .ajs-commands button.ajs-close::before {
+	content: "\00d7";
 }
 .alertify .ajs-body {
+	margin: 0 !important;
+	min-height: 0 !important;
 	color: var(--text-color) !important;
 	font-size: 13px !important;
 }
-.alertify .ajs-content {
+.alertify .ajs-body .ajs-content {
 	padding: 1rem 1.25rem !important;
 	color: var(--text-color) !important;
 	line-height: 1.45 !important;
@@ -2822,24 +2855,43 @@ canvas{
 	color: var(--text-color-active) !important;
 	font-weight: 600 !important;
 }
+/* Footer buttons — centered like #popups .popup .buttons */
 .alertify .ajs-footer {
+	margin: 0 !important;
+	padding: 0.5rem 0 !important;
+	min-height: 5rem !important;
+	line-height: 4rem !important;
 	background-color: var(--block-background-color) !important;
 	border-top: 1px solid var(--header-background-color) !important;
-	padding: 0.75rem 1rem !important;
+	border-radius: 0 !important;
 	text-align: center !important;
+}
+.alertify .ajs-footer .ajs-buttons {
+	float: none !important;
+	display: block !important;
+	text-align: center !important;
+}
+.alertify .ajs-footer .ajs-buttons.ajs-primary {
+	text-align: center !important;
+	float: none !important;
 }
 .alertify .ajs-footer .ajs-buttons .ajs-button,
 .alertify .ajs-button {
+	float: none !important;
+	display: inline-block !important;
+	vertical-align: middle !important;
 	background-color: var(--button-background-color) !important;
 	border: 1px solid var(--border-color) !important;
-	border-radius: 2px !important;
+	border-radius: 4px !important;
 	color: var(--text-color) !important;
 	font-size: 13px !important;
 	font-family: inherit !important;
 	font-weight: normal !important;
-	min-width: 5.5rem !important;
-	padding: 0.45rem 1rem !important;
-	margin: 0 0.35rem !important;
+	text-transform: none !important;
+	min-width: 60px !important;
+	min-height: 0 !important;
+	padding: 5px 10px !important;
+	margin: 0 3px !important;
 	box-shadow: none !important;
 	text-shadow: none !important;
 }
@@ -2847,39 +2899,21 @@ canvas{
 	background-color: var(--button-background-color-hover) !important;
 }
 .alertify .ajs-button.ajs-ok {
-	background-color: var(--button-background-color) !important;
-	border-color: var(--border-color) !important;
 	color: var(--text-color-active) !important;
 	font-weight: 600 !important;
-}
-.alertify .ajs-button.ajs-ok:hover {
-	background-color: var(--button-background-color-hover) !important;
 }
 .alertify .ajs-button:focus {
 	outline: 1px solid var(--text-color-blue) !important;
 	outline-offset: 1px !important;
 }
 @keyframes alertifySpringPop {
-	0% {
-		opacity: 0;
-		transform: scale(0.94);
-	}
-	65% {
-		opacity: 1;
-		transform: scale(1.015);
-	}
-	100% {
-		opacity: 1;
-		transform: scale(1);
-	}
+	0% { opacity: 0; transform: scale(0.94); }
+	65% { opacity: 1; transform: scale(1.015); }
+	100% { opacity: 1; transform: scale(1); }
 }
 @keyframes alertifyDimmerFadeIn {
-	from {
-		opacity: 0;
-	}
-	to {
-		opacity: 1;
-	}
+	from { opacity: 0; }
+	to { opacity: 1; }
 }
 .effectsPreview{
 	cursor: pointer;
