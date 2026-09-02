@@ -1030,61 +1030,109 @@ function export_layer_to_psd(layer, docWidth, docHeight) {
 	}
 
 	if (layer.type === 'text' && Array.isArray(layer.data)) {
-		let textStr = '';
-		let firstMeta = null;
-
-		for (let l = 0; l < layer.data.length; l++) {
-			const line = layer.data[l];
-			let lineText = '';
-			if (Array.isArray(line)) {
-				for (let s = 0; s < line.length; s++) {
-					lineText += line[s].text || '';
-					if (!firstMeta && line[s].meta) {
-						firstMeta = line[s].meta;
-					}
-				}
-			}
-			textStr += (l > 0 ? '\r' : '') + lineText;
-		}
-
-		if (textStr.length > 0) {
-			const meta = firstMeta || {};
-			const fontSize = meta.size || 32;
-			const family = meta.family || 'Arial';
-			const rgb = hex_to_rgb(meta.fill_color || '#000000');
-			const params = layer.params || {};
-			const isBox = params.boundary === 'box';
-			const halign = String(params.halign || 'left').toLowerCase();
-			let justification = 'left';
-			if (halign === 'center') justification = 'center';
-			else if (halign === 'right') justification = 'right';
-
-			// Preserve point vs paragraph/box for round-trip with ag-psd.
-			// boxBounds are in text-local space [top, left, bottom, right].
-			const w = Math.max(1, Math.round(layer.width || 1));
-			const h = Math.max(1, Math.round(layer.height || 1));
-			psdLayer.text = {
-				text: textStr,
-				shapeType: isBox ? 'box' : 'point',
-				boxBounds: isBox ? [0, 0, h, w] : undefined,
-				pointBase: isBox ? undefined : [0, 0],
-				paragraphStyle: {
-					justification: justification,
-				},
-				style: {
-					font: { name: family },
-					fontSize: fontSize,
-					fauxBold: Boolean(meta.bold),
-					fauxItalic: Boolean(meta.italic),
-					underline: Boolean(meta.underline),
-					strikethrough: Boolean(meta.strikethrough),
-					fillColor: { r: rgb.r, g: rgb.g, b: rgb.b },
-				}
-			};
+		const built = build_psd_text_from_layer(layer);
+		if (built) {
+			psdLayer.text = built;
 		}
 	}
 
 	return psdLayer;
+}
+
+
+/**
+ * Build ag-psd LayerTextData from a PhotoChop text layer.
+ * Preserves point/box mode, alignment, rotation transform, and per-span styleRuns.
+ */
+function build_psd_text_from_layer(layer) {
+	let textStr = '';
+	let firstMeta = null;
+	const styleRuns = [];
+
+	const meta_to_style = (meta) => {
+		const m = meta || {};
+		const rgb = hex_to_rgb(m.fill_color || '#000000');
+		const style = {
+			font: { name: m.family || 'Arial' },
+			fontSize: m.size || 32,
+			fauxBold: Boolean(m.bold),
+			fauxItalic: Boolean(m.italic),
+			underline: Boolean(m.underline),
+			strikethrough: Boolean(m.strikethrough),
+			fillColor: { r: rgb.r, g: rgb.g, b: rgb.b },
+		};
+		if (m.kerning != null && !isNaN(m.kerning)) {
+			style.kerning = m.kerning;
+			style.autoKerning = false;
+		}
+		if (m.leading != null && !isNaN(m.leading) && m.leading !== 0) {
+			style.leading = m.leading;
+			style.autoLeading = false;
+		}
+		return style;
+	};
+
+	const styles_equal = (a, b) => JSON.stringify(a) === JSON.stringify(b);
+
+	for (let l = 0; l < layer.data.length; l++) {
+		const line = layer.data[l];
+		if (l > 0) {
+			textStr += '\r';
+			if (styleRuns.length > 0) {
+				styleRuns[styleRuns.length - 1].length += 1;
+			} else {
+				styleRuns.push({ length: 1, style: meta_to_style(null) });
+			}
+		}
+		if (!Array.isArray(line)) continue;
+		for (let s = 0; s < line.length; s++) {
+			const span = line[s] || {};
+			const spanText = span.text || '';
+			if (!firstMeta && span.meta) firstMeta = span.meta;
+			if (!spanText.length) continue;
+			textStr += spanText;
+			const style = meta_to_style(span.meta || firstMeta);
+			const prev = styleRuns[styleRuns.length - 1];
+			if (prev && styles_equal(prev.style, style)) {
+				prev.length += spanText.length;
+			} else {
+				styleRuns.push({ length: spanText.length, style: style });
+			}
+		}
+	}
+
+	if (!textStr.length) return null;
+
+	const meta = firstMeta || {};
+	const params = layer.params || {};
+	const isBox = params.boundary === 'box';
+	const halign = String(params.halign || 'left').toLowerCase();
+	let justification = 'left';
+	if (halign === 'center') justification = 'center';
+	else if (halign === 'right') justification = 'right';
+
+	const w = Math.max(1, Math.round(layer.width || 1));
+	const h = Math.max(1, Math.round(layer.height || 1));
+	const rotate = Number(layer.rotate) || 0;
+	const rad = (rotate * Math.PI) / 180;
+	const cos = Math.cos(rad);
+	const sin = Math.sin(rad);
+	// Affine [xx, xy, yx, yy, tx, ty]; layer left/top carry translation.
+	const transform = [cos, sin, -sin, cos, 0, 0];
+	const primaryStyle = (styleRuns[0] && styleRuns[0].style) || meta_to_style(meta);
+
+	return {
+		text: textStr,
+		transform: transform,
+		shapeType: isBox ? 'box' : 'point',
+		boxBounds: isBox ? [0, 0, h, w] : undefined,
+		pointBase: isBox ? undefined : [0, 0],
+		paragraphStyle: {
+			justification: justification,
+		},
+		style: primaryStyle,
+		styleRuns: styleRuns.length ? styleRuns : [{ length: textStr.length, style: primaryStyle }],
+	};
 }
 
 /**
