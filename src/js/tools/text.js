@@ -2633,14 +2633,18 @@ class Text_class extends Base_tools_class {
 					params: new_params
 				};
 				if (wasDynamic && this.mousedownBounds.width > 0) {
-					const scale = nextW / this.mousedownBounds.width;
-					const scaledData = this.bake_point_text_scale(config.layer, scale, { commit: true });
+					if (!this._point_resize_snapshot) {
+						this.begin_point_text_resize(config.layer);
+						this._point_resize_base_width = Math.max(1, this.mousedownBounds.width);
+					}
+					const scaledData = this.apply_point_text_resize(config.layer, nextW);
 					if (scaledData) {
 						update.data = scaledData;
 						this.focusedValue = JSON.stringify(scaledData);
 						this.focusedWidth = nextW;
 						this.focusedHeight = nextH;
 					}
+					this.end_point_text_resize();
 				}
 				await app.State.do_action(
 					new app.Actions.Bundle_action('resize_text_layer', 'Resize Text Layer', [
@@ -2994,15 +2998,9 @@ class Text_class extends Base_tools_class {
 	}
 
 
-	bake_point_text_scale(layer, scale, { commit = true } = {}) {
-		if (!layer || layer.type !== 'text' || !scale || !isFinite(scale) || Math.abs(scale - 1) < 1e-6) {
-			return null;
-		}
-		const editor = this.get_editor(layer);
-		const lines = editor
-			? JSON.parse(JSON.stringify(editor.document.lines))
-			: JSON.parse(JSON.stringify(layer.data || [[{ text: '', meta: {} }]]));
-		for (const line of lines) {
+	_scale_text_lines(lines, scale) {
+		const out = JSON.parse(JSON.stringify(lines || [[{ text: '', meta: {} }]]));
+		for (const line of out) {
 			for (const span of line) {
 				if (!span.meta) span.meta = {};
 				const size = (span.meta.size != null) ? span.meta.size : metaDefaults.size;
@@ -3015,25 +3013,64 @@ class Text_class extends Base_tools_class {
 				}
 			}
 		}
-		if (commit && editor) {
-			editor.document.lines = lines;
-			editor.hasValueChanged = true;
+		return out;
+	}
+
+	bake_point_text_scale(layer, scale, { commit = true } = {}) {
+		if (!layer || layer.type !== 'text' || !scale || !isFinite(scale) || Math.abs(scale - 1) < 1e-6) {
+			return null;
+		}
+		const editor = this.get_editor(layer);
+		const source = (this._point_resize_snapshot)
+			? this._point_resize_snapshot
+			: (editor ? editor.document.lines : (layer.data || [[{ text: '', meta: {} }]]));
+		const lines = this._scale_text_lines(source, scale);
+		if (commit) {
+			if (editor) {
+				editor.document.lines = JSON.parse(JSON.stringify(lines));
+				editor.hasValueChanged = true;
+			}
 			layer.data = JSON.parse(JSON.stringify(lines));
 		}
 		return lines;
 	}
 
+	/**
+	 * Start a point-text transform: remember pre-drag fonts so scale is always
+	 * relative to the drag start (not compounded each move).
+	 */
+	begin_point_text_resize(layer) {
+		if (!layer || layer.type !== 'text') return;
+		const editor = this.get_editor(layer);
+		const lines = editor ? editor.document.lines : layer.data;
+		this._point_resize_snapshot = JSON.parse(JSON.stringify(lines || [[{ text: '', meta: {} }]]));
+		this._point_resize_base_width = Math.max(1, layer.width || 1);
+		this._point_resize_base_height = Math.max(1, layer.height || 1);
+		this._point_resize_layer_id = layer.id;
+	}
+
+	/**
+	 * Apply point-text scale from the drag-start snapshot to real font sizes.
+	 * Returns the scaled lines (also written onto the layer/editor).
+	 */
+	apply_point_text_resize(layer, currentWidth) {
+		if (!layer || layer.type !== 'text' || !this._point_resize_snapshot) return null;
+		if (this._point_resize_layer_id != null && layer.id !== this._point_resize_layer_id) return null;
+		const base = Math.max(1, this._point_resize_base_width || 1);
+		const scale = Math.max(0.01, (currentWidth || layer.width || base) / base);
+		return this.bake_point_text_scale(layer, scale, { commit: true });
+	}
+
+	end_point_text_resize() {
+		this._point_resize_snapshot = null;
+		this._point_resize_base_width = null;
+		this._point_resize_base_height = null;
+		this._point_resize_layer_id = null;
+	}
+
 	is_point_text_transform_active(layer) {
-		if (!layer || layer.type !== 'text' || !layer.params || layer.params.boundary !== 'dynamic') {
-			return false;
-		}
-		if (this.resizing) return true;
-		try {
-			const sel = app.GUI && app.GUI.GUI_tools && app.GUI.GUI_tools.tools_modules
-				&& app.GUI.GUI_tools.tools_modules.select
-				&& app.GUI.GUI_tools.tools_modules.select.object;
-			if (sel && sel.resizing) return true;
-		} catch (e) { /* ignore */ }
+		// Live ctx.scale preview disabled when we bake real font sizes during drag.
+		// Returning false avoids double-scaling (fonts *and* canvas scale).
 		return false;
 	}
 

@@ -157,6 +157,14 @@ class Select_tool_class extends Base_tools_class {
 			// Point text stays dynamic — transform scales glyphs (Photoshop-like), not convert to box.
 			if (config.layer.type === 'text' && config.layer.params && config.layer.params.boundary === 'dynamic') {
 				this._resizing_point_text = true;
+				try {
+					const textTool = app.GUI && app.GUI.GUI_tools && app.GUI.GUI_tools.tools_modules
+						&& app.GUI.GUI_tools.tools_modules['text']
+						&& app.GUI.GUI_tools.tools_modules['text'].object;
+					if (textTool && typeof textTool.begin_point_text_resize === 'function') {
+						textTool.begin_point_text_resize(config.layer);
+					}
+				} catch (e) { /* ignore */ }
 			} else {
 				this._resizing_point_text = false;
 			}
@@ -215,6 +223,19 @@ class Select_tool_class extends Base_tools_class {
 			let rotate = this.Base_selection.current_angle
 			if(config.layer.rotate != rotate && rotate !== null){
 				config.layer.rotate = rotate;
+			}
+
+			// Point text: bake font sizes from drag-start snapshot (not a temporary canvas scale)
+			if (this._resizing_point_text && config.layer && config.layer.type === 'text') {
+				try {
+					const textTool = app.GUI && app.GUI.GUI_tools && app.GUI.GUI_tools.tools_modules
+						&& app.GUI.GUI_tools.tools_modules['text']
+						&& app.GUI.GUI_tools.tools_modules['text'].object;
+					if (textTool && typeof textTool.apply_point_text_resize === 'function') {
+						textTool.apply_point_text_resize(config.layer, config.layer.width);
+					}
+				} catch (e) { /* ignore */ }
+				this.Base_layers.render();
 			}
 
 			return;
@@ -283,20 +304,43 @@ class Select_tool_class extends Base_tools_class {
 				this.mousedown_dimensions.width !== width || this.mousedown_dimensions.height !== height
 			) {
 				var layerUpdate = { x, y, width, height };
-				// Point text: bake glyph scale into font sizes (box text only changes the frame)
+				// Point text: finalize font scale from drag-start snapshot into history
 				if (resizingPointText && this.mousedown_dimensions.width > 0) {
-					const scale = width / this.mousedown_dimensions.width;
 					try {
 						const textTool = app.GUI && app.GUI.GUI_tools && app.GUI.GUI_tools.tools_modules
 							&& app.GUI.GUI_tools.tools_modules['text']
 							&& app.GUI.GUI_tools.tools_modules['text'].object;
-						if (textTool && typeof textTool.bake_point_text_scale === 'function') {
-							const scaledData = textTool.bake_point_text_scale(config.layer, scale, { commit: true });
+						if (textTool) {
+							if (!textTool._point_resize_snapshot && typeof textTool.begin_point_text_resize === 'function') {
+								textTool.begin_point_text_resize(config.layer);
+								textTool._point_resize_base_width = Math.max(1, this.mousedown_dimensions.width);
+							}
+							// Restore pre-drag fonts so Update_layer records the correct old_settings
+							if (textTool._point_resize_snapshot) {
+								const pre = JSON.parse(JSON.stringify(textTool._point_resize_snapshot));
+								config.layer.data = pre;
+								const ed = textTool.get_editor(config.layer);
+								if (ed) {
+									ed.set_lines(JSON.parse(JSON.stringify(pre)));
+									ed.hasValueChanged = true;
+								}
+							}
+							const scaledData = (typeof textTool.apply_point_text_resize === 'function')
+								? textTool.apply_point_text_resize(config.layer, width)
+								: null;
 							if (scaledData) {
-								layerUpdate.data = scaledData;
+								// Put pre-drag data back on the layer so the action's old_settings is pre-drag;
+								// the action itself applies scaledData.
+								if (textTool._point_resize_snapshot) {
+									config.layer.data = JSON.parse(JSON.stringify(textTool._point_resize_snapshot));
+								}
+								layerUpdate.data = JSON.parse(JSON.stringify(scaledData));
 								textTool.focusedValue = JSON.stringify(scaledData);
 								textTool.focusedWidth = width;
 								textTool.focusedHeight = height;
+							}
+							if (typeof textTool.end_point_text_resize === 'function') {
+								textTool.end_point_text_resize();
 							}
 						}
 					} catch (e) { console.warn('point text scale bake failed', e); }
@@ -313,6 +357,16 @@ class Select_tool_class extends Base_tools_class {
 				await app.State.do_action(
 					new app.Actions.Bundle_action('resize_layer', 'Resize Layer', resize_actions)
 				);
+			} else if (resizingPointText) {
+				// No net size change — still clear the drag snapshot
+				try {
+					const textTool = app.GUI && app.GUI.GUI_tools && app.GUI.GUI_tools.tools_modules
+						&& app.GUI.GUI_tools.tools_modules['text']
+						&& app.GUI.GUI_tools.tools_modules['text'].object;
+					if (textTool && typeof textTool.end_point_text_resize === 'function') {
+						textTool.end_point_text_resize();
+					}
+				} catch (e) { /* ignore */ }
 			}
 
 			//also handle rotation
