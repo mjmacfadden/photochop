@@ -2,6 +2,7 @@ import app from './../app.js';
 import config from './../config.js';
 import { Base_action } from './base.js';
 import alertify from './../../../node_modules/alertifyjs/build/alertify.min.js';
+import { resolve_insert_parent_id, resolve_insert_order } from './../libs/layer-tree.js';
 
 export class Insert_layer_action extends Base_action {
 	/**
@@ -20,6 +21,7 @@ export class Insert_layer_action extends Base_action {
 		this.update_layer_action = null;
 		this.delete_layer_action = null;
 		this.autoresize_canvas_action = null;
+		this.order_shifts = null;
 	}
 
 	async do() {
@@ -29,24 +31,33 @@ export class Insert_layer_action extends Base_action {
 		this.previous_selected_layer = config.layer;
 		let autoresize_as = null;
 
-		// Calculate top order
-		let max_order = 0;
-		if (config.layers && Array.isArray(config.layers)) {
-			for (let i in config.layers) {
-				let lOrder = config.layers[i].order;
-				if (lOrder != null && lOrder > max_order) {
-					max_order = lOrder;
-				}
-			}
+		// Only trust selection if that layer still exists (group delete can leave a stale ref).
+		const active_layer = (config.layer && app.Layers.get_layer(config.layer.id))
+			? config.layer
+			: null;
+		if (config.layer && !active_layer) {
+			config.layer = null;
+			config.selected_layer_ids = [];
+			config.layer_select_anchor_id = null;
 		}
-		let target_order = (this.settings && this.settings.order != null)
-			? this.settings.order
-			: (max_order + 1);
 
-		// Default data
+		// Default parent (group-aware)
+		const default_parent = (this.settings && this.settings.parent_id != null)
+			? this.settings.parent_id
+			: resolve_insert_parent_id(active_layer, config.layers);
+
+		// Default order: above selected layer; if none selected → top of stack (next_order)
+		this.order_shifts = null;
+		let target_order;
+		if (this.settings && this.settings.order != null) {
+			target_order = this.settings.order;
+		} else {
+			target_order = resolve_insert_order(active_layer, default_parent, config.layers);
+		}
+
 		const layer = {
 			id: app.Layers.auto_increment,
-			parent_id: 0,
+			parent_id: default_parent,
 			name: 'Layer ' + app.Layers.auto_increment,
 			type: null,
 			link: null,
@@ -72,6 +83,7 @@ export class Insert_layer_action extends Base_action {
 			render_function: null,
 			mask: null,
 			adjustment_type: null,
+			opened: true,
 		};
 
 		// Build data
@@ -92,7 +104,7 @@ export class Insert_layer_action extends Base_action {
 				layer.is_vector = true;
 			}
 
-			if (config.layers.length == 1 && (config.layer.width == 0 || config.layer.width === null)
+			if (config.layer && config.layers.length == 1 && (config.layer.width == 0 || config.layer.width === null)
 					&& (config.layer.height == 0 || config.layer.height === null) && config.layer.data == null) {
 				// Remove first empty layer
 
@@ -149,7 +161,7 @@ export class Insert_layer_action extends Base_action {
 			}
 		}
 
-		if (this.settings != undefined && config.layers.length > 0
+		if (this.settings != undefined && config.layer && config.layers.length > 0
 			&& (config.layer.width == 0 || config.layer.width === null) && (config.layer.height == 0 || config.layer.height === null)
 			&& config.layer.data == null && layer.type != 'image' && this.can_automate !== false) {
 			// Update existing layer, because it's empty
@@ -157,13 +169,32 @@ export class Insert_layer_action extends Base_action {
 			await this.update_layer_action.do();
 		}
 		else {
-			// Create new layer
+			// Create new layer — make room above the selection first
+			const insert_order = (layer.order != null) ? layer.order : target_order;
+			layer.order = insert_order;
+			if (config.layers && Array.isArray(config.layers)) {
+				const shifts = [];
+				for (let i = 0; i < config.layers.length; i++) {
+					const l = config.layers[i];
+					if (l.order != null && l.order >= insert_order) {
+						shifts.push({ id: l.id, old_order: l.order });
+						l.order = l.order + 1;
+					}
+				}
+				if (shifts.length) {
+					this.order_shifts = shifts;
+				}
+			}
 			config.layers.push(layer);
 			config.layer = app.Layers.get_layer(layer.id);
 			app.Layers.auto_increment++;
 
 			if (config.layer == null) {
 				config.layer = config.layers[0];
+			}
+			if (config.layer) {
+				config.selected_layer_ids = [config.layer.id];
+				config.layer_select_anchor_id = config.layer.id;
 			}
 
 			this.inserted_layer_id = layer.id;
@@ -196,8 +227,20 @@ export class Insert_layer_action extends Base_action {
 			await this.autoresize_canvas_action.undo();
 			this.autoresize_canvas_action = null;
 		}
+		if (this.order_shifts) {
+			for (const s of this.order_shifts) {
+				const layer = config.layers.find(l => l.id === s.id);
+				if (layer) layer.order = s.old_order;
+			}
+			this.order_shifts = null;
+		}
 		if (this.inserted_layer_id) {
-			config.layers.pop();
+			const index = config.layers.findIndex(l => l.id === this.inserted_layer_id);
+			if (index > -1) {
+				config.layers.splice(index, 1);
+			} else {
+				config.layers.pop();
+			}
 			this.inserted_layer_id = null;
 		}
 		if (this.update_layer_action) {
@@ -212,6 +255,25 @@ export class Insert_layer_action extends Base_action {
 		}
 		config.layer = this.previous_selected_layer;
 		this.previous_selected_layer = null;
+		if (config.layer) {
+			config.selected_layer_ids = [config.layer.id];
+			config.layer_select_anchor_id = config.layer.id;
+		} else {
+			config.selected_layer_ids = [];
+			config.layer_select_anchor_id = null;
+		}
+
+		if (app.GUI && app.GUI.GUI_tools && app.GUI.GUI_tools.tools_modules['text']) {
+			const textTool = app.GUI.GUI_tools.tools_modules['text'].object;
+			if (textTool) {
+				textTool.layer = config.layer;
+				if (!config.layer || config.layer.type !== 'text') {
+					if (textTool.textarea) textTool.textarea.blur();
+					textTool.focused = false;
+					textTool.focusedValue = null;
+				}
+			}
+		}
 
 		app.Layers.render();
 		app.GUI.GUI_layers.render_layers();
@@ -227,5 +289,6 @@ export class Insert_layer_action extends Base_action {
 			this.update_layer_action = null;
 		}
 		this.previous_selected_layer = null;
+		this.order_shifts = null;
 	}
 }

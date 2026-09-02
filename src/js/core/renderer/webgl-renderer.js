@@ -25,6 +25,8 @@
  *   - Tool overlays remain Canvas 2D
  */
 
+import { is_group, is_effectively_visible } from "./../../libs/layer-tree.js";
+
 import config from './../../config.js';
 import zoomView from './../../libs/zoomView.js';
 
@@ -151,7 +153,7 @@ class WebGL_renderer_class {
 	can_render_layers(layers, disabled_filter_id) {
 		for (var i = 0; i < layers.length; i++) {
 			var layer = layers[i];
-			if (layer == null || layer.type == null || layer.visible === false)
+			if (layer == null || layer.type == null || is_group(layer) || !is_effectively_visible(layer))
 				continue;
 
 			if (layer.type === 'adjustment') {
@@ -486,7 +488,7 @@ class WebGL_renderer_class {
 				var layer = layers[i];
 
 				// Skip hidden or empty layers
-				if (layer.visible === false || layer.type == null) continue;
+				if (layer.type == null || is_group(layer) || !is_effectively_visible(layer)) continue;
 
 				// Get or create the layer texture
 				var texInfo = this._get_or_create_texture(layer);

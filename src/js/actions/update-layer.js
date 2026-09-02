@@ -34,9 +34,16 @@ export class Update_layer_action extends Base_action {
 		for (let i in this.settings) {
 			if (i == 'id')
 				continue;
-			if (i == 'order')
-				continue;
-			this.old_settings[i] = this.reference_layer[i];
+			// order is allowed so group reparent / tree drag can update z-order
+			if (this.reference_layer[i] && typeof this.reference_layer[i] === 'object') {
+				try {
+					this.old_settings[i] = JSON.parse(JSON.stringify(this.reference_layer[i]));
+				} catch (e) {
+					this.old_settings[i] = this.reference_layer[i];
+				}
+			} else {
+				this.old_settings[i] = this.reference_layer[i];
+			}
 			this.reference_layer[i] = this.settings[i];
 		}
 
@@ -89,9 +96,20 @@ export class Update_layer_action extends Base_action {
 
 	async undo() {
 		super.undo();
+		if (!this.reference_layer) {
+			this.reference_layer = app.Layers.get_layer(this.layer_id);
+		}
 		if (this.reference_layer) {
 			for (let i in this.old_settings) {
-				this.reference_layer[i] = this.old_settings[i];
+				if (this.old_settings[i] && typeof this.old_settings[i] === 'object') {
+					try {
+						this.reference_layer[i] = JSON.parse(JSON.stringify(this.old_settings[i]));
+					} catch (e) {
+						this.reference_layer[i] = this.old_settings[i];
+					}
+				} else {
+					this.reference_layer[i] = this.old_settings[i];
+				}
 			}
 			if (this.old_mask && this.reference_layer.mask) {
 				this.reference_layer.mask.x = this.old_mask.x;
@@ -102,15 +120,23 @@ export class Update_layer_action extends Base_action {
 				delete this.reference_layer.mask._alpha_source;
 				this.old_mask = null;
 			}
-			if (this.reference_layer.type === 'text' && ('data' in this.old_settings)) {
+			if (this.reference_layer.type === 'text') {
 				this.reference_layer._needs_update_data = true;
+				if (app.GUI && app.GUI.GUI_tools && app.GUI.GUI_tools.tools_modules['text']) {
+					const textTool = app.GUI.GUI_tools.tools_modules['text'].object;
+					if (textTool && typeof textTool.get_editor === 'function') {
+						const editor = textTool.get_editor(this.reference_layer);
+						if (editor && typeof editor.set_lines === 'function') {
+							editor.hasValueChanged = true;
+							editor.set_lines(JSON.parse(JSON.stringify(this.reference_layer.data || [])));
+						}
+					}
+				}
 			}
 			if (this.old_settings.params || this.old_settings.width || this.old_settings.height) {
 				config.need_render_changed_params = true;
 			}
-			this.old_settings = {};
 		}
-		this.reference_layer = null;
 		app.Layers.invalidate({ document: true, preview: true, details: true });
 		if (app.GUI && app.GUI.GUI_layers) {
 			app.GUI.GUI_layers.render_layers();

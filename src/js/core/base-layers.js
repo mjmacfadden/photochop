@@ -16,6 +16,7 @@ import Mask_class from "./../modules/mask/mask.js";
 import alertify from "./../../../node_modules/alertifyjs/build/alertify.min.js";
 import { create_renderer, get_renderer, switch_renderer } from "./renderer/index.js";
 import Composite_cache_class from "./renderer/composite-cache.js";
+import { is_group, is_effectively_visible } from "./../libs/layer-tree.js";
 
 var instance = null;
 
@@ -23,21 +24,22 @@ var instance = null;
  * Layers class - manages layers. Each layer is object with various types. Keys:
  * - id (int)
  * - link (image)
- * - parent_id (int)
+ * - parent_id (int) — 0 = document root; otherwise id of a type==="group" parent
  * - name (string)
- * - type (string)
+ * - type (string) — image|text|brush|pencil|gradient|adjustment|group|...
+ * - opened (bool) — groups only: expanded in Layers panel (ag-psd `opened`)
  * - x (int)
  * - y (int)
  * - width (int)
  * - height (int)
  * - width_original (int)
  * - height_original (int)
- * - visible (bool)
+ * - visible (bool) — hiding a group hides its contents (effective visibility)
  * - is_vector (bool)
  * - hide_selection_if_active (bool)
  * - opacity (0-100)
- * - order (int)
- * - composition (string)
+ * - order (int) — higher = nearer top of stack / Layers panel
+ * - composition (string) — groups: "pass-through" (default) or a blend mode
  * - rotate (int) 0-359
  * - data (various data here)
  * - params (object)
@@ -45,6 +47,10 @@ var instance = null;
  * - status (string)
  * - filters (array)
  * - render_function (function)
+ *
+ * Groups are first-class layers (type==="group") nested via parent_id.
+ * See src/js/libs/layer-tree.js. Compositor skips group nodes (pass-through);
+ * child paint order follows global `order`.
  */
 class Base_layers_class {
 	constructor() {
@@ -519,7 +525,17 @@ class Base_layers_class {
 				continue;
 			}
 
-			if (layer.visible === false || layer.type == null) {
+			if (layer.type == null) {
+				continue;
+			}
+
+			// Groups have no pixels — children paint via global order (pass-through).
+			if (is_group(layer)) {
+				continue;
+			}
+
+			// Honor group visibility: hiding a parent group hides contents.
+			if (!is_effectively_visible(layer)) {
 				continue;
 			}
 

@@ -67,6 +67,9 @@ class Base_state_class {
 			// Action aborted. This is usually expected behavior as actions throw errors if they shouldn't run.
 			return { status: 'aborted', reason: error };
 		}
+		if (options.skip_history) {
+			return { status: 'completed' };
+		}
 		// Remove all redo actions from history
 		if (this.action_history_index < this.action_history.length) {
 			const freed_actions = this.action_history.slice(this.action_history_index, this.action_history.length).reverse();
@@ -164,6 +167,12 @@ class Base_state_class {
 	}
 
 	async undo_action() {
+		if (app.GUI && app.GUI.GUI_tools && app.GUI.GUI_tools.tools_modules['text']) {
+			const textTool = app.GUI.GUI_tools.tools_modules['text'].object;
+			if (textTool && typeof textTool.commit_text_changes === 'function') {
+				await textTool.commit_text_changes();
+			}
+		}
 		if (this.can_undo()) {
 			this.action_history_index--;
 			await this.action_history[this.action_history_index].undo();
@@ -235,14 +244,14 @@ class Base_state_class {
 	 * supports multiple levels undo system
 	 */
 	undo() {
-		this.undo_action();
+		return this.undo_action();
 	}
 
 	/**
 	 * supports multiple levels redo system
 	 */
 	redo() {
-		this.redo_action();
+		return this.redo_action();
 	}
 
 }

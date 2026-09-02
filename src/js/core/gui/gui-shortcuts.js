@@ -203,8 +203,9 @@ class GUI_shortcuts_class {
 				return;
 			}
 
-			// Shift + N = New Layer
-			if (event.shiftKey && (event.code === 'KeyN' || event.key === 'N' || event.key === 'n' || event.keyCode === 78)) {
+			// Ctrl/Cmd + Shift + N = New Layer
+			if ((event.ctrlKey || event.metaKey) && event.shiftKey && !event.altKey
+				&& (event.code === 'KeyN' || event.key === 'N' || event.key === 'n' || event.keyCode === 78)) {
 				event.preventDefault();
 				event.stopImmediatePropagation();
 				app.State.do_action(
@@ -221,6 +222,17 @@ class GUI_shortcuts_class {
 				if (app.GUI && app.GUI.modules && app.GUI.modules['file/new']) {
 					app.GUI.modules['file/new'].new();
 				}
+				return;
+			}
+
+			// Shift + N = New Layer (no modifiers besides Shift)
+			if (event.shiftKey && !event.ctrlKey && !event.metaKey && !event.altKey
+				&& (event.code === 'KeyN' || event.key === 'N' || event.key === 'n' || event.keyCode === 78)) {
+				event.preventDefault();
+				event.stopImmediatePropagation();
+				app.State.do_action(
+					new app.Actions.Insert_layer_action()
+				);
 				return;
 			}
 
@@ -286,6 +298,21 @@ class GUI_shortcuts_class {
 				event.stopImmediatePropagation();
 				if (app.GUI && app.GUI.GUI_tools && app.GUI.GUI_tools.tools_modules['selection']) {
 					app.GUI.GUI_tools.tools_modules['selection'].object.fill(config.COLOR_BG || '#ffffff');
+				}
+				return;
+			}
+
+			// Ctrl/Cmd + G = Group Layers; Ctrl/Cmd + Shift + G = Ungroup
+			if ((event.ctrlKey || event.metaKey) && !event.altKey
+				&& (event.code === 'KeyG' || event.key === 'G' || event.key === 'g' || event.keyCode === 71)) {
+				event.preventDefault();
+				event.stopImmediatePropagation();
+				if (app.GUI && app.GUI.modules && app.GUI.modules['layer/group']) {
+					if (event.shiftKey) {
+						app.GUI.modules['layer/group'].ungroup();
+					} else {
+						app.GUI.modules['layer/group'].group_layers();
+					}
 				}
 				return;
 			}

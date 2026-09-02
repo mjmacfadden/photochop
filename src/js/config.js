@@ -20,6 +20,8 @@ config.safe_search_can_be_disabled = true;
 config.google_webfonts_key = 'AIzaSyBES3AipG'+'YVYNLtS,Vk-hJ11bbhJ9sTpRbA'.replace(',', '');
 config.layers = [];
 config.layer = null;
+config.selected_layer_ids = []; // multi-select in Layers panel (primary remains config.layer)
+config.layer_select_anchor_id = null; // Shift+click range anchor
 var need_render = false;
 Object.defineProperty(config, 'need_render', {
 	get: function () {
@@ -526,6 +528,15 @@ config.TOOLS = [
 				min: -999,
 				max: 999,
 				step: 1
+			},
+			halign: {
+				value: 'Left',
+				values: ['Left', 'Center', 'Right'],
+			},
+			boundary: {
+				title: 'Mode',
+				value: 'Point',
+				values: ['Point', 'Paragraph'],
 			}
 		},
 	},

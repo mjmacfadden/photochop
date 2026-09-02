@@ -331,12 +331,26 @@ const menuDefinition = [
 		children: [
 			{
 				name: 'New',
-				shortcut: 'Shift + N',
+				shortcut: 'Ctrl + Shift + N',
 				target: 'layer/new.new'
 			},
 			{
 				name: 'New from Selection',
 				target: 'layer/new.new_selection'
+			},
+			{
+				name: 'New Group',
+				target: 'layer/group.new_group'
+			},
+			{
+				name: 'Group Layers',
+				shortcut: 'Ctrl + G',
+				target: 'layer/group.group_layers'
+			},
+			{
+				name: 'Ungroup Layers',
+				shortcut: 'Ctrl + Shift + G',
+				target: 'layer/group.ungroup'
 			},
 			{
 				name: 'New Adjustment Layer',

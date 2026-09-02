@@ -17,6 +17,8 @@ export class Select_next_layer_action extends Base_action {
 		}
 		this.old_config_layer = config.layer;
 		config.layer = next_layer;
+		config.selected_layer_ids = [next_layer.id];
+		config.layer_select_anchor_id = next_layer.id;
 
 		app.Layers.render();
 		app.GUI.GUI_layers.render_layers();
@@ -26,6 +28,10 @@ export class Select_next_layer_action extends Base_action {
 		super.undo();
 		config.layer = this.old_config_layer;
 		this.old_config_layer = null;
+		if (config.layer) {
+			config.selected_layer_ids = [config.layer.id];
+			config.layer_select_anchor_id = config.layer.id;
+		}
 
 		app.Layers.render();
 		app.GUI.GUI_layers.render_layers();

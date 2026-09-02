@@ -12,12 +12,16 @@ import Layer_rename_class from './../../modules/layer/rename.js';
 import Effects_browser_class from './../../modules/effects/browser.js';
 import Layer_duplicate_class from './../../modules/layer/duplicate.js';
 import Layer_raster_class from './../../modules/layer/raster.js';
+import Layer_group_class from './../../modules/layer/group.js';
+import Layer_delete_class from './../../modules/layer/delete.js';
 import Tools_translate_class from './../../modules/tools/translate.js';
+import { is_group, get_tree_rows, get_parent_id, would_cycle } from './../../libs/layer-tree.js';
 
 var template = `
 	<div class="layers_header" id="layers_header">
 		<div class="layers_header_row">
 			<select class="layer_blend_select" id="layer_blend_select" title="Layer Blend Mode">
+				<option value="pass-through">Pass Through</option>
 				<option value="source-over">Normal</option>
 				<optgroup label="Darken">
 					<option value="darken">Darken</option>
@@ -81,6 +85,8 @@ class GUI_layers_class {
 		this.Effects_browser = new Effects_browser_class();
 		this.Layer_duplicate = new Layer_duplicate_class();
 		this.Layer_raster = new Layer_raster_class();
+		this.Layer_group = new Layer_group_class();
+		this.Layer_delete = new Layer_delete_class();
 		this.Tools_translate = new Tools_translate_class();
 		this.mask_context_menu = null;
 		this.mask_context_menu_open = false;
@@ -105,22 +111,19 @@ class GUI_layers_class {
 
 		document.getElementById('layers_base').addEventListener('click', function (event) {
 			var target = event.target;
+			if (target.closest && target.closest('.group_chevron')) {
+				var chev = target.closest('.group_chevron');
+				event.stopPropagation();
+				_this.Layer_group.toggle_opened(chev.dataset.id);
+				return;
+			}
 			if (target.id == 'visibility') {
 				return app.State.do_action(
 					new app.Actions.Toggle_layer_visibility_action(target.dataset.id)
 				);
 			}
 			else if (target.id == 'layer_name') {
-				if (target.dataset.id == config.layer.id) {
-					if (config.mask_active === true) {
-						//exit mask editing - edit the layer instead
-						_this.Mask.set_active(false);
-					}
-					return;
-				}
-				app.State.do_action(
-					new app.Actions.Select_layer_action(target.dataset.id)
-				);
+				_this.select_layer_from_panel(target.dataset.id, event);
 			}
 			else if (target.id == 'filter_visibility') {
 				var layer_id = parseInt(target.dataset.pid);
@@ -237,20 +240,25 @@ class GUI_layers_class {
 			else if (target.closest('.layer_thumb') != null) {
 				var layer_id = parseInt(target.closest('.layer_thumb').dataset.id);
 				var thumb_layer = app.Layers.get_layer(layer_id);
-				if (thumb_layer && thumb_layer.type === 'adjustment') {
+				var multi = event.shiftKey || event.ctrlKey || event.metaKey;
+				if (!multi && thumb_layer && thumb_layer.type === 'adjustment') {
 					if (app.GUI && app.GUI.modules && app.GUI.modules['layer/adjustment']) {
 						app.GUI.modules['layer/adjustment'].edit(layer_id);
 						return;
 					}
 				}
-				if (config.layer && config.layer.id == layer_id && config.mask_active === true) {
+				if (!multi && config.layer && config.layer.id == layer_id && config.mask_active === true) {
 					//main thumbnail clicked - exit mask editing, edit the layer instead
 					_this.Mask.set_active(false);
+					return;
 				}
-				else if (config.layer == null || config.layer.id != layer_id) {
-					return app.State.do_action(
-						new app.Actions.Select_layer_action(layer_id)
-					);
+				_this.select_layer_from_panel(layer_id, event);
+			}
+			else if (target.closest('.item') != null && target.closest('.filters') == null) {
+				// click on empty area of a layer row
+				var item = target.closest('.item');
+				if (item && item.dataset.id) {
+					_this.select_layer_from_panel(item.dataset.id, event);
 				}
 			}
 		});
@@ -408,8 +416,9 @@ class GUI_layers_class {
 			_this.show_mask_context_menu(event.clientX, event.clientY, layer_id);
 		});
 
-		// Drag-to-reorder layers
+		// Drag-to-reorder / reparent layers (tree-aware)
 		var drag_layer_id = null;
+		var drag_drop_mode = 'above'; // above | below | into
 		document.getElementById('layers_base').addEventListener('dragstart', function (event) {
 			var item = event.target.closest('.item');
 			if (!item) return;
@@ -420,6 +429,17 @@ class GUI_layers_class {
 			}
 			drag_layer_id = parseInt(item.dataset.id);
 			item.classList.add('dragging');
+			// If the drag source is part of a multi-select, mark all selected rows.
+			var selected = (config.selected_layer_ids || []).map(function (id) { return parseInt(id, 10); });
+			if (selected.indexOf(drag_layer_id) !== -1 && selected.length > 1) {
+				var items = document.querySelectorAll('#layers_base .item');
+				for (var i = 0; i < items.length; i++) {
+					var sid = parseInt(items[i].dataset.id, 10);
+					if (selected.indexOf(sid) !== -1) {
+						items[i].classList.add('dragging');
+					}
+				}
+			}
 			event.dataTransfer.effectAllowed = 'move';
 			event.dataTransfer.setData('text/plain', drag_layer_id);
 		});
@@ -428,15 +448,37 @@ class GUI_layers_class {
 			event.preventDefault();
 			event.dataTransfer.dropEffect = 'move';
 			var item = event.target.closest('.item');
-			if (item) {
-				item.classList.add('drag_over');
+			var items = document.querySelectorAll('#layers_base .item');
+			for (var i = 0; i < items.length; i++) {
+				items[i].classList.remove('drag_over', 'drag_over_above', 'drag_over_below', 'drag_over_into');
+			}
+			if (!item) return;
+			var rect = item.getBoundingClientRect();
+			var y = event.clientY - rect.top;
+			var target_layer = app.Layers.get_layer(parseInt(item.dataset.id));
+			var into = false;
+			if (target_layer && is_group(target_layer)) {
+				// Middle band or Ctrl/Cmd = drop into group
+				if (event.ctrlKey || event.metaKey || (y > rect.height * 0.28 && y < rect.height * 0.72)) {
+					into = true;
+				}
+			}
+			if (into) {
+				drag_drop_mode = 'into';
+				item.classList.add('drag_over', 'drag_over_into');
+			} else if (y < rect.height / 2) {
+				drag_drop_mode = 'above';
+				item.classList.add('drag_over', 'drag_over_above');
+			} else {
+				drag_drop_mode = 'below';
+				item.classList.add('drag_over', 'drag_over_below');
 			}
 		});
 
 		document.getElementById('layers_base').addEventListener('dragleave', function (event) {
 			var item = event.target.closest('.item');
 			if (item) {
-				item.classList.remove('drag_over');
+				item.classList.remove('drag_over', 'drag_over_above', 'drag_over_below', 'drag_over_into');
 			}
 		});
 
@@ -453,21 +495,43 @@ class GUI_layers_class {
 			if (!drag_layer || !target_layer) return;
 			if (drag_layer.locked) return;
 
-			// Swap order values
-			var temp_order = drag_layer.order;
-			drag_layer.order = target_layer.order;
-			target_layer.order = temp_order;
+			// If the drag source is in the multi-select, move the whole selection.
+			var move_ids = [drag_layer_id];
+			var selected = (config.selected_layer_ids || []).map(function (id) { return parseInt(id, 10); });
+			if (selected.indexOf(drag_layer_id) !== -1 && selected.length > 1) {
+				move_ids = selected.slice();
+			}
+			// Never try to drop the target onto itself as part of the move set.
+			move_ids = move_ids.filter(function (id) { return id !== target_id; });
+			if (!move_ids.length) {
+				drag_layer_id = null;
+				return;
+			}
+
+			var mode = drag_drop_mode || 'above';
+			var new_parent = get_parent_id(target_layer);
+			var place_above = true;
+			var ref_id = target_id;
+
+			if (mode === 'into' && is_group(target_layer)) {
+				new_parent = target_id;
+				// Match prior single-layer into: order just below group header.
+				place_above = false;
+				ref_id = target_id;
+				_this.Layer_group.reparent_many(move_ids, new_parent, ref_id, place_above);
+			} else {
+				place_above = (mode === 'above');
+				_this.Layer_group.reparent_many(move_ids, new_parent, ref_id, place_above);
+			}
 
 			drag_layer_id = null;
-			app.Layers.render();
-			app.GUI.GUI_layers.render_layers();
 		});
 
 		document.getElementById('layers_base').addEventListener('dragend', function (event) {
 			drag_layer_id = null;
 			var items = document.querySelectorAll('#layers_base .item');
 			for (var i = 0; i < items.length; i++) {
-				items[i].classList.remove('dragging', 'drag_over');
+				items[i].classList.remove('dragging', 'drag_over', 'drag_over_above', 'drag_over_below', 'drag_over_into');
 			}
 		});
 
@@ -529,16 +593,39 @@ class GUI_layers_class {
 
 		separator();
 
-		// 2. Layer operations
-		button('Duplicate Layer', () => {
-			app.State.do_action(new app.Actions.Duplicate_layer_action(layer_id));
-		});
-		if (!layer.locked) {
-			button('Delete Layer', () => {
-				app.State.do_action(new app.Actions.Delete_layer_action(layer_id));
+		// 2. Layer / group operations
+		if (is_group(layer)) {
+			button('Ungroup', () => {
+				app.State.do_action(new app.Actions.Select_layer_action(layer_id)).then(() => {
+					_this.Layer_group.ungroup();
+				});
+			});
+		} else {
+			button('Group Layers', () => {
+				app.State.do_action(new app.Actions.Select_layer_action(layer_id)).then(() => {
+					_this.Layer_group.group_layers();
+				});
 			});
 		}
-		button('Rename Layer...', () => {
+		button('New Group', () => {
+			_this.Layer_group.new_group();
+		});
+		button(is_group(layer) ? 'Duplicate Group' : 'Duplicate Layer', () => {
+			app.State.do_action(new app.Actions.Select_layer_action(layer_id)).then(() => {
+				_this.Layer_duplicate.duplicate();
+			});
+		});
+		if (!layer.locked) {
+			button(is_group(layer) ? 'Delete Group' : 'Delete Layer', () => {
+				const selected = (config.selected_layer_ids || []).map((id) => parseInt(id, 10));
+				if (selected.length > 1 && selected.includes(parseInt(layer_id, 10))) {
+					_this.Layer_delete.delete(selected);
+				} else {
+					_this.Layer_delete.delete([layer_id]);
+				}
+			});
+		}
+		button(is_group(layer) ? 'Rename Group...' : 'Rename Layer...', () => {
 			_this.Layer_rename.rename(layer_id);
 		});
 
@@ -616,12 +703,15 @@ class GUI_layers_class {
 			);
 		});
 
+		var status_new_group = document.getElementById('status_new_group');
+		if (status_new_group) {
+			status_new_group.addEventListener('click', function () {
+				_this.Layer_group.new_group();
+			});
+		}
+
 		document.getElementById('status_delete_layer').addEventListener('click', function () {
-			if (config.layer && config.layer.locked !== true) {
-				app.State.do_action(
-					new app.Actions.Delete_layer_action(config.layer.id)
-				);
-			}
+			_this.Layer_delete.delete();
 		});
 	}
 
@@ -782,10 +872,92 @@ class GUI_layers_class {
 		}
 	}
 
+
+	/**
+	 * Layers panel click selection — plain / Shift range / Ctrl|Cmd toggle.
+	 * Updates config.selected_layer_ids; config.layer remains the primary.
+	 */
+	select_layer_from_panel(layer_id, event) {
+		var id = parseInt(layer_id, 10);
+		if (!id || !app.Layers.get_layer(id)) {
+			return;
+		}
+
+		var is_shift = !!(event && event.shiftKey);
+		var is_ctrl = !!(event && (event.ctrlKey || event.metaKey));
+
+		if (is_shift) {
+			var rows = get_tree_rows(config.layers);
+			var ids = rows.map(function (r) { return r.layer.id; });
+			var anchor = (config.layer_select_anchor_id != null)
+				? config.layer_select_anchor_id
+				: (config.layer ? config.layer.id : id);
+			var i0 = ids.indexOf(anchor);
+			var i1 = ids.indexOf(id);
+			if (i0 < 0) i0 = i1;
+			if (i1 < 0) return;
+			var lo = Math.min(i0, i1);
+			var hi = Math.max(i0, i1);
+			var range = ids.slice(lo, hi + 1);
+			return app.State.do_action(
+				new app.Actions.Select_layer_action(id, true, { ids: range, set_anchor: false })
+			);
+		}
+
+		if (is_ctrl) {
+			var current = (Array.isArray(config.selected_layer_ids) && config.selected_layer_ids.length)
+				? config.selected_layer_ids.slice()
+				: (config.layer ? [config.layer.id] : []);
+			var idx = current.indexOf(id);
+			var primary_id = id;
+			if (idx >= 0) {
+				if (current.length <= 1) {
+					// keep at least one selected
+					return;
+				}
+				current.splice(idx, 1);
+				if (config.layer && config.layer.id === id) {
+					primary_id = current[current.length - 1];
+				} else {
+					primary_id = config.layer ? config.layer.id : current[current.length - 1];
+				}
+			} else {
+				current.push(id);
+				primary_id = id;
+			}
+			return app.State.do_action(
+				new app.Actions.Select_layer_action(primary_id, true, { ids: current, set_anchor: false })
+			);
+		}
+
+		// Plain click: single-select and set anchor
+		if (config.layer && config.layer.id == id) {
+			if (config.mask_active === true) {
+				this.Mask.set_active(false);
+			}
+			var needs_collapse = !Array.isArray(config.selected_layer_ids)
+				|| config.selected_layer_ids.length !== 1
+				|| config.selected_layer_ids[0] !== id;
+			if (needs_collapse) {
+				config.selected_layer_ids = [id];
+				config.layer_select_anchor_id = id;
+				this.render_layers();
+			}
+			return;
+		}
+
+		return app.State.do_action(
+			new app.Actions.Select_layer_action(id)
+		);
+	}
+
 	/**
 	 * returns thumbnail HTML for layer type
 	 */
 	get_layer_thumb(layer) {
+		if (layer.type === 'group') {
+			return '<svg class="thumb_icon thumb_folder" viewBox="0 0 16 16" fill="currentColor"><path d="M1.5 3.5h5l1.2 1.5H14.5v8H1.5v-9.5z" fill="none" stroke="currentColor" stroke-width="1.2"/><path d="M1.5 6.5h13" stroke="currentColor" stroke-width="1.2"/></svg>';
+		}
 		if (layer.type === 'adjustment') {
 			return '<svg class="thumb_icon thumb_adjustment" viewBox="0 0 16 16" fill="currentColor"><circle cx="8" cy="8" r="6" fill="none" stroke="currentColor" stroke-width="1.3"/><path d="M8 2 A6 6 0 0 1 8 14 Z" fill="currentColor"/></svg>';
 		}
@@ -810,89 +982,105 @@ class GUI_layers_class {
 	 */
 	render_layers() {
 		var target_id = 'layers';
-		var layers = (config.layers && Array.isArray(config.layers))
-			? config.layers.concat().sort((a, b) => b.order - a.order)
-			: [];
-
 		var targetEl = document.getElementById(target_id);
 		if (targetEl) {
 			targetEl.innerHTML = '';
 		}
 		var html = '';
-		
-		if (config.layer) {
+
+		if (config.layers && config.layers.length) {
+			var rows = get_tree_rows(config.layers);
+			var layers_top_first = rows.map(function (r) { return r.layer; });
+
 			var clipped_ids = new Set();
 			var base_ids = new Set();
 
-			for (var k = 0; k < layers.length; k++) {
-				if (layers[k].composition === 'source-atop') {
-					clipped_ids.add(layers[k].id);
-					for (var m = k + 1; m < layers.length; m++) {
-						if (layers[m].composition !== 'source-atop') {
-							base_ids.add(layers[m].id);
+			for (var k = 0; k < layers_top_first.length; k++) {
+				if (layers_top_first[k].composition === 'source-atop') {
+					clipped_ids.add(layers_top_first[k].id);
+					for (var m = k + 1; m < layers_top_first.length; m++) {
+						if (layers_top_first[m].composition !== 'source-atop') {
+							base_ids.add(layers_top_first[m].id);
 							break;
 						}
 					}
 				}
 			}
 
-			for (var i in layers) {
-				var value = layers[i];
+			for (var ri = 0; ri < rows.length; ri++) {
+				var value = rows[ri].layer;
+				var depth = rows[ri].depth;
 				var is_clipped = clipped_ids.has(value.id);
 				var is_base = base_ids.has(value.id);
 				var class_extra = '';
+				if (is_group(value)) {
+					class_extra += ' is_group';
+				}
 				if (is_clipped) {
 					class_extra += ' is_clipped shorter';
 				}
 				if (is_base) {
 					class_extra += ' is_clipping_base';
 				}
-				if (value.id == config.layer.id){
+				var selected_ids = (Array.isArray(config.selected_layer_ids) && config.selected_layer_ids.length)
+					? config.selected_layer_ids
+					: (config.layer ? [config.layer.id] : []);
+				if (selected_ids.indexOf(value.id) !== -1){
 					class_extra += ' active';
 				}
 
-				html += '<div class="item ' + class_extra + (value.locked ? ' locked' : '') + '" data-id="' + value.id + '" draggable="' + (value.locked ? 'false' : 'true') + '">';
+				html += '<div class="item ' + class_extra + (value.locked ? ' locked' : '') + '" data-id="' + value.id + '" data-depth="' + depth + '" draggable="' + (value.locked ? 'false' : 'true') + '" style="padding-left:' + (4 + depth * 14) + 'px">';
+
+				if (is_group(value)) {
+					var open = value.opened !== false;
+					html += '	<button type="button" class="group_chevron' + (open ? ' opened' : '') + '" data-id="' + value.id + '" title="' + (open ? 'Collapse' : 'Expand') + '">' + (open ? '▾' : '▸') + '</button>';
+				} else {
+					html += '	<span class="group_chevron_spacer"></span>';
+				}
+
 				if (value.visible == true)
 					html += '	<button class="visibility visible trn" id="visibility" data-id="' + value.id + '" title="Hide"></button>';
 				else
 					html += '	<button class="visibility trn" id="visibility" data-id="' + value.id + '" title="Show"></button>';
-			
+
 				if (is_clipped) {
 					html += '	<button type="button" class="clipping_arrow_btn" data-id="' + value.id + '" title="Clipping mask (click to release)"><svg class="clipping_arrow_svg" viewBox="0 0 16 16"><path d="M4 2v6h5.5V5.5L14 9.5l-4.5 4V11H2V2h2z" fill="currentColor"/></svg></button>';
 				}
 
 				var layer_thumb_class = 'layer_thumb';
-				if (config.layer && value.id == config.layer.id && config.mask_active !== true) {
+				if (selected_ids.indexOf(value.id) !== -1 && !(config.layer && value.id == config.layer.id && config.mask_active === true)) {
 					layer_thumb_class += ' active_thumb';
 				}
 				html += '	<span class="' + layer_thumb_class + '" data-id="' + value.id + '">' + this.get_layer_thumb(value) + '</span>';
 
-				if (value.mask != null) {
-					var is_linked = value.mask.linked !== false;
-					html += '	<span class="mask_link_icon ' + (is_linked ? 'linked' : 'unlinked') + '" data-id="' + value.id + '" title="' + (is_linked ? 'Layer and mask are linked. Click to unlink.' : 'Layer and mask are unlinked. Click to link.') + '">';
-					if (is_linked) {
-						html += '<svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>';
-					} else {
-						html += '<span class="unlinked_space"></span>';
-					}
-					html += '</span>';
+				if (!is_group(value)) {
+					if (value.mask != null) {
+						var is_linked = value.mask.linked !== false;
+						html += '	<span class="mask_link_icon ' + (is_linked ? 'linked' : 'unlinked') + '" data-id="' + value.id + '" title="' + (is_linked ? 'Layer and mask are linked. Click to unlink.' : 'Layer and mask are unlinked. Click to link.') + '">';
+						if (is_linked) {
+							html += '<svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>';
+						} else {
+							html += '<span class="unlinked_space"></span>';
+						}
+						html += '</span>';
 
-					var mask_class = 'mask_thumb';
-					if (value.id == config.layer.id && config.mask_active === true) {
-						mask_class += ' active_mask';
+						var mask_class = 'mask_thumb';
+						if (value.id == config.layer.id && config.mask_active === true) {
+							mask_class += ' active_mask';
+						}
+						if (value.mask.enabled === false) {
+							mask_class += ' disabled_mask';
+						}
+						var mask_thumb = this.Mask.get_mask_thumb(value);
+						html += '	<span class="' + mask_class + '" id="mask_thumb" data-id="' + value.id + '" title="Layer mask" style="background-image: url(\'' + mask_thumb + '\')"></span>';
 					}
-					if (value.mask.enabled === false) {
-						mask_class += ' disabled_mask';
+					else {
+						html += '	<span class="mask_thumb empty" id="mask_thumb" data-id="' + value.id + '" title="Add layer mask"></span>';
 					}
-					var mask_thumb = this.Mask.get_mask_thumb(value);
-					html += '	<span class="' + mask_class + '" id="mask_thumb" data-id="' + value.id + '" title="Layer mask" style="background-image: url(\'' + mask_thumb + '\')"></span>';
-				}
-				else {
-					html += '	<span class="mask_thumb empty" id="mask_thumb" data-id="' + value.id + '" title="Add layer mask"></span>';
 				}
 
 				var layer_title = this.Helper.escapeHtml(value.name);
-				
+
 				html += '	<button class="layer_name" id="layer_name" data-id="' + value.id + '">' + layer_title + '</button>';
 
 			if (value.locked) {
@@ -905,10 +1093,10 @@ class GUI_layers_class {
 				html += '</div>';
 
 				//show filters
-				if (layers[i].filters && layers[i].filters.length > 0) {
-					html += '<div class="filters">';
-					for (var j in layers[i].filters) {
-						var filter = layers[i].filters[j];
+				if (value.filters && value.filters.length > 0) {
+					html += '<div class="filters" style="padding-left:' + (18 + depth * 14) + 'px">';
+					for (var j in value.filters) {
+						var filter = value.filters[j];
 						var is_disabled = !!filter.disabled;
 						var titleMap = {
 							'shadow': 'Drop Shadow',
@@ -921,12 +1109,12 @@ class GUI_layers_class {
 
 						html += '<div class="filter' + (is_disabled ? ' disabled' : '') + '">';
 						if (!is_disabled) {
-							html += '	<button class="visibility visible trn" id="filter_visibility" data-pid="' + layers[i].id + '" data-id="' + filter.id + '" title="Hide effect"></button>';
+							html += '	<button class="visibility visible trn" id="filter_visibility" data-pid="' + value.id + '" data-id="' + filter.id + '" title="Hide effect"></button>';
 						} else {
-							html += '	<button class="visibility trn" id="filter_visibility" data-pid="' + layers[i].id + '" data-id="' + filter.id + '" title="Show effect"></button>';
+							html += '	<button class="visibility trn" id="filter_visibility" data-pid="' + value.id + '" data-id="' + filter.id + '" title="Show effect"></button>';
 						}
-						html += '	<span class="layer_name" id="filter_name" data-pid="' + layers[i].id + '" data-id="' + filter.id + '" data-filter="' + filter.name + '">' + title + '</span>';
-						html += '	<span class="delete" id="delete_filter" data-pid="' + layers[i].id + '" data-id="' + filter.id + '" title="delete"></span>';
+						html += '	<span class="layer_name" id="filter_name" data-pid="' + value.id + '" data-id="' + filter.id + '" data-filter="' + filter.name + '">' + title + '</span>';
+						html += '	<span class="delete" id="delete_filter" data-pid="' + value.id + '" data-id="' + filter.id + '" title="delete"></span>';
 						html += '	<div class="clear"></div>';
 						html += '</div>';
 					}
@@ -944,9 +1132,6 @@ class GUI_layers_class {
 		this.update_header_controls();
 	}
 
-	/**
-	 * updates blend mode dropdown and opacity controls in the header
-	 */
 	update_header_controls() {
 		var blendSelect = document.getElementById('layer_blend_select');
 		var opNumber = document.getElementById('layer_opacity_number');
