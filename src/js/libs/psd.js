@@ -11,6 +11,7 @@ import config from './../config.js';
 import alertify from './../../../node_modules/alertifyjs/build/alertify.min.js';
 import filesaver from './../../../node_modules/file-saver/dist/FileSaver.min.js';
 import { readPsd, writePsd, initializeCanvas } from 'ag-psd';
+import { is_group, get_children, get_parent_id, is_psd_group } from './layer-tree.js';
 
 // Ensure ag-psd can instantiate canvases in any environment
 try {
@@ -25,7 +26,7 @@ try {
 }
 
 const PSD_TO_COMPOSITION = {
-	'pass through': 'source-over',
+	'pass through': 'pass-through',
 	'normal': 'source-over',
 	'darken': 'darken',
 	'multiply': 'multiply',
@@ -55,6 +56,7 @@ const PSD_TO_COMPOSITION = {
 };
 
 const COMPOSITION_TO_PSD = {
+	'pass-through': 'pass through',
 	'source-over': 'normal',
 	'darken': 'darken',
 	'multiply': 'multiply',
@@ -124,39 +126,67 @@ export async function load_psd(buffer, filename, options = {}) {
 	const docHeight = parseInt(psd.height) || 600;
 	const title = filename ? filename.replace(/\.psd$/i, '') : 'Untitled PSD';
 
-	// Collect and unroll all layers from the PSD hierarchy
-	const rawLayers = [];
-	function collectLayers(nodes) {
+	// Preserve folder hierarchy from ag-psd children trees (bottom-to-top).
+	// Groups become type==="group" with parent_id nesting; leaves convert as before.
+	const layers = [];
+	let idCounter = 1;
+	let orderCounter = 1;
+
+	function import_psd_nodes(nodes, parent_id) {
 		if (!nodes || !Array.isArray(nodes)) return;
 		for (let i = 0; i < nodes.length; i++) {
 			const node = nodes[i];
-			if (node.children && node.children.length > 0) {
-				collectLayers(node.children);
-			} else {
-				rawLayers.push(node);
+			try {
+				if (is_psd_group(node)) {
+					const groupId = idCounter++;
+					const opacity = Math.round(((node.opacity != null) ? node.opacity : 1) * 100);
+					const visible = node.hidden !== true;
+					const blendMode = node.blendMode
+						? (PSD_TO_COMPOSITION[node.blendMode] || 'pass-through')
+						: 'pass-through';
+					// Groups default to pass-through when PS reports normal/pass through
+					let composition = blendMode;
+					if (node.blendMode === 'pass through' || node.blendMode == null) {
+						composition = 'pass-through';
+					} else if (blendMode === 'source-over' && node.blendMode === 'normal') {
+						composition = 'source-over';
+					}
+					const isClipping = Boolean(node.clipping);
+					layers.push({
+						id: groupId,
+						name: node.name || ('Group ' + groupId),
+						type: 'group',
+						parent_id: parent_id,
+						opened: node.opened !== false,
+						opacity: opacity,
+						visible: visible,
+						composition: isClipping ? 'source-atop' : composition,
+						order: orderCounter++,
+						x: 0,
+						y: 0,
+						width: null,
+						height: null,
+						data: null,
+						link: null,
+						filters: [],
+						mask: null,
+					});
+					import_psd_nodes(node.children || [], groupId);
+				} else {
+					const convertedLayer = convert_psd_layer(node, idCounter, docWidth, docHeight);
+					if (convertedLayer) {
+						convertedLayer.parent_id = parent_id;
+						convertedLayer.order = orderCounter++;
+						layers.push(convertedLayer);
+						idCounter++;
+					}
+				}
+			} catch (layerErr) {
+				console.warn('[PSD] Failed to convert layer:', node && node.name, layerErr);
 			}
 		}
 	}
-	collectLayers(psd.children);
-
-	// ag-psd children are ordered bottom-to-top, matching Vantage Point layer order
-	const orderedPsdLayers = rawLayers;
-	const layers = [];
-	let idCounter = 1;
-
-	for (let i = 0; i < orderedPsdLayers.length; i++) {
-		const psdLayer = orderedPsdLayers[i];
-		try {
-			const convertedLayer = convert_psd_layer(psdLayer, idCounter, docWidth, docHeight);
-			if (convertedLayer) {
-				convertedLayer.order = idCounter;
-				layers.push(convertedLayer);
-				idCounter++;
-			}
-		} catch (layerErr) {
-			console.warn('[PSD] Failed to convert layer:', psdLayer.name, layerErr);
-		}
-	}
+	import_psd_nodes(psd.children, 0);
 
 	// Graceful Fallback: If no individual layers could be decoded but the composite is available
 	if (layers.length === 0) {
@@ -870,19 +900,8 @@ export async function export_psd(layers, docWidth, docHeight, options = {}) {
 		}
 	}
 
-	const sortedLayers = (layers && Array.isArray(layers))
-		? layers.concat().sort((a, b) => (a.order || 0) - (b.order || 0))
-		: [];
-
-	const psdChildren = [];
-
-	for (let i = 0; i < sortedLayers.length; i++) {
-		const layer = sortedLayers[i];
-		const psdLayer = export_layer_to_psd(layer, w, h);
-		if (psdLayer) {
-			psdChildren.push(psdLayer);
-		}
-	}
+	const layerList = (layers && Array.isArray(layers)) ? layers : [];
+	const psdChildren = build_psd_children_tree(layerList, 0, w, h);
 
 	if (psdChildren.length === 0) {
 		psdChildren.push({
@@ -912,6 +931,43 @@ export async function export_psd(layers, docWidth, docHeight, options = {}) {
 		console.error('[PSD] Failed to write PSD:', err);
 		alertify.error('Failed to export PSD: ' + (err.message || 'Unknown error'));
 	}
+}
+
+/**
+ * Build nested ag-psd children from flat Vantage layers (parent_id tree).
+ * Sibling order is bottom-to-top (ascending `order`), matching ag-psd.
+ */
+function build_psd_children_tree(layers, parent_id, docWidth, docHeight) {
+	const kids = get_children(parent_id, layers);
+	const out = [];
+	for (let i = 0; i < kids.length; i++) {
+		const layer = kids[i];
+		if (is_group(layer)) {
+			const isClipping = layer.composition === 'source-atop';
+			let blendMode = 'pass through';
+			if (layer.composition === 'pass-through') {
+				blendMode = 'pass through';
+			} else if (layer.composition && layer.composition !== 'source-over') {
+				blendMode = COMPOSITION_TO_PSD[layer.composition] || 'pass through';
+			} else if (layer.composition === 'source-over') {
+				blendMode = 'normal';
+			}
+			const opacity = (layer.opacity != null ? layer.opacity : 100) / 100;
+			out.push({
+				name: layer.name || 'Group',
+				opened: layer.opened !== false,
+				hidden: layer.visible === false,
+				opacity: opacity,
+				clipping: isClipping,
+				blendMode: blendMode,
+				children: build_psd_children_tree(layers, layer.id, docWidth, docHeight),
+			});
+		} else {
+			const psdLayer = export_layer_to_psd(layer, docWidth, docHeight);
+			if (psdLayer) out.push(psdLayer);
+		}
+	}
+	return out;
 }
 
 /**
