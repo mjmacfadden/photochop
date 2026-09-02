@@ -161,10 +161,21 @@ export class Insert_layer_action extends Base_action {
 			}
 		}
 
-		if (this.settings != undefined && config.layer && config.layers.length > 0
-			&& (config.layer.width == 0 || config.layer.width === null) && (config.layer.height == 0 || config.layer.height === null)
-			&& config.layer.data == null && layer.type != 'image' && this.can_automate !== false) {
-			// Update existing layer, because it's empty
+		const can_reuse_empty = (
+			this.settings != undefined
+			&& config.layer
+			&& config.layers.length > 0
+			&& (config.layer.width == 0 || config.layer.width === null)
+			&& (config.layer.height == 0 || config.layer.height === null)
+			&& config.layer.data == null
+			&& layer.type != 'image'
+			&& this.can_automate !== false
+			&& !config.layer.locked
+			&& config.layer.type == null
+			&& String(config.layer.name || '').toLowerCase() !== 'background'
+		);
+		if (can_reuse_empty) {
+			// Update existing empty placeholder layer
 			this.update_layer_action = new app.Actions.Update_layer_action(config.layer.id, layer);
 			await this.update_layer_action.do();
 		}

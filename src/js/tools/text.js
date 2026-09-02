@@ -2078,9 +2078,10 @@ class Text_class extends Base_tools_class {
 			};
 			var sel_config = {
 				enable_background: false,
-				enable_borders: true,
-				enable_controls: true,
-				enable_rotation: true,
+				// Point text default: no wrap-box chrome. Paragraph enables these in render().
+				enable_borders: false,
+				enable_controls: false,
+				enable_rotation: false,
 				enable_move: false,
 				keep_ratio: false,
 				data_function: () => {
@@ -2502,7 +2503,7 @@ class Text_class extends Base_tools_class {
 			};
 			await app.State.do_action(
 				new app.Actions.Bundle_action('new_text_layer', 'New Text Layer', [
-					new app.Actions.Insert_layer_action(layer)
+					new app.Actions.Insert_layer_action(layer, false)
 				])
 			);
 			// Never mutate non-text layers (esp. locked Background)
@@ -2781,7 +2782,7 @@ class Text_class extends Base_tools_class {
 		}
 
 		editor.hasValueChanged = true;
-		this._preserve_selection = selectionSnap;
+		this._preserve_selection = hadSelection ? selectionSnap : null;
 		layer.data = oldData;
 		await app.State.do_action(
 			new app.Actions.Update_layer_action(layer.id, {
@@ -2790,7 +2791,7 @@ class Text_class extends Base_tools_class {
 		);
 
 		const editorAfter = this.get_editor(layer);
-		if (editorAfter && selectionSnap) {
+		if (editorAfter && hadSelection && selectionSnap) {
 			this.restore_selection(editorAfter, selectionSnap);
 		}
 		this._preserve_selection = null;
@@ -2801,6 +2802,10 @@ class Text_class extends Base_tools_class {
 		setTimeout(() => {
 			this._ignore_textarea_blur = false;
 			this._params_ui_active = false;
+			if (hadSelection && selectionSnap) {
+				const ed = this.get_editor(layer);
+				if (ed) this.restore_selection(ed, selectionSnap);
+			}
 			this.focus_textarea();
 		}, 0);
 	}
@@ -2915,10 +2920,10 @@ class Text_class extends Base_tools_class {
 	resize_to_dynamic_bounds(layer, editor) {
 		if (layer && layer.type === 'text' && layer.params && layer.params.boundary === 'dynamic' && editor) {
 			// Grow from the anchor (x,y); never mutate other layers.
-			const new_width = Math.max(1, editor.textBoundaryWidth + 1);
-			const new_height = Math.max(1, editor.textBoundaryHeight + 1);
-			layer.width = new_width;
-			layer.height = new_height;
+			const new_width = Math.max(1, Math.ceil(editor.textBoundaryWidth + 1));
+			const new_height = Math.max(1, Math.ceil(editor.textBoundaryHeight + 1));
+			if (layer.width !== new_width) layer.width = new_width;
+			if (layer.height !== new_height) layer.height = new_height;
 		}
 	}
 
