@@ -34,8 +34,7 @@ export class Update_layer_action extends Base_action {
 		for (let i in this.settings) {
 			if (i == 'id')
 				continue;
-			if (i == 'order')
-				continue;
+			// order is allowed so group reparent / tree drag can update z-order
 			if (this.reference_layer[i] && typeof this.reference_layer[i] === 'object') {
 				try {
 					this.old_settings[i] = JSON.parse(JSON.stringify(this.reference_layer[i]));

@@ -2,6 +2,7 @@ import app from './../app.js';
 import config from './../config.js';
 import { Base_action } from './base.js';
 import alertify from './../../../node_modules/alertifyjs/build/alertify.min.js';
+import { resolve_insert_parent_id } from './../libs/layer-tree.js';
 
 export class Insert_layer_action extends Base_action {
 	/**
@@ -44,9 +45,13 @@ export class Insert_layer_action extends Base_action {
 			: (max_order + 1);
 
 		// Default data
+		const default_parent = (this.settings && this.settings.parent_id != null)
+			? this.settings.parent_id
+			: resolve_insert_parent_id(config.layer);
+
 		const layer = {
 			id: app.Layers.auto_increment,
-			parent_id: 0,
+			parent_id: default_parent,
 			name: 'Layer ' + app.Layers.auto_increment,
 			type: null,
 			link: null,
@@ -72,6 +77,7 @@ export class Insert_layer_action extends Base_action {
 			render_function: null,
 			mask: null,
 			adjustment_type: null,
+			opened: true,
 		};
 
 		// Build data

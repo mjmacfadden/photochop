@@ -1,6 +1,7 @@
 import config from '../config.js';
 import app from './../app.js';
 import { Base_action } from './base.js';
+import { is_group, get_children } from './../libs/layer-tree.js';
 
 export class Delete_layer_action extends Base_action {
 	/**
@@ -17,6 +18,8 @@ export class Delete_layer_action extends Base_action {
 		this.select_layer_action = null;
 		this.delete_index = null;
 		this.deleted_layer = null;
+		// Group delete policy: delete group AND its contents (PS default without prompt).
+		this.child_delete_actions = [];
 	}
 
 	async do() {
@@ -65,6 +68,28 @@ export class Delete_layer_action extends Base_action {
 			}
 		}
 
+		// If this is a group, delete descendants first (contents go with the group).
+		const target = config.layers[this.delete_index];
+		if (target && is_group(target)) {
+			// Direct children only; nested groups recursively delete their own contents.
+			const kids = get_children(id).slice().reverse();
+			for (const child of kids) {
+				const child_action = new app.Actions.Delete_layer_action(child.id, true);
+				await child_action.do();
+				this.child_delete_actions.push(child_action);
+			}
+			// refresh index after child deletes
+			this.delete_index = null;
+			for (var i in config.layers) {
+				if (config.layers[i].id == id) {
+					this.delete_index = i;
+				}
+			}
+			if (this.delete_index === null) {
+				throw new Error('Aborted - Group layer vanished while deleting children');
+			}
+		}
+
 		// Remove layer from list
 		this.deleted_layer = config.layers.splice(this.delete_index, 1)[0];
 
@@ -87,6 +112,12 @@ export class Delete_layer_action extends Base_action {
 			this.delete_index = null;
 			this.deleted_layer = null;
 		}
+		// Undo child deletes in reverse order (restore deepest first was do; undo shallow-last)
+		for (let i = this.child_delete_actions.length - 1; i >= 0; i--) {
+			await this.child_delete_actions[i].undo();
+			this.child_delete_actions[i].free();
+		}
+		this.child_delete_actions = [];
 		if (this.select_layer_action) {
 			await this.select_layer_action.undo();
 			this.select_layer_action.free();
@@ -110,6 +141,10 @@ export class Delete_layer_action extends Base_action {
 			delete this.deleted_layer.link;
 			delete this.deleted_layer.data;
 		}
+		for (const a of this.child_delete_actions) {
+			a.free();
+		}
+		this.child_delete_actions = [];
 		if (this.insert_layer_action) {
 			this.insert_layer_action.free();
 			this.insert_layer_action = null;
