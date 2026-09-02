@@ -27,6 +27,8 @@ class Image_rotate_class {
 
 	set_events() {
 		document.addEventListener('keydown', (event) => {
+			if (event.target.id === 'text_tool_keyboard_input')
+				return;
 			var code = event.keyCode;
 			if (this.Helper.is_input(event.target))
 				return;

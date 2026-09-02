@@ -72,6 +72,7 @@ class Base_selection_class {
 		// marching ants animation state
 		this.ant_offset = 0;
 		this.ant_keep_rendering = false;
+		this._ant_timer = null;
 
 		// Dedicated selection alpha channel (raster mask canvas)
 		this.mask_canvas = document.createElement('canvas');
@@ -86,6 +87,15 @@ class Base_selection_class {
 		this._preview_lasso_path = null;
 
 		this.events();
+
+		document.addEventListener('visibilitychange', () => {
+			if (document.hidden) {
+				this.stop_marching_ants();
+			} else if (this.is_marching_ants_active()) {
+				this.start_marching_ants();
+				this.draw_selection();
+			}
+		});
 	}
 
 	events() {
@@ -566,6 +576,30 @@ class Base_selection_class {
 
 	is_marching_ants_active() {
 		return this.has_selection || (this._preview_contours != null && this._preview_contours.length > 0) || (this._preview_lasso_path != null && this._preview_lasso_path.length > 1);
+	}
+
+	start_marching_ants() {
+		if (this._ant_timer != null) return;
+		if (document.hidden) return;
+		this._ant_timer = setInterval(() => {
+			if (document.hidden) {
+				this.stop_marching_ants();
+				return;
+			}
+			if (!this.is_marching_ants_active()) {
+				this.stop_marching_ants();
+				this.draw_selection();
+				return;
+			}
+			this.draw_selection();
+		}, 70);
+	}
+
+	stop_marching_ants() {
+		if (this._ant_timer != null) {
+			clearInterval(this._ant_timer);
+			this._ant_timer = null;
+		}
 	}
 
 	point_inside_selection(x, y) {
@@ -1219,13 +1253,6 @@ class Base_selection_class {
 		}
 
 		ctx.restore();
-	}
-
-	/**
-	 * returns true while a marching-ants selection should keep animating.
-	 */
-	is_marching_ants_active() {
-		return this.get_marquee_selections().length > 0;
 	}
 
 	selected_object_actions(e) {

@@ -1,4 +1,5 @@
 import config from './../config.js';
+import app from './../app.js';
 import Base_tools_class from './../core/base-tools.js';
 import Base_layers_class from './../core/base-layers.js';
 import Helper_class from './../libs/helpers.js';
@@ -37,7 +38,9 @@ class Pick_color_class extends Base_tools_class {
 		var mouse = this.get_mouse_info(e);
 		if (mouse.click_valid == false)
 			return;
-		this.copy_color_to_clipboard();
+		if (!app.GUI || !app.GUI.GUI_shortcuts || !app.GUI.GUI_shortcuts.alt_eyedropper_tool) {
+			this.copy_color_to_clipboard();
+		}
 	}
 
 	mousedown(e) {
@@ -84,7 +87,7 @@ class Pick_color_class extends Base_tools_class {
 			//set alpha
 			newColorDefinition.a = c[3];
 		}
-		this.Base_gui.GUI_colors.set_color(newColorDefinition);
+		this.Base_gui.GUI_colors.set_color(newColorDefinition, !!(mouse && mouse.is_drag));
 	}
 
 	copy_color_to_clipboard() {

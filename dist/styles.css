@@ -2509,6 +2509,10 @@ body.tool-pan.pan-dragging #canvas_minipaint{
 .middle_area.tool-crop #main_wrapper *{
 	cursor: crosshair !important;
 }
+.middle_area.tool-pick_color #main_wrapper,
+.middle_area.tool-pick_color #main_wrapper * {
+	cursor: url('../images/icons/cursor-eyedropper.svg') 2 22, url('data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%2224%22%20height%3D%2224%22%20viewBox%3D%22-16%20-16%20328%20328%22%3E%20%3Cpath%20d%3D%22M284.5%2C11.635C276.997%2C4.132%2C267.021%2C0%2C256.411%2C0s-20.586%2C4.132-28.089%2C11.635l-64.681%2C64.68l-6.658-6.658%20c-2.777-2.777-6.2-4.512-9.786-5.206c-0.598-0.116-1.2-0.202-1.804-0.26s-1.211-0.087-1.817-0.087s-1.213%2C0.029-1.817%2C0.087%20s-1.206%2C0.145-1.804%2C0.26c-3.585%2C0.694-7.009%2C2.43-9.786%2C5.206v0c-1.388%2C1.388-2.516%2C2.938-3.384%2C4.59%20c-0.289%2C0.55-0.55%2C1.112-0.781%2C1.683c-0.694%2C1.712-1.128%2C3.505-1.302%2C5.317c-0.058%2C0.604-0.087%2C1.211-0.087%2C1.817%20c0%2C1.213%2C0.116%2C2.426%2C0.347%2C3.621c0.347%2C1.793%2C0.954%2C3.545%2C1.822%2C5.196c0.868%2C1.651%2C1.996%2C3.201%2C3.384%2C4.59l4.319%2C4.319%20L21.468%2C213.811c-1.434%2C1.434-2.563%2C3.143-3.316%2C5.025l-16.19%2C40.387c-3.326%2C8.298-2.338%2C17.648%2C2.644%2C25.013%20c5.04%2C7.451%2C13.356%2C11.899%2C22.244%2C11.899c3.432%2C0%2C6.817-0.659%2C10.063-1.961L77.3%2C277.984c1.882-0.754%2C3.592-1.883%2C5.025-3.316%20l113.021-113.021l4.318%2C4.318c0.463%2C0.463%2C0.944%2C0.897%2C1.44%2C1.302c0.993%2C0.81%2C2.049%2C1.504%2C3.15%2C2.083%20c2.752%2C1.446%2C5.785%2C2.169%2C8.818%2C2.169l0%2C0c0.029%2C0%2C0.058-0.004%2C0.087-0.004c1.791-0.008%2C3.58-0.264%2C5.312-0.777%20c2.345-0.694%2C4.583-1.851%2C6.569-3.471c0.497-0.405%2C0.977-0.839%2C1.44-1.302v0c2.314-2.314%2C3.905-5.077%2C4.772-8.009%20c0.694-2.345%2C0.926-4.798%2C0.694-7.216c-0.116-1.209-0.347-2.408-0.694-3.581s-0.81-2.318-1.388-3.419%20c-0.868-1.651-1.996-3.201-3.384-4.59l-6.658-6.658l64.68-64.68C299.988%2C52.326%2C299.988%2C27.124%2C284.5%2C11.635z%20M63.285%2C251.282%20l-30.764%2C12.331l12.332-30.763l110.848-110.848l18.432%2C18.432L63.285%2C251.282z%22%20fill%3D%22%23ffffff%22%20stroke%3D%22%23ffffff%22%20stroke-width%3D%2232%22%20stroke-linejoin%3D%22round%22%20stroke-linecap%3D%22round%22%2F%3E%20%3Cpath%20d%3D%22M284.5%2C11.635C276.997%2C4.132%2C267.021%2C0%2C256.411%2C0s-20.586%2C4.132-28.089%2C11.635l-64.681%2C64.68l-6.658-6.658%20c-2.777-2.777-6.2-4.512-9.786-5.206c-0.598-0.116-1.2-0.202-1.804-0.26s-1.211-0.087-1.817-0.087s-1.213%2C0.029-1.817%2C0.087%20s-1.206%2C0.145-1.804%2C0.26c-3.585%2C0.694-7.009%2C2.43-9.786%2C5.206v0c-1.388%2C1.388-2.516%2C2.938-3.384%2C4.59%20c-0.289%2C0.55-0.55%2C1.112-0.781%2C1.683c-0.694%2C1.712-1.128%2C3.505-1.302%2C5.317c-0.058%2C0.604-0.087%2C1.211-0.087%2C1.817%20c0%2C1.213%2C0.116%2C2.426%2C0.347%2C3.621c0.347%2C1.793%2C0.954%2C3.545%2C1.822%2C5.196c0.868%2C1.651%2C1.996%2C3.201%2C3.384%2C4.59l4.319%2C4.319%20L21.468%2C213.811c-1.434%2C1.434-2.563%2C3.143-3.316%2C5.025l-16.19%2C40.387c-3.326%2C8.298-2.338%2C17.648%2C2.644%2C25.013%20c5.04%2C7.451%2C13.356%2C11.899%2C22.244%2C11.899c3.432%2C0%2C6.817-0.659%2C10.063-1.961L77.3%2C277.984c1.882-0.754%2C3.592-1.883%2C5.025-3.316%20l113.021-113.021l4.318%2C4.318c0.463%2C0.463%2C0.944%2C0.897%2C1.44%2C1.302c0.993%2C0.81%2C2.049%2C1.504%2C3.15%2C2.083%20c2.752%2C1.446%2C5.785%2C2.169%2C8.818%2C2.169l0%2C0c0.029%2C0%2C0.058-0.004%2C0.087-0.004c1.791-0.008%2C3.58-0.264%2C5.312-0.777%20c2.345-0.694%2C4.583-1.851%2C6.569-3.471c0.497-0.405%2C0.977-0.839%2C1.44-1.302v0c2.314-2.314%2C3.905-5.077%2C4.772-8.009%20c0.694-2.345%2C0.926-4.798%2C0.694-7.216c-0.116-1.209-0.347-2.408-0.694-3.581s-0.81-2.318-1.388-3.419%20c-0.868-1.651-1.996-3.201-3.384-4.59l-6.658-6.658l64.68-64.68C299.988%2C52.326%2C299.988%2C27.124%2C284.5%2C11.635z%20M63.285%2C251.282%20l-30.764%2C12.331l12.332-30.763l110.848-110.848l18.432%2C18.432L63.285%2C251.282z%22%20fill%3D%22%23181818%22%20stroke%3D%22%23000000%22%20stroke-width%3D%2210%22%20stroke-linejoin%3D%22round%22%2F%3E%20%3Cpath%20d%3D%22M63.285%2C251.282%20l-30.764%2C12.331l12.332-30.763l110.848-110.848l18.432%2C18.432L63.285%2C251.282z%22%20fill%3D%22%23ffffff%22%20fill-opacity%3D%220.9%22%2F%3E%20%3C%2Fsvg%3E') 2 22, crosshair !important;
+}
 .middle_area.tool-select #main_wrapper {
 	cursor: default;
 }
@@ -2830,6 +2834,407 @@ canvas{
 	.sidebar_left{
 		width: 88px;
 	}
+}
+
+/* ========== Panel Tabs & Swatches Panel ================================ */
+
+.panel_tabs_header {
+	display: flex;
+	align-items: center;
+	padding: 0 24px 0 0 !important;
+	height: 26px;
+	box-sizing: border-box;
+	background-color: #242424;
+	border-bottom: 1px solid #1a1a1a;
+	cursor: pointer;
+}
+.panel_tabs {
+	display: flex;
+	align-items: stretch;
+	height: 100%;
+}
+.panel_tab_btn {
+	background: transparent;
+	border: none;
+	border-right: 1px solid #1c1c1c;
+	border-bottom: 2px solid transparent;
+	color: #8c8c8c;
+	font-size: 10.5px;
+	font-weight: 600;
+	text-transform: uppercase;
+	letter-spacing: 0.5px;
+	padding: 0 12px;
+	cursor: pointer;
+	height: 100%;
+	display: flex;
+	align-items: center;
+	transition: background 0.15s, color 0.15s, border-color 0.15s;
+}
+.panel_tab_btn:hover {
+	color: #e0e0e0;
+	background-color: #2b2b2b;
+}
+.panel_tab_btn.active {
+	color: #ffffff;
+	background-color: #2d2d2d;
+	border-bottom-color: #3b82f6;
+}
+
+.panel_tabs_content {
+	padding: 0;
+}
+.panel_tab_pane.hidden {
+	display: none !important;
+}
+
+/* Recent Colors Bar (Single row at top of Color panel) */
+.recent_colors_bar {
+	padding: 4px 6px 6px 6px;
+	background-color: #262626;
+	border-bottom: 1px solid #1e1e1e;
+	margin-bottom: 6px;
+}
+
+.recent_colors_header {
+	display: flex;
+	justify-content: space-between;
+	align-items: center;
+	margin-bottom: 4px;
+}
+
+.recent_colors_title {
+	font-size: 9.5px;
+	font-weight: 700;
+	text-transform: uppercase;
+	letter-spacing: 0.6px;
+	color: #888888;
+}
+
+.recent_colors_clear_btn {
+	background: none;
+	border: none;
+	padding: 0;
+	font-size: 9.5px;
+	color: #666666;
+	cursor: pointer;
+	text-transform: uppercase;
+	letter-spacing: 0.5px;
+	transition: color 0.15s;
+}
+.recent_colors_clear_btn:hover {
+	color: #ff6b6b;
+}
+
+.recent_colors_grid {
+	display: grid;
+	grid-template-columns: repeat(10, 1fr);
+	gap: 3px;
+	height: 18px;
+}
+
+.recent_color_chip {
+	height: 18px;
+	border-radius: 2px;
+	border: 1px solid #181818;
+	box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.08);
+	cursor: pointer;
+	position: relative;
+	padding: 0;
+	transition: transform 0.1s, box-shadow 0.1s, border-color 0.1s;
+}
+.recent_color_chip:hover {
+	transform: scale(1.22);
+	z-index: 10;
+	border-color: #ffffff;
+	box-shadow: 0 2px 6px rgba(0, 0, 0, 0.6), inset 0 0 0 1px rgba(255, 255, 255, 0.4);
+}
+.recent_color_chip.active {
+	box-shadow: 0 0 0 1.5px #3b82f6, inset 0 0 0 1px #ffffff;
+	z-index: 5;
+}
+
+.recent_colors_empty {
+	grid-column: 1 / -1;
+	font-size: 10px;
+	color: #666;
+	font-style: italic;
+	padding: 2px 0;
+}
+
+/* Swatches Tab Panel */
+#toggle_swatches {
+	max-height: 480px;
+	overflow-y: auto;
+	overflow-x: hidden;
+	overscroll-behavior: contain;
+	scrollbar-width: thin;
+	padding: 6px 8px;
+}
+#toggle_swatches::-webkit-scrollbar {
+	width: 5px;
+}
+#toggle_swatches::-webkit-scrollbar-thumb {
+	background: #4a4a4a;
+	border-radius: 3px;
+}
+#toggle_swatches::-webkit-scrollbar-thumb:hover {
+	background: #666666;
+}
+
+.swatches_panel_content {
+	display: flex;
+	flex-direction: column;
+	gap: 6px;
+}
+
+.swatches_toolbar {
+	display: flex;
+	flex-direction: column;
+	gap: 5px;
+	margin-bottom: 2px;
+}
+
+.swatches_toolbar_row {
+	display: flex;
+	align-items: center;
+	gap: 4px;
+}
+
+.swatches_search_box {
+	position: relative;
+	flex: 1;
+	display: flex;
+	align-items: center;
+}
+
+.swatches_search_icon {
+	position: absolute;
+	left: 8px;
+	top: 50%;
+	transform: translateY(-50%);
+	width: 12px;
+	height: 12px;
+	color: #777;
+	pointer-events: none;
+	z-index: 2;
+}
+
+input.swatches_search_input[type="text"],
+input.swatches_search_input,
+.swatches_search_input {
+	width: 100%;
+	height: 24px;
+	background-color: #1e1e1e;
+	color: #fff;
+	border: 1px solid #383838;
+	border-radius: 3px;
+	padding: 0 24px 0 28px !important;
+	font-size: 11px;
+	outline: none;
+	box-sizing: border-box;
+	transition: border-color 0.15s ease;
+}
+input.swatches_search_input[type="text"]:focus,
+input.swatches_search_input:focus,
+.swatches_search_input:focus {
+	border-color: #3b82f6;
+}
+
+.swatches_search_clear {
+	position: absolute;
+	right: 6px;
+	top: 50%;
+	transform: translateY(-50%);
+	background: none;
+	border: none;
+	color: #888;
+	font-size: 15px;
+	cursor: pointer;
+	line-height: 1;
+	padding: 0;
+	z-index: 2;
+}
+.swatches_search_clear:hover {
+	color: #fff;
+}
+
+.swatches_icon_btn {
+	width: 24px;
+	height: 24px;
+	background-color: #2c2c2c;
+	color: #aaa;
+	border: 1px solid #383838;
+	border-radius: 3px;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	cursor: pointer;
+	padding: 0;
+	flex-shrink: 0;
+	transition: background-color 0.15s, color 0.15s;
+}
+.swatches_icon_btn:hover {
+	background-color: #3c3c3c;
+	color: #fff;
+}
+
+/* Swatches Folders Container */
+.swatches_schemes_wrapper {
+	display: flex;
+	flex-direction: column;
+}
+
+.swatches_folders_container {
+	display: flex;
+	flex-direction: column;
+	gap: 4px;
+	overflow: visible;
+}
+
+.swatches_folder {
+	background: #252525;
+	border: 1px solid #333333;
+	border-radius: 3px;
+	overflow: hidden;
+}
+
+.swatches_folder_header {
+	display: flex;
+	justify-content: space-between;
+	align-items: center;
+	padding: 5px 8px;
+	background: #2a2a2a;
+	cursor: pointer;
+	user-select: none;
+	transition: background 0.15s;
+}
+.swatches_folder_header:hover {
+	background: #323232;
+}
+
+.folder_header_left {
+	display: flex;
+	align-items: center;
+	gap: 6px;
+	font-size: 11px;
+	font-weight: 600;
+	color: #ddd;
+	overflow: hidden;
+}
+
+.folder_chevron {
+	transition: transform 0.15s;
+	color: #888;
+	flex-shrink: 0;
+}
+.swatches_folder.expanded .folder_chevron {
+	transform: rotate(90deg);
+	color: #3b82f6;
+}
+
+.folder_title {
+	white-space: nowrap;
+	overflow: hidden;
+	text-overflow: ellipsis;
+}
+
+.folder_count {
+	font-size: 10px;
+	color: #777;
+	font-weight: normal;
+	flex-shrink: 0;
+}
+
+.folder_preview_bar {
+	display: flex;
+	height: 10px;
+	width: 28px;
+	border-radius: 2px;
+	overflow: hidden;
+	border: 1px solid #1a1a1a;
+	flex-shrink: 0;
+	margin-left: 6px;
+}
+.folder_preview_bar_segment {
+	flex: 1;
+	height: 100%;
+}
+
+.swatches_folder_body {
+	padding: 4px;
+	display: flex;
+	flex-direction: column;
+	gap: 3px;
+	background: #202020;
+}
+.swatches_folder.collapsed .swatches_folder_body {
+	display: none;
+}
+
+/* Compact Palette Row */
+.swatches_palette_row {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 6px;
+	padding: 3px 6px;
+	background: #262626;
+	border-radius: 3px;
+	border: 1px solid #2f2f2f;
+	height: 24px;
+	box-sizing: border-box;
+	transition: background 0.12s, border-color 0.12s;
+}
+.swatches_palette_row:hover {
+	background: #2e2e2e;
+	border-color: #404040;
+}
+
+.swatches_palette_name {
+	font-size: 10.5px;
+	font-weight: 500;
+	color: #b0b0b0;
+	white-space: nowrap;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	flex: 1;
+	min-width: 0;
+}
+
+.swatches_palette_chips {
+	display: flex;
+	height: 16px;
+	width: 80px;
+	gap: 2px;
+	flex-shrink: 0;
+}
+
+.scheme_chip {
+	flex: 1;
+	height: 100%;
+	border-radius: 2px;
+	border: 1px solid #181818;
+	box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.08);
+	cursor: pointer;
+	padding: 0;
+	transition: transform 0.1s, box-shadow 0.1s, border-color 0.1s;
+}
+.scheme_chip:hover {
+	transform: scale(1.18);
+	z-index: 5;
+	border-color: #fff;
+	box-shadow: 0 1px 4px rgba(0, 0, 0, 0.5);
+}
+.scheme_chip.active {
+	box-shadow: 0 0 0 1.5px #3b82f6, inset 0 0 0 1px #ffffff;
+	z-index: 5;
+}
+
+.swatches_no_results {
+	padding: 16px 8px;
+	text-align: center;
+	color: #888;
+	font-style: italic;
 }
 
 /* ========== dialogs ======================================================= */

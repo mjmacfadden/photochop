@@ -10,7 +10,13 @@ import Tools_translate_class from './../../modules/tools/translate.js';
 const Helper = new Helper_class();
 
 const sidebarTemplate = `
-	<div id="selected_color_sample" class="ui_color_sample" title="Current Color Preview"></div>
+	<div id="recent_colors_bar" class="recent_colors_bar">
+		<div class="recent_colors_header">
+			<span class="recent_colors_title">Recent Colors</span>
+			<button type="button" id="recent_colors_clear_btn" class="recent_colors_clear_btn" title="Clear recent colors">Clear</button>
+		</div>
+		<div id="recent_colors_grid" class="recent_colors_grid"></div>
+	</div>
 	<div class="ui_flex_group justify_content_space_between stacked">
 		<div class="ui_button_group">
 			<button id="toggle_color_picker_section_button" aria-pressed="true" class="ui_icon_button trn" title="Toggle Color Picker">
@@ -34,16 +40,7 @@ const sidebarTemplate = `
 					<circle cx="3.5" cy="10.5" r=".5"/>
 				</svg>
 			</button>
-			<button id="toggle_color_swatches_section_button" aria-pressed="true" class="ui_icon_button trn" title="Toggle Swatches">
-				<span class="sr_only">Toggle Swatches</span>
-				<svg width="1em" height="1em" viewBox="0 0 16 16" class="bi bi-grid-3x2" fill="currentColor" xmlns="http://www.w3.org/2000/svg">
-					<path fill-rule="evenodd" d="M0 3.5A1.5 1.5 0 0 1 1.5 2h13A1.5 1.5 0 0 1 16 3.5v8a1.5 1.5 0 0 1-1.5 1.5h-13A1.5 1.5 0 0 1 0 11.5v-8zM1.5 3a.5.5 0 0 0-.5.5V7h4V3H1.5zM5 8H1v3.5a.5.5 0 0 0 .5.5H5V8zm1 0h4v4H6V8zm4-1H6V3h4v4zm1 1v4h3.5a.5.5 0 0 0 .5-.5V8h-4zm0-1V3h3.5a.5.5 0 0 1 .5.5V7h-4z"/>
-				</svg>
-			</button>
 		</div>
-	</div>
-	<div id="color_section_swatches" class="block_section">
-		<div id="color_swatches"></div>
 	</div>
 	<div id="color_section_picker" class="block_section">
 		<input id="color_picker_gradient" type="color" aria-label="Color Selection">
@@ -197,6 +194,10 @@ class GUI_colors_class {
 		}
 		this.init_components();
 		this.render_ui_deferred = Helper.throttle(this.render_ui_deferred, 50);
+
+		if (this.uiType !== 'dialog' && app.GUI && app.GUI.GUI_swatches) {
+			app.GUI.GUI_swatches.render_recent_colors_grid();
+		}
 	}
 
 	init_components() {
@@ -260,23 +261,25 @@ class GUI_colors_class {
 		};
 
 		// Handle toggle for color swatches section
-		this.buttons.toggleColorSwatches
-			.on('click', () => {
-				this.buttons.toggleColorSwatches.attr('aria-pressed', 'true' === this.buttons.toggleColorSwatches.attr('aria-pressed') ? 'false' : 'true');
-				const isPressed = this.buttons.toggleColorSwatches.attr('aria-pressed') === 'true';
-				if (isPressed) {
-					this.sections.swatchesPlaceholder.parentNode.insertBefore(this.sections.swatches[0], this.sections.swatchesPlaceholder.nextSibling);
-					this.sections.swatchesPlaceholder.parentNode.removeChild(this.sections.swatchesPlaceholder);
-				} else {
-					this.sections.swatches[0].parentNode.insertBefore(this.sections.swatchesPlaceholder, this.sections.swatches[0].nextSibling);
-					this.sections.swatches[0].parentNode.removeChild(this.sections.swatches[0]);	
-				}
-				Helper.setCookie('toggle_color_swatches', isPressed ? 1 : 0);
-			});
-		// Restore toggle preference, default to hidden for swatches
-		const saved_toggle_color_swatches = Helper.getCookie('toggle_color_swatches');
-		if (saved_toggle_color_swatches === 0 || saved_toggle_color_swatches == null) {
-			this.buttons.toggleColorSwatches.trigger('click');
+		if (this.buttons.toggleColorSwatches && this.buttons.toggleColorSwatches.length > 0) {
+			this.buttons.toggleColorSwatches
+				.on('click', () => {
+					this.buttons.toggleColorSwatches.attr('aria-pressed', 'true' === this.buttons.toggleColorSwatches.attr('aria-pressed') ? 'false' : 'true');
+					const isPressed = this.buttons.toggleColorSwatches.attr('aria-pressed') === 'true';
+					if (isPressed) {
+						this.sections.swatchesPlaceholder.parentNode.insertBefore(this.sections.swatches[0], this.sections.swatchesPlaceholder.nextSibling);
+						this.sections.swatchesPlaceholder.parentNode.removeChild(this.sections.swatchesPlaceholder);
+					} else {
+						this.sections.swatches[0].parentNode.insertBefore(this.sections.swatchesPlaceholder, this.sections.swatches[0].nextSibling);
+						this.sections.swatches[0].parentNode.removeChild(this.sections.swatches[0]);	
+					}
+					Helper.setCookie('toggle_color_swatches', isPressed ? 1 : 0);
+				});
+			// Restore toggle preference, default to hidden for swatches
+			const saved_toggle_color_swatches = Helper.getCookie('toggle_color_swatches');
+			if (saved_toggle_color_swatches === 0 || saved_toggle_color_swatches == null) {
+				this.buttons.toggleColorSwatches.trigger('click');
+			}
 		}
 
 		// Handle toggle for color picker section
@@ -320,15 +323,17 @@ class GUI_colors_class {
 		}
 
 		// Initialize color swatches
-		this.inputs.swatches
-			.uiSwatches({ rows: 3, cols: 7, count: 21, readonly: this.uiType === 'dialog' })
-			.on('input', () => {
-				this.set_color({
-					hex: this.inputs.swatches.uiSwatches('get_selected_hex')
+		if (this.inputs.swatches && this.inputs.swatches.length > 0) {
+			this.inputs.swatches
+				.uiSwatches({ rows: 3, cols: 7, count: 21, readonly: this.uiType === 'dialog' })
+				.on('input', () => {
+					this.set_color({
+						hex: this.inputs.swatches.uiSwatches('get_selected_hex')
+					});
 				});
-			});
-		if (this.uiType === 'dialog') {
-			this.inputs.swatches.uiSwatches('set_all_hex', config.swatches.default);
+			if (this.uiType === 'dialog') {
+				this.inputs.swatches.uiSwatches('set_all_hex', config.swatches.default);
+			}
 		}
 
 		// Initialize color picker gradient
@@ -340,7 +345,7 @@ class GUI_colors_class {
 					h: hsv.h * 360,
 					s: hsv.s * 100,
 					v: hsv.v * 100
-				});
+				}, true);
 			});
 
 		// Initialize hex entry
@@ -352,7 +357,7 @@ class GUI_colors_class {
 					this.inputs.hex.val(trimmedValue);
 				}
 				this.inputs.hex[0].setCustomValidity(/^\#[0-9A-F]{6}$/gi.test(trimmedValue) ? '' : 'Invalid Hex Code');
-				this.set_color({ hex: this.inputs.hex.val() });
+				this.set_color({ hex: this.inputs.hex.val() }, false);
 			})
 			.on('blur', () => {
 				const value = this.inputs.hex.val();
@@ -371,12 +376,12 @@ class GUI_colors_class {
 			input.range && input.range
 				.uiRange()
 				.on('input', () => {
-					this.set_color({ [key]: input.range.uiRange('get_value') });
+					this.set_color({ [key]: input.range.uiRange('get_value') }, true);
 				});
 			input.number && input.number
 				.uiNumberInput()
 				.on('input', () => {
-					this.set_color({ [key]: input.number.uiNumberInput('get_value') });
+					this.set_color({ [key]: input.number.uiNumberInput('get_value') }, false);
 				})
 		}
 
@@ -392,8 +397,9 @@ class GUI_colors_class {
 	 *                       a     - set the color alpha [0-255]
 	 *                       h,s,l - set the color as hue [0-360], saturation [0-100], luminosity [0-100]
 	 *                       h,s,v - set the color as hue [0-360], saturation [0-100], value [0-100]
+	 * @param {boolean} is_drag whether this color change is part of an active slider/gradient drag
 	 */
-	set_color(definition) {
+	set_color(definition, is_drag = false) {
 		let newColor = null;
 		let newAlpha = null;
 		let hsl = null;
@@ -453,6 +459,9 @@ class GUI_colors_class {
 				if (app.GUI && app.GUI.GUI_tools && app.GUI.GUI_tools.update_toolbar_swatches) {
 					app.GUI.GUI_tools.update_toolbar_swatches();
 				}
+				if (newColor != null && app.GUI && app.GUI.GUI_swatches && typeof app.GUI.GUI_swatches.record_color_selection === 'function') {
+					app.GUI.GUI_swatches.record_color_selection(newColor, is_drag);
+				}
 			}
 			if (hsl && !hsv) {
 				hsv = Helper.hslToHsv(hsl.h, hsl.s, hsl.l);
@@ -479,12 +488,19 @@ class GUI_colors_class {
 		const COLOR = this.uiType === 'dialog' ? this.COLOR : config.COLOR;
 		const ALPHA = this.uiType === 'dialog' ? this.ALPHA : config.ALPHA;
 
-		this.inputs.sample.css('background', COLOR);
+		if (this.inputs.sample && this.inputs.sample.length > 0) {
+			this.inputs.sample.css('background', COLOR);
+		}
 
 		if (this.uiType !== 'dialog') {
-			this.inputs.swatches.uiSwatches('set_selected_hex', COLOR);
+			if (this.inputs.swatches && this.inputs.swatches.length > 0) {
+				this.inputs.swatches.uiSwatches('set_selected_hex', COLOR);
+			}
 			if (app.GUI && app.GUI.GUI_tools && app.GUI.GUI_tools.update_toolbar_swatches) {
 				app.GUI.GUI_tools.update_toolbar_swatches();
+			}
+			if (app.GUI && app.GUI.GUI_swatches && typeof app.GUI.GUI_swatches.update_active_swatch_indicator === 'function') {
+				app.GUI.GUI_swatches.update_active_swatch_indicator();
 			}
 		}
 
@@ -579,7 +595,7 @@ class GUI_colors_class {
 		);
 
 		// Store swatch values
-		if (this.uiType === 'sidebar') {
+		if (this.uiType === 'sidebar' && this.inputs.swatches && this.inputs.swatches.length > 0) {
 			config.swatches.default = this.inputs.swatches.uiSwatches('get_all_hex');
 		}
 	}
