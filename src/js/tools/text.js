@@ -2611,6 +2611,10 @@ class Text_class extends Base_tools_class {
 		if (this.resizing) {
 			if (this.mousedownBounds && config.layer && config.layer.type === 'text' && config.layer.params) {
 				const wasDynamic = this.mousedownBounds.boundary === 'dynamic';
+				const nextX = this.selection.x;
+				const nextY = this.selection.y;
+				const nextW = this.selection.width;
+				const nextH = this.selection.height;
 				config.layer.x = this.mousedownBounds.x;
 				config.layer.y = this.mousedownBounds.y;
 				config.layer.width = this.mousedownBounds.width;
@@ -2619,22 +2623,29 @@ class Text_class extends Base_tools_class {
 				// Never promote point→box on transform
 				new_params.boundary = this.mousedownBounds.boundary;
 				config.layer.params.boundary = this.mousedownBounds.boundary;
+				// End live transform before history render so scale bakes instead of snapping back
+				this.resizing = false;
 				const update = {
-					x: this.selection.x,
-					y: this.selection.y,
-					width: this.selection.width,
-					height: this.selection.height,
+					x: nextX,
+					y: nextY,
+					width: nextW,
+					height: nextH,
 					params: new_params
 				};
 				if (wasDynamic && this.mousedownBounds.width > 0) {
-					const scale = this.selection.width / this.mousedownBounds.width;
-					const scaledData = this.bake_point_text_scale(config.layer, scale, { commit: false });
-					if (scaledData) update.data = scaledData;
+					const scale = nextW / this.mousedownBounds.width;
+					const scaledData = this.bake_point_text_scale(config.layer, scale, { commit: true });
+					if (scaledData) {
+						update.data = scaledData;
+						this.focusedValue = JSON.stringify(scaledData);
+						this.focusedWidth = nextW;
+						this.focusedHeight = nextH;
+					}
 				}
 				await app.State.do_action(
 					new app.Actions.Bundle_action('resize_text_layer', 'Resize Text Layer', [
 						new app.Actions.Update_layer_action(config.layer.id, update),
-						...(wasDynamic ? [] : [new app.Actions.Set_selection_action(this.selection.x, this.selection.y, this.selection.width, this.selection.height)])
+						...(wasDynamic ? [] : [new app.Actions.Set_selection_action(nextX, nextY, nextW, nextH)])
 					])
 				);
 			}

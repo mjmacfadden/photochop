@@ -83,6 +83,23 @@ export class Update_layer_action extends Base_action {
 
 		if (this.reference_layer.type === 'text' && ('data' in this.settings)) {
 			this.reference_layer._needs_update_data = true;
+			// Sync the live text editor immediately (don't wait for the next render).
+			// Otherwise point-text transform scale can look correct for one frame then snap back.
+			if (app.GUI && app.GUI.GUI_tools && app.GUI.GUI_tools.tools_modules['text']) {
+				const textTool = app.GUI.GUI_tools.tools_modules['text'].object;
+				if (textTool && typeof textTool.get_editor === 'function') {
+					const editor = textTool.get_editor(this.reference_layer);
+					if (editor && typeof editor.set_lines === 'function') {
+						editor.hasValueChanged = true;
+						editor.set_lines(JSON.parse(JSON.stringify(this.reference_layer.data || [])));
+						if (textTool.layer === this.reference_layer || config.layer === this.reference_layer) {
+							textTool.focusedValue = JSON.stringify(editor.document.lines);
+							textTool.focusedWidth = this.reference_layer.width;
+							textTool.focusedHeight = this.reference_layer.height;
+						}
+					}
+				}
+			}
 		}
 		if (this.settings.params || this.settings.width || this.settings.height) {
 			config.need_render_changed_params = true;

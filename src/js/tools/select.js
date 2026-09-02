@@ -275,6 +275,10 @@ class Select_tool_class extends Base_tools_class {
 			if (this.mousedown_mask_dimensions != null) {
 				Object.assign(config.layer.mask, this.mousedown_mask_dimensions);
 			}
+			// End live transform BEFORE the history action renders, or the next
+			// layout pass can treat the drag as a temporary scale and snap back.
+			this.resizing = false;
+			this._resizing_point_text = false;
 			if (this.mousedown_dimensions.x !== x || this.mousedown_dimensions.y !== y ||
 				this.mousedown_dimensions.width !== width || this.mousedown_dimensions.height !== height
 			) {
@@ -284,11 +288,16 @@ class Select_tool_class extends Base_tools_class {
 					const scale = width / this.mousedown_dimensions.width;
 					try {
 						const textTool = app.GUI && app.GUI.GUI_tools && app.GUI.GUI_tools.tools_modules
-							&& app.GUI.GUI_tools.tools_modules.text
-							&& app.GUI.GUI_tools.tools_modules.text.object;
+							&& app.GUI.GUI_tools.tools_modules['text']
+							&& app.GUI.GUI_tools.tools_modules['text'].object;
 						if (textTool && typeof textTool.bake_point_text_scale === 'function') {
-							const scaledData = textTool.bake_point_text_scale(config.layer, scale, { commit: false });
-							if (scaledData) layerUpdate.data = scaledData;
+							const scaledData = textTool.bake_point_text_scale(config.layer, scale, { commit: true });
+							if (scaledData) {
+								layerUpdate.data = scaledData;
+								textTool.focusedValue = JSON.stringify(scaledData);
+								textTool.focusedWidth = width;
+								textTool.focusedHeight = height;
+							}
 						}
 					} catch (e) { console.warn('point text scale bake failed', e); }
 				}
@@ -305,7 +314,6 @@ class Select_tool_class extends Base_tools_class {
 					new app.Actions.Bundle_action('resize_layer', 'Resize Layer', resize_actions)
 				);
 			}
-			this._resizing_point_text = false;
 
 			//also handle rotation
 			let rotate = this.Base_selection.current_angle;
