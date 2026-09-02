@@ -12,14 +12,14 @@
 | Effect | Import (`convert_psd_effects_to_filters`) | Export (`export_layer_to_psd`) | Notes |
 |--------|-------------------------------------------|--------------------------------|-------|
 | Drop Shadow | **Supported** → filter `shadow` (angle→x/y, size, opacity, color) | **Supported** (`shadow` / `drop-shadow` → `effects.dropShadow[]`) | Best round-trip of the FX set |
-| Outer Glow | **Supported** → `outer_glow` (size, opacity, color) | **Missing** | VP UI exists (`styles.js` / `effects/common/outer_glow.js`) |
-| Inner Glow | **Supported** → `inner_glow` | **Missing** | Same |
-| Stroke | **Supported** → `stroke` (size, opacity, color) | **Missing** | Position / fillType not mapped on import |
+| Outer Glow | **Supported** → `outer_glow` (size, opacity, color) | **Supported** | Round-trip via Layer Style |
+| Inner Glow | **Supported** → `inner_glow` | **Supported** | Same |
+| Stroke | **Supported** → `stroke` (size, opacity, color, **position**) | **Supported** | Position outside/inside/center |
 | Bevel & Emboss | **Missing** | **Missing** | Not in converter |
 | Satin / Overlay (color/gradient/pattern) | **Missing** | **Missing** | ag-psd may expose some; we ignore |
 | Effects master disable | **Partial** (`effects.disabled` → skip all) | N/A | Per-effect `enabled: false` skipped on import |
 
-**Export gap:** only drop shadow is written back. Import creates filters that VP can render, but save drops glow/stroke metadata.
+**Export:** drop shadow, outer/inner glow, and stroke write back (as of Landed).
 
 ---
 
@@ -29,12 +29,13 @@
 |---------------|--------|--------|-------|
 | brightness/contrast | **Supported** → `adjustment_type: brightness` + `brightness`/`contrast` params | **Supported** | Uses `params.value` + `params.contrast` |
 | contrast (VP-only type) | N/A (created in app) | **Supported** → brightness/contrast with brightness 0 | |
-| hue/saturation | **Partial** → either `hue-rotate` *or* `saturate` (never both; hue≠0 wins) | **Missing** | Roadmap Phase B explicitly calls this out |
+| hue/saturation | **Supported** → `hue-saturation` (hue+sat+lightness from `master`) | **Supported** | Legacy `hue-rotate` / `saturate` still export |
 | invert | **Supported** | **Supported** | |
 | threshold | **Supported** | **Supported** | |
 | black & white | **Partial** → `grayscale` (no channel mix) | **Supported** as `black & white` | Lossy vs PS B&W |
 | levels / curves / exposure / color balance / photo filter / vibrance / etc. | **Missing** (default stub → brightness 0) | **Missing** | Silent no-op on unknown `adj.type` |
-| sepia / blur (VP-native) | N/A | **Missing** | Exist in `layer/adjustment.js` UI only |
+| sepia (VP-native) | **Partial** ← photo filter approx | **Supported** → photo filter | Density ↔ sepia value |
+| blur (VP-native) | N/A | **Skipped** | No PSD adjustment mapping |
 
 ---
 
@@ -57,8 +58,8 @@
 | Item | Status in code | Detail |
 |------|----------------|--------|
 | Groups nested import/export | **Done** | `import_psd_nodes` + `build_psd_children_tree` |
-| Bundle `asLayers` inserts | **Open** | `load_psd(..., { asLayers: true })` loops `Insert_layer_action` per layer (psd.js ~220–225); `open.js` “Open as Layer” path. Undo = N steps, not one. Elsewhere `Bundle_action` is the pattern. |
-| Avoid `safeToDataURL` when canvas `link` exists | **Open** | Raster path always sets `link: canvas` **and** `data: safeToDataURL(canvas)` (convert + composite fallback). Dual bitmap + dataURL spikes memory (roadmap §7). |
+| Bundle `asLayers` inserts | **Done** | Single `Bundle_action('open_psd_as_layers', …)`. |
+| Avoid `safeToDataURL` when canvas `link` exists | **Done** | Raster + composite fallback set `data: null` when `link` is present. |
 
 ---
 
@@ -128,6 +129,34 @@ Smallest high-impact first; **all VP-verifiable** (no PS required):
 **Out of scope for this pass:** smart objects.
 
 ---
+
+---
+
+## Landed (2026-09-02, VP / Photopea-first)
+
+Branch work after the initial audit. **Photopea is the interim oracle; Photoshop verification still tomorrow.**
+
+### Phase A
+- **Skip `safeToDataURL` when raster `link` canvas exists** — import sets `data: null` for layered rasters and the composite fallback (keeps `link`).
+- **Bundle `asLayers` inserts** — `open_psd_as_layers` `Bundle_action` wraps all `Insert_layer_action`s (single Undo).
+
+### Effects
+- **Export** `outer_glow` → `effects.outerGlow`, `inner_glow` → `effects.innerGlow`, `stroke` → `effects.stroke[]` (same ag-psd shapes as import / drop-shadow export).
+- **Stroke `position`** (outside / inside / center) imported + exported when present; Layer Style UI already stored it (size range widened to 100px).
+
+### Adjustments
+- **Hue/Saturation** unified type `hue-saturation` (params: `hue` −180…180, `saturation` −100…100, `lightness` −100…100). Compositor: CSS `hue-rotate` + `saturate` (+ `brightness` for lightness).
+- **PSD import** maps `hue/saturation` `master` (and legacy top-level) to **both** channels (no longer hue≠0 drops sat).
+- **PSD export** writes `hue/saturation` from `hue-saturation` **and** legacy `hue-rotate` / `saturate` layers.
+- **Sepia** exports as `photo filter` (warm brown + density); `photo filter` imports approximate as `sepia`.
+- **Blur** — **skipped** (no PSD adjustment-layer mapping; smart-object filterFX out of scope). Documented here intentionally.
+- **Exposure** — **skipped** this pass (prefer solid hue/sat over a half-baked exposure).
+
+### Still open / unchanged
+- Clipping + blend coexistence (model change).
+- Bevel / satin / overlays; levels / curves / vibrance / etc.
+- Smart objects (out of scope).
+- Pixel parity vs Photoshop renderer.
 
 ## 9. Key paths
 
