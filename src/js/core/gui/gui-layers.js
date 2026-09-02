@@ -429,6 +429,17 @@ class GUI_layers_class {
 			}
 			drag_layer_id = parseInt(item.dataset.id);
 			item.classList.add('dragging');
+			// If the drag source is part of a multi-select, mark all selected rows.
+			var selected = (config.selected_layer_ids || []).map(function (id) { return parseInt(id, 10); });
+			if (selected.indexOf(drag_layer_id) !== -1 && selected.length > 1) {
+				var items = document.querySelectorAll('#layers_base .item');
+				for (var i = 0; i < items.length; i++) {
+					var sid = parseInt(items[i].dataset.id, 10);
+					if (selected.indexOf(sid) !== -1) {
+						items[i].classList.add('dragging');
+					}
+				}
+			}
 			event.dataTransfer.effectAllowed = 'move';
 			event.dataTransfer.setData('text/plain', drag_layer_id);
 		});
@@ -484,28 +495,33 @@ class GUI_layers_class {
 			if (!drag_layer || !target_layer) return;
 			if (drag_layer.locked) return;
 
+			// If the drag source is in the multi-select, move the whole selection.
+			var move_ids = [drag_layer_id];
+			var selected = (config.selected_layer_ids || []).map(function (id) { return parseInt(id, 10); });
+			if (selected.indexOf(drag_layer_id) !== -1 && selected.length > 1) {
+				move_ids = selected.slice();
+			}
+			// Never try to drop the target onto itself as part of the move set.
+			move_ids = move_ids.filter(function (id) { return id !== target_id; });
+			if (!move_ids.length) {
+				drag_layer_id = null;
+				return;
+			}
+
 			var mode = drag_drop_mode || 'above';
 			var new_parent = get_parent_id(target_layer);
 			var place_above = true;
 			var ref_id = target_id;
 
 			if (mode === 'into' && is_group(target_layer)) {
-				if (would_cycle(drag_layer_id, target_id)) {
-					drag_layer_id = null;
-					return;
-				}
 				new_parent = target_id;
-				// Place as topmost child (above current top child visually = higher order)
-				place_above = true;
-				ref_id = target_id; // order relative to group header
-				_this.Layer_group.reparent(drag_layer_id, new_parent, ref_id, false);
+				// Match prior single-layer into: order just below group header.
+				place_above = false;
+				ref_id = target_id;
+				_this.Layer_group.reparent_many(move_ids, new_parent, ref_id, place_above);
 			} else {
 				place_above = (mode === 'above');
-				if (would_cycle(drag_layer_id, new_parent)) {
-					drag_layer_id = null;
-					return;
-				}
-				_this.Layer_group.reparent(drag_layer_id, new_parent, ref_id, place_above);
+				_this.Layer_group.reparent_many(move_ids, new_parent, ref_id, place_above);
 			}
 
 			drag_layer_id = null;
