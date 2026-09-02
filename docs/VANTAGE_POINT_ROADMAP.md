@@ -404,9 +404,9 @@ Concrete checklist for Mike + Tom. Weeks assume start **2026-09-01**.
 ### Weeks 1–2 — Stabilize & hygiene
 
 - [x] Merge text-tool + PSD P0 to master (PRs #12–#15: layer-tree, swatches, Type Tool, text-resize). Tagged build still optional.
-- [ ] Add `.gitignore`; stop tracking `node_modules` / `archived/**/node_modules`; document `dist/` policy.
-- [ ] Remove/rotate API keys; restrict remote `?image=` opens.
-- [ ] README + SECURITY rewrite (Vantage Point, PSD, vulnerability contact).
+- [x] Add `.gitignore`; stop tracking `node_modules` / `archived/**/node_modules`; document `dist/` policy.
+- [x] Remove API keys from tree; restrict remote `?image=` opens (auto-fetch disabled). **Rotate keys in provider consoles** (still in git history).
+- [x] README + SECURITY rewrite (Vantage Point, PSD, vulnerability contact).
 - [x] Land layer-tree panel basics (chevron, indent, new group, ungroup).
 
 ### Weeks 3–4 — Groups round-trip
