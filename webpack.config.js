@@ -1,6 +1,7 @@
 var webpack = require('webpack');
 var path = require('path');
 var MiniCssExtractPlugin = require('mini-css-extract-plugin');
+var fs = require('fs');
 
 module.exports = function (env, argv) {
 	var is_production = argv.mode === 'production';
@@ -17,7 +18,10 @@ module.exports = function (env, argv) {
 	resolve: {
 		extensions: ['.js', '.css'],
 		alias: {
-			Utilities: path.resolve(__dirname, './../node_modules/')
+			Utilities: path.resolve(__dirname, './../node_modules/'),
+			'vp-local-keys': fs.existsSync(path.resolve(__dirname, 'src/js/config.keys.local.js'))
+				? path.resolve(__dirname, 'src/js/config.keys.local.js')
+				: path.resolve(__dirname, 'src/js/config.keys.stub.js')
 		}
 	},
 	module: {

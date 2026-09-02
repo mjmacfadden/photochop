@@ -565,15 +565,14 @@ class File_open_class {
 	}
 
 	/**
-	 * check if url has url params, for example: https://viliusle.github.io/miniPaint/?image=http://i.imgur.com/ATda8Ae.jpg
+	 * Former auto-open from ?image=<url> query param.
+	 * Disabled: automatic remote fetch from the query string is an SSRF / privacy risk
+	 * (and can load arbitrary third-party images into the origin context).
+	 * Use File -> Open URL for an explicit user-initiated remote open.
 	 */
 	maybe_file_open_url_handler() {
-		var _this = this;
-		var url_params = this.Helper.get_url_parameters();
-
-		if (url_params.image != undefined) {
-			this.open_resource(url_params.image);
-		}
+		// Intentionally no-op. Do not auto-fetch url_params.image.
+		return;
 	}
 
 	/**

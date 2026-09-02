@@ -1,60 +1,47 @@
-# miniPaint
+# Vantage Point
 
-Online image editor lets you create and edit images using HTML5 technologies. No need to buy, download, install, or have outdated flash. No ads. Key features: layers, filters, open source Photoshop alternative.
+Vantage Point is a client-side browser image editor with strong PSD support via ag-psd.
+The GitHub repo and codename is PhotoChop; the public product name is Vantage Point.
 
-miniPaint operates directly in the browser. You can create images by pasting from the clipboard (ctrl+v) or uploading from the computer (_using menu or drag & drop_). Nothing will be sent to any server. Everything stays in your browser. 
+Your files stay on your device. Editing runs in the browser.
 
-## URL:
-**https://viliusle.github.io/miniPaint/**
+## Based on miniPaint
 
-## Preview:
-![miniPaint](https://raw.githubusercontent.com/viliusle/miniPaint/master/images/preview.gif)
-(generated using miniPaint)
+This project is a heavily forked descendant of miniPaint by Vilius L. (MIT License).
+Upstream: https://github.com/viliusle/miniPaint
+Upstream copyright and permission notices for retained miniPaint code must be preserved.
 
-**Change log:** [/miniPaint/releases](https://github.com/viliusle/miniPaint/releases)
+## Features (highlights)
 
-## Browser Support
-- Chrome
-- Firefox
-- Opera
-- Edge
-- Safari
-- Yandex
+- Multi-layer editing, masks, adjustment layers, and layer groups
+- Bidirectional PSD import/export (src/js/libs/psd.js + ag-psd)
+- Multi-document tabs, Canvas2D / WebGL rendering paths
+- Type tool (point + paragraph text), swatches, common raster export formats
 
-## Features
+## Privacy
 
-**Files**: open images, directories, URLs, data URLs, drag and drop, save (PNG, JPG, BMP, WEBP, animated GIF, TIFF, JSON (layers data), print.
+- Pixel data for local files stays in the browser (IndexedDB recovery / localStorage quicksave are device-local).
+- Optional third-party APIs (stock search, web fonts) only run if you supply keys locally - see src/js/config.js.
+- Do not commit third-party service keys.
 
-**Edit**: undo, cut, copy, paste, selection, paste from the clipboard.
+## Run locally
 
-**Image**: information, EXIF, trim, zoom, resize (Hermite resample, default resize), rotate, flip, color corrections (brightness, contrast, hue, saturation, luminance), automatic color adjustment, grid, histogram, negative.
+Use the package manager to install deps, then build and serve.
+- npm run build (production -> dist/bundle.js)
+- npm run server
+- npm run dev
 
-**Layers**: multi-layer system, differences, merging, flattening, transparency support.
+Open via the dev server, or serve the repo root statically (e.g. Live Server) after a build. The dist/ folder is intentionally committed for now so static hosting works without CI artifacts.
 
-**Effects**: black and white, blur (box, gaussian, stack, zoom), bulge/pinch, denoise, desaturation, dither, dot screen, edge, emboss, enrich, gamma, grains, grayscale, heatmap, jpg compression, mosaic, oil, sepia, sharpen, solarize, tilt shift, vignette, vibrance, vintage, blueprint, night vision, pencil, also instagram filters: 1977, aden, clarendon, gingham, inkwell, lo-fi, toaster, valencia, x-pro ii.
+## Docs
 
-**Tools**: pencil, brush, magic wand, eraser, fill, color picker, letter, crop, blur, sharpener, desaturation, clone, borders, sprites, keypoints, color zoom, change color, restore transparency, content fill. 
+- Product / engineering roadmap: docs/VANTAGE_POINT_ROADMAP.md
+- Security reporting: SECURITY.md
 
-**Help**: keyboard shortcuts, translation.
+## Repository
 
-## Embed
-To embed this app on another page, use the following HTML code:
-
-    <iframe style="box-sizing:border-box; width:100%; height:100vh;" id="miniPaint" src="https://viliusle.github.io/miniPaint/" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" allowfullscreen></iframe>
-
-## Build instructions
-See [Wiki > Build instructions](https://github.com/viliusle/miniPaint/wiki/Build-instructions)
-
-## Wiki
-See [Wiki](https://github.com/viliusle/miniPaint/wiki)
-
-## Contributors
-<a align="center" href="https://github.com/viliusle/miniPaint/graphs/contributors">
-  <img src="https://contrib.rocks/image?repo=viliusle/miniPaint" />
-</a>
+https://github.com/mjmacfadden/photochop
 
 ## License
-MIT License
 
-## Support
-Please use the GitHub issues for support, feature requests and bug reports, or contact us by sending an email to www.viliusl@gmail.com.
+MIT (upstream miniPaint heritage). New product licensing posture may evolve; see the roadmap IP section and consult counsel before changing distribution terms.

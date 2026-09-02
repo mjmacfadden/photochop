@@ -189,7 +189,7 @@ ag-psd is implemented against Adobe’s [Photoshop File Format Specification](ht
 - [x] Export composite uses `app.Layers` (P0 done).
 - [x] Mask `positionRelativeToLayer` polarity (P0 done).
 - [x] Text styleRuns + rotation + point/box export (text branch).
-- [ ] **Groups:** stop flattening in `collectLayers`; import `children` → `type: "group"` + `parent_id`; export nested `children` (align with `layer-tree.js` / `count_psd_nodes` / `is_psd_group`).
+- [x] **Groups:** stop flattening in `collectLayers`; import `children` → `type: "group"` + `parent_id`; export nested `children` (align with `layer-tree.js` / `count_psd_nodes` / `is_psd_group`). Verified: `import_psd_nodes` + `build_psd_children_tree` in `src/js/libs/psd.js`.
 - [ ] Bundle `asLayers` inserts in one `Bundle_action`.
 - [ ] Avoid `safeToDataURL` on every raster when `link` canvas suffices.
 - [ ] Manual regression suite from code review Appendix B (automate later).
@@ -403,11 +403,11 @@ Concrete checklist for Mike + Tom. Weeks assume start **2026-09-01**.
 
 ### Weeks 1–2 — Stabilize & hygiene
 
-- [ ] Merge text-tool + PSD P0 to master; cut a tagged build.
-- [ ] Add `.gitignore`; stop tracking `node_modules` / `archived/**/node_modules`; document `dist/` policy.
-- [ ] Remove/rotate API keys; restrict remote `?image=` opens.
-- [ ] README + SECURITY rewrite (Vantage Point, PSD, vulnerability contact).
-- [ ] Land layer-tree panel basics (chevron, indent, new group, ungroup).
+- [x] Merge text-tool + PSD P0 to master (PRs #12–#15: layer-tree, swatches, Type Tool, text-resize). Tagged build still optional.
+- [x] Add `.gitignore`; stop tracking `node_modules` / `archived/**/node_modules`; document `dist/` policy.
+- [x] Remove API keys from tree; restrict remote `?image=` opens (auto-fetch disabled). **Rotate keys in provider consoles** (still in git history).
+- [x] README + SECURITY rewrite (Vantage Point, PSD, vulnerability contact).
+- [x] Land layer-tree panel basics (chevron, indent, new group, ungroup).
 
 ### Weeks 3–4 — Groups round-trip
 
@@ -427,7 +427,7 @@ Concrete checklist for Mike + Tom. Weeks assume start **2026-09-01**.
 
 - [ ] Tokenized dark theme; Layers + Properties restyle.
 - [ ] Canvas DPR/handles polish; privacy badge in chrome.
-- [ ] Swatch panel: merge or park—no half-wired dual systems.
+- [ ] Swatch panel: merge or park—no half-wired dual systems. (Note: Swatches panel already merged via PR #13 / feature/swatch-panel; tokenized restyle still open.)
 
 ### Weeks 9–10 — Proof & positioning
 

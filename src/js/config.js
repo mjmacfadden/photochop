@@ -15,9 +15,16 @@ config.COLOR_BG = '#ffffff';
 config.ALPHA_BG = 255;
 config.ZOOM = 1;
 config.SNAP = true;
-config.pixabay_key = '3ca2cd8af3fde33af218bea02-9021417';
+// Third-party keys: window.__VP_KEYS__, then gitignored config.keys.local.js (see example).
+// Never commit real keys in this file. GitHub Pages cannot keep client keys secret.
+var _vpLocalKeys = require('vp-local-keys');
+config.pixabay_key = (typeof window !== 'undefined' && window.__VP_KEYS__ && window.__VP_KEYS__.pixabay_key)
+	|| (_vpLocalKeys && _vpLocalKeys.pixabay_key)
+	|| '';
 config.safe_search_can_be_disabled = true;
-config.google_webfonts_key = 'AIzaSyBES3AipG'+'YVYNLtS,Vk-hJ11bbhJ9sTpRbA'.replace(',', '');
+config.google_webfonts_key = (typeof window !== 'undefined' && window.__VP_KEYS__ && window.__VP_KEYS__.google_webfonts_key)
+	|| (_vpLocalKeys && _vpLocalKeys.google_webfonts_key)
+	|| '';
 config.layers = [];
 config.layer = null;
 config.selected_layer_ids = []; // multi-select in Layers panel (primary remains config.layer)
