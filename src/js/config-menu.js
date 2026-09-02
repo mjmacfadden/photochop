@@ -339,6 +339,20 @@ const menuDefinition = [
 				target: 'layer/new.new_selection'
 			},
 			{
+				name: 'New Group',
+				target: 'layer/group.new_group'
+			},
+			{
+				name: 'Group Layers',
+				shortcut: 'Ctrl + G',
+				target: 'layer/group.group_layers'
+			},
+			{
+				name: 'Ungroup Layers',
+				shortcut: 'Ctrl + Shift + G',
+				target: 'layer/group.ungroup'
+			},
+			{
 				name: 'New Adjustment Layer',
 				children: [
 					{

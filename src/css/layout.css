@@ -1752,3 +1752,43 @@ canvas{
 		margin-top: 1rem;
 	}
 }
+
+/* ---- Layer tree (groups / folders) ---- */
+.layers_list .item.is_group .layer_name {
+	font-weight: 600;
+}
+.layers_list .group_chevron {
+	flex-shrink: 0;
+	width: 14px;
+	height: 18px;
+	margin-right: 2px;
+	padding: 0;
+	border: none;
+	background: transparent;
+	color: #aaaaaa;
+	cursor: pointer;
+	font-size: 10px;
+	line-height: 18px;
+	text-align: center;
+}
+.layers_list .group_chevron:hover {
+	color: #ffffff;
+}
+.layers_list .group_chevron_spacer {
+	flex-shrink: 0;
+	width: 14px;
+	margin-right: 2px;
+}
+.layers_list .item.drag_over_above {
+	box-shadow: inset 0 2px 0 #4ea1ff;
+}
+.layers_list .item.drag_over_below {
+	box-shadow: inset 0 -2px 0 #4ea1ff;
+}
+.layers_list .item.drag_over_into {
+	outline: 1px solid #4ea1ff;
+	background-color: rgba(78, 161, 255, 0.15);
+}
+.layers_list .thumb_folder {
+	opacity: 0.9;
+}
