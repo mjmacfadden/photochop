@@ -125,6 +125,19 @@ class Base_layers_class {
 		var renderer_mode = config.RENDERER || 'auto';
 		this.active_renderer = create_renderer(renderer_mode, config.WIDTH, config.HEIGHT);
 
+		document.addEventListener('visibilitychange', () => {
+			if (!document.hidden) {
+				this.invalidate({ viewport: true });
+				if (this.Base_selection && this.Base_selection.is_marching_ants_active()) {
+					this.Base_selection.start_marching_ants();
+				}
+			} else {
+				if (this.Base_selection) {
+					this.Base_selection.stop_marching_ants();
+				}
+			}
+		});
+
 		this.invalidate({ document: true, preview: true, details: true, ruler: true });
 	}
 
@@ -151,9 +164,11 @@ class Base_layers_class {
 		this.ctx.restore();
 		zoomView.canvasDefault();
 
-		//keep re-rendering so marching ants stay animated
-		if (this.Base_selection.is_marching_ants_active()) {
-			this.invalidate({ viewport: true });
+		// Manage marching ants animation on overlay without re-rendering the full document
+		if (this.Base_selection && this.Base_selection.is_marching_ants_active()) {
+			this.Base_selection.start_marching_ants();
+		} else if (this.Base_selection) {
+			this.Base_selection.stop_marching_ants();
 		}
 	}
 
@@ -182,6 +197,8 @@ class Base_layers_class {
 	 * as a compatibility bridge for legacy callers that still set that flag.
 	 */
 	request_render() {
+		if (document.hidden)
+			return;
 		if (this.render_frame_request != null)
 			return;
 		this.render_frame_request = requestAnimationFrame(() => {
@@ -387,8 +404,23 @@ class Base_layers_class {
 				this.Base_selection.draw_selection();
 				this.render_overlay();
 
-				// Render preview (still uses Canvas 2D)
-				this.render_preview(layers_sorted);
+				// Render preview
+				if (cache.previewDirty) {
+					var previewGlCanvas = renderer.getCanvas();
+					if (previewGlCanvas) {
+						var pw = this.Base_gui.GUI_preview.PREVIEW_SIZE.w;
+						var ph = this.Base_gui.GUI_preview.PREVIEW_SIZE.h;
+						this.ctx_preview.save();
+						this.ctx_preview.setTransform(1, 0, 0, 1, 0, 0);
+						this.ctx_preview.clearRect(0, 0, pw, ph);
+						this.ctx_preview.drawImage(previewGlCanvas, 0, 0, pw, ph);
+						this.ctx_preview.restore();
+					} else {
+						this.render_preview(layers_sorted);
+					}
+					cache.previewDirty = false;
+				}
+				this.Base_gui.GUI_preview.render_preview_active_zone();
 
 				// Reset
 				this.after_render();
@@ -616,13 +648,23 @@ class Base_layers_class {
 		var h = this.Base_gui.GUI_preview.PREVIEW_SIZE.h;
 
 		this.ctx_preview.save();
+		this.ctx_preview.setTransform(1, 0, 0, 1, 0, 0);
 		this.ctx_preview.clearRect(0, 0, w, h);
 
-		const newCanvas = this.create_new_canvas(this.ctx_preview);
-		newCanvas.getContext("2d").scale(w / config.WIDTH, h / config.HEIGHT);
-		this.render_objects(this.ctx_preview, newCanvas, layers, () => {
+		if (!this._preview_temp_canvas) {
+			this._preview_temp_canvas = document.createElement("canvas");
+		}
+		if (this._preview_temp_canvas.width !== w || this._preview_temp_canvas.height !== h) {
+			this._preview_temp_canvas.width = w;
+			this._preview_temp_canvas.height = h;
+		}
+		const tempCtx = this._preview_temp_canvas.getContext("2d");
+		tempCtx.setTransform(1, 0, 0, 1, 0, 0);
+		tempCtx.clearRect(0, 0, w, h);
+		tempCtx.scale(w / config.WIDTH, h / config.HEIGHT);
+
+		this.render_objects(this.ctx_preview, this._preview_temp_canvas, layers, () => {
 			this.ctx_preview.save();
-			//prepare scale
 			this.ctx_preview.scale(w / config.WIDTH, h / config.HEIGHT);
 		});
 

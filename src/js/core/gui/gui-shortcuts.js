@@ -14,6 +14,8 @@ class GUI_shortcuts_class {
 	constructor() {
 		this.Helper = new Helper_class();
 		this.space_pan_tool = null;
+		this.alt_eyedropper_tool = null;
+		this._restore_eyedropper_pending = false;
 		this.is_meta_down = false;
 		this.is_ctrl_down = false;
 		this.is_alt_down = false;
@@ -68,6 +70,7 @@ class GUI_shortcuts_class {
 						cloneTool.update_cursor(isDown);
 					}
 				}
+				this.handle_alt_eyedropper(isDown, event);
 			}
 			if (key === 'Shift' || code === 'ShiftLeft' || code === 'ShiftRight' || event.keyCode === 16) {
 				this.is_shift_down = isDown;
@@ -78,6 +81,14 @@ class GUI_shortcuts_class {
 		};
 		window.addEventListener('keydown', (event) => updateModifierState(event, true), { capture: true, passive: true });
 		window.addEventListener('keyup', (event) => updateModifierState(event, false), { capture: true, passive: true });
+		window.addEventListener('pointerup', () => {
+			if (this._restore_eyedropper_pending && this.alt_eyedropper_tool != null && app.GUI && app.GUI.GUI_tools) {
+				const restoreTool = this.alt_eyedropper_tool;
+				this.alt_eyedropper_tool = null;
+				this._restore_eyedropper_pending = false;
+				app.GUI.GUI_tools.activate_tool(restoreTool, { skip_history: true });
+			}
+		});
 		window.addEventListener('blur', () => {
 			this.is_meta_down = false;
 			this.is_ctrl_down = false;
@@ -85,6 +96,12 @@ class GUI_shortcuts_class {
 			this.is_shift_down = false;
 			if (app.GUI && app.GUI.GUI_tools && typeof app.GUI.GUI_tools.update_aspect_lock_ui === 'function') {
 				app.GUI.GUI_tools.update_aspect_lock_ui(false);
+			}
+			if (this.alt_eyedropper_tool != null && app.GUI && app.GUI.GUI_tools) {
+				const restoreTool = this.alt_eyedropper_tool;
+				this.alt_eyedropper_tool = null;
+				this._restore_eyedropper_pending = false;
+				app.GUI.GUI_tools.activate_tool(restoreTool, { skip_history: true });
 			}
 		});
 
@@ -302,6 +319,27 @@ class GUI_shortcuts_class {
 				return;
 			}
 
+			// Delete/Backspace = delete selected layer(s)
+			// (Skip when marquee/lasso has an active selection — that clears pixels instead.)
+			if (!event.ctrlKey && !event.metaKey && !event.altKey
+				&& (event.code === 'Delete' || event.code === 'Backspace'
+					|| event.key === 'Delete' || event.key === 'Backspace'
+					|| event.keyCode === 46 || event.keyCode === 8)) {
+				const selMod = app.GUI && app.GUI.GUI_tools && app.GUI.GUI_tools.tools_modules
+					&& app.GUI.GUI_tools.tools_modules['selection'];
+				const selTool = selMod && selMod.object;
+				const hasMarquee = config.TOOL && config.TOOL.name === 'selection'
+					&& selTool && selTool.Base_selection && selTool.Base_selection.has_selection;
+				if (!hasMarquee) {
+					event.preventDefault();
+					event.stopImmediatePropagation();
+					if (app.GUI && app.GUI.modules && app.GUI.modules['layer/delete']) {
+						app.GUI.modules['layer/delete'].delete();
+					}
+					return;
+				}
+			}
+
 			// Ctrl/Cmd + G = Group Layers; Ctrl/Cmd + Shift + G = Ungroup
 			if ((event.ctrlKey || event.metaKey) && !event.altKey
 				&& (event.code === 'KeyG' || event.key === 'G' || event.key === 'g' || event.keyCode === 71)) {
@@ -400,6 +438,36 @@ class GUI_shortcuts_class {
 			event.stopImmediatePropagation();
 			app.GUI.GUI_tools.activate_tool(restore_tool);
 		}, true);
+	}
+
+	handle_alt_eyedropper(isDown, event) {
+		if (!app.GUI || !app.GUI.GUI_tools) return;
+
+		if (isDown) {
+			if (event && (event.ctrlKey || event.metaKey)) return;
+			if (this.Helper.is_input(document.activeElement)) return;
+			if (app.GUI.POP && typeof app.GUI.POP.get_active_instances === 'function' && app.GUI.POP.get_active_instances() > 0) return;
+
+			const currentTool = app.GUI.GUI_tools.active_tool;
+			if (currentTool === 'brush' || currentTool === 'pencil') {
+				if (this.alt_eyedropper_tool == null) {
+					if (config.mouse && config.mouse.is_drag) return;
+					this.alt_eyedropper_tool = currentTool;
+					app.GUI.GUI_tools.activate_tool('pick_color', { skip_history: true });
+				}
+			}
+		} else {
+			if (this.alt_eyedropper_tool != null) {
+				if (config.mouse && config.mouse.is_drag) {
+					this._restore_eyedropper_pending = true;
+				} else {
+					const restoreTool = this.alt_eyedropper_tool;
+					this.alt_eyedropper_tool = null;
+					this._restore_eyedropper_pending = false;
+					app.GUI.GUI_tools.activate_tool(restoreTool, { skip_history: true });
+				}
+			}
+		}
 	}
 
 	toggle_logo() {

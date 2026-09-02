@@ -774,12 +774,30 @@ class WebGL_renderer_class {
 					if (this._gui_tools_ref.tools_modules[render_class] &&
 						typeof this._gui_tools_ref.tools_modules[render_class].object[render_function] === 'function') {
 
-						ctx.save();
-						ctx.scale(SUPER, SUPER);
-						// Shift by pad so strokes at the bounding-box edge have room
-						ctx.translate(pad - (layer.x || 0), pad - (layer.y || 0));
-						this._gui_tools_ref.tools_modules[render_class].object[render_function](ctx, layer, false);
-						ctx.restore();
+						var _this = this;
+						var paint = function(targetCtx) {
+							targetCtx.save();
+							targetCtx.scale(SUPER, SUPER);
+							// Shift by pad so strokes at the bounding-box edge have room
+							targetCtx.translate(pad - (layer.x || 0), pad - (layer.y || 0));
+							_this._gui_tools_ref.tools_modules[render_class].object[render_function](targetCtx, layer, false);
+							targetCtx.restore();
+						};
+
+						paint(ctx);
+
+						// Text (and similar) may grow layer.width/height during render.
+						// If we keep the old canvas size, the GPU stretches the texture → weird point-text scaling while typing.
+						var w2 = Math.max(1, Math.round(layer.width || 1));
+						var h2 = Math.max(1, Math.round(layer.height || 1));
+						if (w2 !== w || h2 !== h) {
+							w = w2; h = h2;
+							canvas.width = Math.max(1, Math.round((w + pad * 2) * SUPER));
+							canvas.height = Math.max(1, Math.round((h + pad * 2) * SUPER));
+							ctx = canvas.getContext('2d');
+							paint(ctx);
+						}
+
 						canvas._pad = pad;
 						return canvas;
 					}

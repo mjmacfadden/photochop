@@ -487,13 +487,18 @@ config.TOOLS = [
 		on_update: 'on_params_update',
 		attributes: {
 			font: {
-				value: 'Arial',
+				value: 'Roboto',
 				values() {
 					const user_font_names = Object.keys(config.user_fonts);
 					return ['', '[Add Font...]', ...Array.from(new Set([...config.FONTS, ...user_font_names].sort()))];
 				}
 			},
-			size: 40,
+			size: {
+				value: 38,
+				min: 1,
+				max: 999,
+				step: 1
+			},
 			bold: {
 				value: false,
 				icon: `bold.svg`
@@ -510,7 +515,7 @@ config.TOOLS = [
 				value: false,
 				icon: `strikethrough.svg`
 			},
-			fill: '#008800',
+			fill: '#008000',
 			stroke: '#000000',
 			stroke_size: {
 				value: 0,

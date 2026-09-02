@@ -105,8 +105,11 @@ export class Activate_tool_action extends Base_action {
 
 			if (key === 'text') {
 				const textTool = (app.GUI && app.GUI.GUI_tools && app.GUI.GUI_tools.tools_modules['text']) ? app.GUI.GUI_tools.tools_modules['text'].object : null;
-				if (textTool && config.layer && config.layer.type === 'text') {
-					if (textTool.focus_textarea) {
+				if (textTool) {
+					if (typeof textTool.sync_fill_from_foreground === 'function') {
+						textTool.sync_fill_from_foreground({ rebuild: true });
+					}
+					if (config.layer && config.layer.type === 'text' && textTool.focus_textarea) {
 						textTool.focus_textarea();
 					}
 				}
