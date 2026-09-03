@@ -202,7 +202,7 @@ export async function load_psd(buffer, filename, options = {}) {
 				width_original: docWidth,
 				height_original: docHeight,
 				link: psd.canvas,
-				data: safeToDataURL(psd.canvas),
+				data: null,
 				opacity: 100,
 				visible: true,
 				order: 1,
@@ -218,11 +218,16 @@ export async function load_psd(buffer, filename, options = {}) {
 
 	// If imported via "Open as Layer" (into current document)
 	if (options.asLayers) {
-		for (let l of layers) {
-			app.State.do_action(
-				new app.Actions.Insert_layer_action(l, false)
-			);
-		}
+		const insertActions = layers.map(
+			(l) => new app.Actions.Insert_layer_action(l, false)
+		);
+		await app.State.do_action(
+			new app.Actions.Bundle_action(
+				'open_psd_as_layers',
+				'Open PSD as Layers',
+				insertActions
+			)
+		);
 		alertify.success(`Added ${layers.length} layers from "${title}.psd".`);
 		return;
 	}
@@ -338,7 +343,8 @@ function convert_psd_layer(psdLayer, id, docWidth, docHeight) {
 		width_original: width,
 		height_original: height,
 		link: canvas,
-		data: safeToDataURL(canvas),
+		// Prefer live canvas link; avoid dual bitmap+dataURL memory spike
+		data: null,
 		opacity: opacity,
 		visible: visible,
 		composition: composition,
@@ -436,11 +442,16 @@ function convert_psd_effects_to_filters(psdLayer) {
 			if (opacity <= 1) opacity = Math.round(opacity * 100);
 			const color = parse_psd_color(stroke.color) || '#000000';
 
+			const positionRaw = (stroke.position || 'outside').toLowerCase();
+			const position = (positionRaw === 'inside' || positionRaw === 'center' || positionRaw === 'outside')
+				? positionRaw : 'outside';
+
 			filters.push({
 				id: 'filter_' + Math.random().toString(36).substr(2, 9),
 				name: 'stroke',
 				params: {
 					size: size,
+					position: position,
 					opacity: opacity,
 					color: color,
 				}
@@ -474,13 +485,28 @@ function convert_psd_adjustment(psdLayer, id, name, opacity, visible, compositio
 			break;
 		}
 		case 'hue/saturation': {
-			if (adj.hue != null && adj.hue !== 0) {
-				adjustment_type = 'hue-rotate';
-				params = { value: Math.round((adj.hue + 360) % 360) };
-			} else {
-				adjustment_type = 'saturate';
-				params = { value: Math.max(-100, Math.min(100, Math.round(adj.saturation || 0))) };
-			}
+			const master = adj.master || {};
+			const rawHue = (adj.hue != null) ? adj.hue : (master.hue != null ? master.hue : 0);
+			const rawSat = (adj.saturation != null) ? adj.saturation : (master.saturation != null ? master.saturation : 0);
+			const rawLight = (adj.lightness != null) ? adj.lightness : (master.lightness != null ? master.lightness : 0);
+			// PSD hue is typically -180..180; keep as-signed for CSS hue-rotate
+			let hue = Math.round(rawHue);
+			if (hue > 180) hue -= 360;
+			if (hue < -180) hue += 360;
+			adjustment_type = 'hue-saturation';
+			params = {
+				hue: Math.max(-180, Math.min(180, hue)),
+				saturation: Math.max(-100, Math.min(100, Math.round(rawSat))),
+				lightness: Math.max(-100, Math.min(100, Math.round(rawLight))),
+			};
+			break;
+		}
+		case 'photo filter': {
+			// Approximate sepia-like photo filters as VP sepia (density 0..100)
+			adjustment_type = 'sepia';
+			let density = adj.density != null ? adj.density : 100;
+			if (density > 0 && density <= 1) density = Math.round(density * 100);
+			params = { value: Math.max(0, Math.min(100, Math.round(density))) };
 			break;
 		}
 		case 'invert': {
@@ -496,6 +522,23 @@ function convert_psd_adjustment(psdLayer, id, name, opacity, visible, compositio
 		case 'black & white': {
 			adjustment_type = 'grayscale';
 			params = { value: 100 };
+			break;
+		}
+		case 'exposure': {
+			// ag-psd ExposureAdjustment: exposure, offset, gamma (same units as PS UI)
+			adjustment_type = 'exposure';
+			let exposure = adj.exposure != null ? Number(adj.exposure) : 0;
+			let offset = adj.offset != null ? Number(adj.offset) : 0;
+			let gamma = adj.gamma != null ? Number(adj.gamma) : 1;
+			if (!isFinite(exposure)) exposure = 0;
+			if (!isFinite(offset)) offset = 0;
+			if (!isFinite(gamma) || gamma <= 0) gamma = 1;
+			params = {
+				exposure: Math.max(-20, Math.min(20, exposure)),
+				offset: Math.max(-0.5, Math.min(0.5, offset)),
+				// PS/ag-psd gamma is ~0.01..9.99; UI defaults to 0.1..3 but preserve wider on import
+				gamma: Math.max(0.01, Math.min(9.99, gamma)),
+			};
 			break;
 		}
 		default: {
@@ -982,25 +1025,86 @@ function export_layer_to_psd(layer, docWidth, docHeight) {
 	if (layer.type === 'adjustment') {
 		const normType = (layer.adjustment_type || 'brightness').toLowerCase().replace(/_/g, '-');
 		let adjObj = { type: 'brightness/contrast' };
+		const p = layer.params || {};
 		if (normType === 'brightness') {
 			adjObj = {
 				type: 'brightness/contrast',
-				brightness: (layer.params && layer.params.value !== undefined) ? layer.params.value : 0,
-				contrast: (layer.params && layer.params.contrast !== undefined) ? layer.params.contrast : 0,
+				brightness: (p.value !== undefined) ? p.value : 0,
+				contrast: (p.contrast !== undefined) ? p.contrast : 0,
 			};
 		} else if (normType === 'contrast') {
 			adjObj = {
 				type: 'brightness/contrast',
 				brightness: 0,
-				contrast: (layer.params && layer.params.value !== undefined) ? layer.params.value : 0,
+				contrast: (p.value !== undefined) ? p.value : 0,
+			};
+		} else if (normType === 'hue-saturation' || normType === 'hue/saturation' || normType === 'huesaturation') {
+			let hue = (p.hue !== undefined) ? p.hue : 0;
+			let sat = (p.saturation !== undefined) ? p.saturation : 0;
+			let light = (p.lightness !== undefined) ? p.lightness : 0;
+			// Normalize hue into PSD -180..180
+			hue = ((Math.round(hue) % 360) + 360) % 360;
+			if (hue > 180) hue -= 360;
+			adjObj = {
+				type: 'hue/saturation',
+				master: {
+					a: 0, b: 0, c: 0, d: 0,
+					hue: hue,
+					saturation: Math.max(-100, Math.min(100, Math.round(sat))),
+					lightness: Math.max(-100, Math.min(100, Math.round(light))),
+				},
+			};
+		} else if (normType === 'hue-rotate') {
+			// Legacy single-channel → PSD hue/saturation master
+			let hue = (p.value !== undefined) ? p.value : 0;
+			hue = ((Math.round(hue) % 360) + 360) % 360;
+			if (hue > 180) hue -= 360;
+			adjObj = {
+				type: 'hue/saturation',
+				master: { a: 0, b: 0, c: 0, d: 0, hue: hue, saturation: 0, lightness: 0 },
+			};
+		} else if (normType === 'saturate') {
+			const sat = (p.value !== undefined) ? p.value : 0;
+			adjObj = {
+				type: 'hue/saturation',
+				master: {
+					a: 0, b: 0, c: 0, d: 0,
+					hue: 0,
+					saturation: Math.max(-100, Math.min(100, Math.round(sat))),
+					lightness: 0,
+				},
+			};
+		} else if (normType === 'sepia') {
+			// No native sepia adjustment in PSD — approximate as Photo Filter
+			const density = (p.value !== undefined) ? p.value : 100;
+			adjObj = {
+				type: 'photo filter',
+				color: { r: 112, g: 66, b: 20 },
+				density: Math.max(0, Math.min(100, Math.round(density))),
+				preserveLuminosity: true,
 			};
 		} else if (normType === 'invert') {
 			adjObj = { type: 'invert' };
 		} else if (normType === 'threshold') {
-			adjObj = { type: 'threshold', level: layer.params?.value ?? 128 };
+			adjObj = { type: 'threshold', level: p.value ?? 128 };
 		} else if (normType === 'grayscale') {
 			adjObj = { type: 'black & white' };
+		} else if (normType === 'exposure') {
+			// ag-psd: { type: 'exposure', exposure, offset, gamma }
+			let exposure = (p.exposure !== undefined) ? Number(p.exposure) : 0;
+			let offset = (p.offset !== undefined) ? Number(p.offset) : 0;
+			let gamma = (p.gamma !== undefined) ? Number(p.gamma) : 1;
+			if (!isFinite(exposure)) exposure = 0;
+			if (!isFinite(offset)) offset = 0;
+			if (!isFinite(gamma) || gamma <= 0) gamma = 1;
+			adjObj = {
+				type: 'exposure',
+				exposure: Math.max(-20, Math.min(20, exposure)),
+				offset: Math.max(-0.5, Math.min(0.5, offset)),
+				gamma: Math.max(0.01, Math.min(9.99, gamma)),
+			};
 		}
+		// blur is a Filters effect only — no PSD adjustment mapping
 
 		const psdLayer = {
 			name: layer.name || 'Adjustment',
@@ -1059,13 +1163,15 @@ function export_layer_to_psd(layer, docWidth, docHeight) {
 		}
 	}
 
-	// Export layer effects (e.g. Drop Shadow)
+	// Export layer effects (Drop Shadow, Outer/Inner Glow, Stroke)
 	if (layer.filters && layer.filters.length > 0) {
 		for (const f of layer.filters) {
-			if (f.name === 'shadow' || f.name === 'drop-shadow') {
+			const p = f.params || {};
+			const fname = f.name;
+
+			if (fname === 'shadow' || fname === 'drop-shadow') {
 				if (!psdLayer.effects) psdLayer.effects = {};
 				if (!psdLayer.effects.dropShadow) psdLayer.effects.dropShadow = [];
-				const p = f.params || {};
 				const x = p.x || 0;
 				const y = p.y || 0;
 				const dist = Math.round(Math.hypot(x, y));
@@ -1075,10 +1181,51 @@ function export_layer_to_psd(layer, docWidth, docHeight) {
 				const rgb = hex_to_rgb(p.color || '#000000');
 				psdLayer.effects.dropShadow.push({
 					enabled: !f.disabled,
+					present: true,
+					showInDialog: true,
 					angle: angleDeg,
 					distance: { units: 'Pixels', value: dist },
 					size: { units: 'Pixels', value: p.value || 5 },
 					opacity: (p.opacity != null ? p.opacity : 75) / 100,
+					color: rgb,
+				});
+			} else if (fname === 'outer_glow') {
+				if (!psdLayer.effects) psdLayer.effects = {};
+				const rgb = hex_to_rgb(p.color || '#ffff00');
+				psdLayer.effects.outerGlow = {
+					enabled: !f.disabled,
+					present: true,
+					showInDialog: true,
+					size: { units: 'Pixels', value: p.value != null ? p.value : 10 },
+					opacity: (p.opacity != null ? p.opacity : 75) / 100,
+					color: rgb,
+				};
+			} else if (fname === 'inner_glow') {
+				if (!psdLayer.effects) psdLayer.effects = {};
+				const rgb = hex_to_rgb(p.color || '#ffffff');
+				psdLayer.effects.innerGlow = {
+					enabled: !f.disabled,
+					present: true,
+					showInDialog: true,
+					size: { units: 'Pixels', value: p.value != null ? p.value : 10 },
+					opacity: (p.opacity != null ? p.opacity : 75) / 100,
+					color: rgb,
+				};
+			} else if (fname === 'stroke') {
+				if (!psdLayer.effects) psdLayer.effects = {};
+				if (!psdLayer.effects.stroke) psdLayer.effects.stroke = [];
+				const rgb = hex_to_rgb(p.color || '#000000');
+				const positionRaw = (p.position || 'outside').toLowerCase();
+				const position = (positionRaw === 'inside' || positionRaw === 'center' || positionRaw === 'outside')
+					? positionRaw : 'outside';
+				psdLayer.effects.stroke.push({
+					enabled: !f.disabled,
+					present: true,
+					showInDialog: true,
+					size: { units: 'Pixels', value: p.size != null ? p.size : 3 },
+					position: position,
+					fillType: 'color',
+					opacity: (p.opacity != null ? p.opacity : 100) / 100,
 					color: rgb,
 				});
 			}

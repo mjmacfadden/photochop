@@ -892,7 +892,7 @@ class Base_layers_class {
 
 		const type = layer.adjustment_type ? layer.adjustment_type.toLowerCase().replace(/_/g, '-') : null;
 		const filterString = this.get_adjustment_filter_string(layer);
-		if (type !== 'threshold' && (!filterString || filterString === 'none')) return;
+		if (type !== 'threshold' && type !== 'exposure' && (!filterString || filterString === 'none')) return;
 
 		const W = targetCtx.canvas.width;
 		const H = targetCtx.canvas.height;
@@ -995,6 +995,34 @@ class Base_layers_class {
 				buf32[i] = (a << 24) | (v << 16) | (v << 8) | v;
 			}
 			destCtx.putImageData(imgData, 0, 0);
+		} else if (type === 'exposure') {
+			// Photoshop-like Exposure: color * 2^exposure + offset, then pow(c, 1/gamma)
+			destCtx.drawImage(srcCanvas, 0, 0);
+			const imgData = destCtx.getImageData(0, 0, W, H);
+			const data = imgData.data;
+			const p = layer.params || {};
+			const exposure = (p.exposure !== undefined) ? Number(p.exposure) : 0;
+			const offset = (p.offset !== undefined) ? Number(p.offset) : 0;
+			let gamma = (p.gamma !== undefined) ? Number(p.gamma) : 1;
+			if (!isFinite(gamma) || gamma <= 0) gamma = 1;
+			const invGamma = 1 / gamma;
+			const exposureMul = Math.pow(2, exposure);
+
+			const applyChannel = (c) => {
+				let v = (c / 255) * exposureMul + offset;
+				if (v <= 0) return 0;
+				v = Math.pow(v, invGamma);
+				if (v >= 1) return 255;
+				return Math.round(v * 255);
+			};
+
+			for (let i = 0; i < data.length; i += 4) {
+				if (data[i + 3] === 0) continue;
+				data[i] = applyChannel(data[i]);
+				data[i + 1] = applyChannel(data[i + 1]);
+				data[i + 2] = applyChannel(data[i + 2]);
+			}
+			destCtx.putImageData(imgData, 0, 0);
 		} else {
 			const filterString = this.get_adjustment_filter_string(layer);
 			destCtx.filter = filterString;
@@ -1053,6 +1081,18 @@ class Base_layers_class {
 				let res = `brightness(${bVal})`;
 				if (c !== 0) res += ` contrast(${cVal})`;
 				return res;
+			}
+			case 'hue-saturation':
+			case 'hue/saturation':
+			case 'huesaturation': {
+				let hue = (params && params.hue !== undefined) ? params.hue : ((value !== undefined) ? value : 0);
+				let sat = (params && params.saturation !== undefined) ? params.saturation : 0;
+				let light = (params && params.lightness !== undefined) ? params.lightness : 0;
+				let parts = [`hue-rotate(${hue}deg)`];
+				parts.push(`saturate(${(sat / 100) + 1})`);
+				// Approximate lightness with brightness (CSS has no direct lightness filter)
+				if (light) parts.push(`brightness(${(light / 100) + 1})`);
+				return parts.join(' ');
 			}
 			case 'hue-rotate':
 			case 'hue_rotate': {

@@ -30,6 +30,17 @@ class Layer_adjustment_class {
 					{ name: 'value', title: 'Percentage:', value: 30, range: [-100, 100] }
 				]
 			},
+			'hue-saturation': {
+				title: 'Hue / Saturation',
+				name: 'Hue/Saturation',
+				default_params: { hue: 0, saturation: 0, lightness: 0 },
+				params: [
+					{ name: 'hue', title: 'Hue:', value: 0, range: [-180, 180] },
+					{ name: 'saturation', title: 'Saturation:', value: 0, range: [-100, 100] },
+					{ name: 'lightness', title: 'Lightness:', value: 0, range: [-100, 100] }
+				]
+			},
+			// Legacy single-channel types (still editable / PSD-exportable)
 			'hue-rotate': {
 				title: 'Hue Rotate',
 				name: 'Hue Rotate',
@@ -70,12 +81,14 @@ class Layer_adjustment_class {
 					{ name: 'value', title: 'Percentage:', value: 100, range: [0, 100] }
 				]
 			},
-			'blur': {
-				title: 'Gaussian Blur',
-				name: 'Gaussian Blur',
-				default_params: { value: 5 },
+			'exposure': {
+				title: 'Exposure',
+				name: 'Exposure',
+				default_params: { exposure: 0, offset: 0, gamma: 1 },
 				params: [
-					{ name: 'value', title: 'Radius (px):', value: 5, range: [0, 50] }
+					{ name: 'exposure', title: 'Exposure:', value: 0, range: [-20, 20], step: 0.01 },
+					{ name: 'offset', title: 'Offset:', value: 0, range: [-0.5, 0.5], step: 0.001 },
+					{ name: 'gamma', title: 'Gamma Correction:', value: 1, range: [0.1, 3], step: 0.01 }
 				]
 			},
 			'threshold': {
@@ -93,6 +106,9 @@ class Layer_adjustment_class {
 		if (!type) return 'brightness';
 		type = type.toLowerCase().replace(/_/g, '-');
 		if (type === 'hue_rotate') type = 'hue-rotate';
+		if (type === 'hue/saturation' || type === 'huesaturation' || type === 'hue_saturation') {
+			type = 'hue-saturation';
+		}
 		return type;
 	}
 
@@ -127,12 +143,17 @@ class Layer_adjustment_class {
 		this.create_or_edit('contrast');
 	}
 
+	hue_saturation() {
+		this.create_or_edit('hue-saturation');
+	}
+
 	hue_rotate() {
-		this.create_or_edit('hue-rotate');
+		// Prefer combined Hue/Saturation for new layers
+		this.create_or_edit('hue-saturation');
 	}
 
 	saturate() {
-		this.create_or_edit('saturate');
+		this.create_or_edit('hue-saturation');
 	}
 
 	grayscale() {
@@ -147,8 +168,8 @@ class Layer_adjustment_class {
 		this.create_or_edit('invert');
 	}
 
-	blur() {
-		this.create_or_edit('blur');
+	exposure() {
+		this.create_or_edit('exposure');
 	}
 
 	threshold() {

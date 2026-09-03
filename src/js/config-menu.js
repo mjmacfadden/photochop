@@ -376,14 +376,9 @@ const menuDefinition = [
 						target: 'layer/adjustment.contrast'
 					},
 					{
-						name: 'Hue Rotate',
+						name: 'Hue / Saturation',
 						ellipsis: true,
-						target: 'layer/adjustment.hue_rotate'
-					},
-					{
-						name: 'Saturate',
-						ellipsis: true,
-						target: 'layer/adjustment.saturate'
+						target: 'layer/adjustment.hue_saturation'
 					},
 					{
 						name: 'Grayscale',
@@ -401,9 +396,9 @@ const menuDefinition = [
 						target: 'layer/adjustment.invert'
 					},
 					{
-						name: 'Gaussian Blur',
+						name: 'Exposure',
 						ellipsis: true,
-						target: 'layer/adjustment.blur'
+						target: 'layer/adjustment.exposure'
 					},
 					{
 						name: 'Threshold',
