@@ -42,6 +42,7 @@ const fontMetricsMap = new Map();
 const layerEditors = new WeakMap();
 const fontLoadPromiseMap = new Map();
 const fontLoadMap = new Map();
+const localFontDataMap = new Map();
 fontLoadMap.set('Arial', true);
 fontLoadMap.set('Courier', true);
 fontLoadMap.set('Impact', true);
@@ -51,7 +52,44 @@ fontLoadMap.set('Tahoma', true);
 fontLoadMap.set('Times New Roman', true);
 fontLoadMap.set('Verdana', true);
 
-function load_font_family({ family, variants }, successCallback) {
+function load_local_font({ family }, successCallback) {
+	if (fontLoadMap.get(family) == null) {
+		fontLoadMap.set(family, false);
+		const localFont = localFontDataMap.get(family);
+		const loadPromise = localFont ? localFont.blob().then((blob) => {
+			const fontFace = new FontFace(family, blob);
+			return fontFace.load().then((loadedFont) => {
+				document.fonts.add(loadedFont);
+				fontLoadMap.set(family, true);
+				fontLoadPromiseMap.delete(family);
+			});
+		}).catch(() => {
+			fontLoadPromiseMap.delete(family);
+			alertify.error('Font ' + family + ' could not be loaded.');
+		}) : Promise.resolve().then(() => {
+			throw new Error('Local font data is unavailable');
+		}).catch(() => {
+			fontLoadPromiseMap.delete(family);
+		});
+		fontLoadPromiseMap.set(family, loadPromise);
+	}
+	if (successCallback) {
+		const loadPromise = fontLoadPromiseMap.get(family);
+		if (loadPromise) {
+			loadPromise.then(successCallback);
+		} else if (fontLoadMap.get(family) == true) {
+			requestAnimationFrame(() => {
+				successCallback();
+			});
+		}
+	}
+}
+
+function load_font_family({ family, variants, source }, successCallback) {
+	if (source === 'local') {
+		load_local_font({ family }, successCallback);
+		return;
+	}
 	if (fontLoadMap.get(family) == null) {
 		fontLoadMap.set(family, false);
 		const loadPromise = new Promise((resolve, reject) => {
@@ -1740,7 +1778,7 @@ class Text_editor_class {
 						const strikethrough = span.meta.strikethrough != null ? span.meta.strikethrough : metaDefaults.strikethrough;
 						const family = span.meta.family || metaDefaults.family;
 
-						if (fontLoadMap.get(family) !== true) {
+						if (fontLoadMap.get(family) !== true && config.user_fonts[family]?.source !== 'local') {
 							const variants = config.user_fonts[family] ? config.user_fonts[family].variants : undefined;
 							load_font_family({ family, variants }, () => {
 								this.hasValueChanged = true;
@@ -1901,6 +1939,8 @@ class Google_fonts_search_class {
 		this.fontListNode = null;
 		this.fontList = [];
 		this.fontListFiltered = [];
+		this.googleFontList = [];
+		this.localFontList = [];
 		this.selectedFonts = {};
 		this.searchTimeoutHandle = null;
 	}
@@ -1914,7 +1954,7 @@ class Google_fonts_search_class {
 			const font = this.fontListFiltered[i];
 			if (!font) break;
 			const isSelected = !!this.selectedFonts[font.family];
-			load_font_family({ family: font.family, variants: font.variants });
+			load_font_family({ family: font.family, variants: font.variants, source: font.source });
 			html += `
 				<div class="selection_card">
 					<input type="checkbox" id="google_font_selection_${font.family}" value="${font.family}" ${isSelected ? 'checked="checked"' : ''}>
@@ -1983,6 +2023,35 @@ class Google_fonts_search_class {
 				this.dialogContentNode = popup.el.querySelector('.dialog_content');
 				this.dialogContentNode.appendChild(node);
 				this.fontListNode = node;				
+				const localFontsButton = document.createElement('button');
+				localFontsButton.type = 'button';
+				localFontsButton.textContent = 'Use System Fonts';
+				localFontsButton.title = 'Allow access to fonts installed on this computer';
+				this.dialogContentNode.insertBefore(localFontsButton, node);
+				localFontsButton.addEventListener('click', async () => {
+					if (typeof window.queryLocalFonts !== 'function') {
+						alertify.error('System font access is not supported by this browser.');
+						return;
+					}
+					localFontsButton.disabled = true;
+					localFontsButton.textContent = 'Loading System Fonts...';
+					try {
+						const localFonts = await window.queryLocalFonts();
+						this.localFontList = localFonts.map((font) => {
+							localFontDataMap.set(font.family, font);
+							return { family: font.family, source: 'local' };
+						});
+						const localFamilies = new Set(this.localFontList.map((font) => font.family));
+						this.fontList = this.localFontList.concat(this.googleFontList.filter((font) => !localFamilies.has(font.family)));
+						this.fontListFiltered = this.fontList;
+						this.render_font_list();
+					} catch (error) {
+						alertify.error('System font access was not granted.');
+					} finally {
+						localFontsButton.disabled = false;
+						localFontsButton.textContent = 'Refresh System Fonts';
+					}
+				});
 
 				const queryInput = popup.el.querySelector('#pop_data_query');
 				queryInput.addEventListener('input', (e) => {
@@ -2005,13 +2074,25 @@ class Google_fonts_search_class {
 					}
 				});
 
-				const apiKey = config.google_webfonts_key;
-				$.getJSON(`https://www.googleapis.com/webfonts/v1/webfonts?key=${apiKey}&sort=popularity`, (data) => {
-					this.fontList = data.items;
-					this.fontListFiltered = data.items;
+				const useFontList = (items) => {
+					this.googleFontList = items;
+					this.fontList = this.localFontList.concat(items);
+					this.fontListFiltered = this.fontList;
 					this.render_font_list();
+				};
+				const configuredFonts = (config.FONTS || [])
+					.filter((family) => !['Arial', 'Courier', 'Impact', 'Helvetica', 'Monospace', 'Tahoma', 'Times New Roman', 'Verdana'].includes(family))
+					.map((family) => ({ family }));
+				const apiKey = config.google_webfonts_key;
+				if (!apiKey) {
+					useFontList(configuredFonts);
+					return;
+				}
+				$.getJSON(`https://www.googleapis.com/webfonts/v1/webfonts?key=${apiKey}&sort=popularity`, (data) => {
+					useFontList(data.items);
 				}).fail(function () {
 					alertify.error('Error loading the list of fonts from Google.');
+					useFontList(configuredFonts);
 				});
 			},
 			on_finish: () => {
@@ -2023,7 +2104,10 @@ class Google_fonts_search_class {
 						if (!firstFont) {
 							firstFont = font;
 						}
-						config.user_fonts[font] = this.selectedFonts[font];
+						const selectedFont = this.selectedFonts[font];
+						config.user_fonts[font] = selectedFont.source === 'local'
+							? { family: selectedFont.family, source: 'local' }
+							: selectedFont;
 					}
 					app.GUI.GUI_tools.action_data().attributes.font.value = firstFont;
 					app.GUI.GUI_tools.show_action_attributes();
@@ -2107,8 +2191,13 @@ class Text_class extends Base_tools_class {
 					this._ignore_textarea_blur = true;
 				}
 			}, true);
-			document.addEventListener('pointerup', () => {
+			document.addEventListener('pointerup', (ev) => {
 				if (this._params_ui_active) {
+					if (ev.target && ev.target.closest && ev.target.closest('.ui_number_input input')) {
+						this._params_ui_active = false;
+						this._ignore_textarea_blur = false;
+						return;
+					}
 					setTimeout(() => {
 						markParamsUi(false);
 						this._ignore_textarea_blur = false;
@@ -2131,6 +2220,9 @@ class Text_class extends Base_tools_class {
 			this.textarea.addEventListener('blur', (e) => {
 				const keepFocusSelector = '#main_wrapper, #action_attributes, #main_tools, .ui_swatches, .sp-container, .ui_color_picker_gradient, .ui_number_input, .ui_range';
 				const related = e.relatedTarget;
+				if (related && related.closest && related.closest('.ui_number_input input')) {
+					return;
+				}
 				if (related && related.closest && related.closest(keepFocusSelector)) {
 					this.focus_textarea();
 					return;
@@ -2433,6 +2525,10 @@ class Text_class extends Base_tools_class {
 			this.textarea.focus();
 		}
 		setTimeout(() => {
+			const activeNumberInput = document.activeElement && document.activeElement.closest
+				? document.activeElement.closest('.ui_number_input input')
+				: null;
+			if (activeNumberInput) return;
 			if (this.textarea && (this.focused || (config.TOOL && config.TOOL.name === 'text'))) {
 				this.focused = true;
 				try {
@@ -2811,6 +2907,9 @@ class Text_class extends Base_tools_class {
 
 		this._ignore_textarea_blur = true;
 		this._params_ui_active = true;
+		const activeNumberInput = document.activeElement && document.activeElement.closest
+			? document.activeElement.closest('.ui_number_input input')
+			: null;
 		const selectionSnap = this.snapshot_selection(editor);
 		const hadSelection = selectionSnap && !(
 			selectionSnap.startLine === selectionSnap.endLine &&
@@ -2865,7 +2964,9 @@ class Text_class extends Base_tools_class {
 		this.resize_to_dynamic_bounds(layer, editorAfter || editor);
 		this.extend_fixed_bounds(layer, editorAfter || editor);
 		this.Base_layers.render();
-		this.focus_textarea();
+		if (!activeNumberInput) {
+			this.focus_textarea();
+		}
 		setTimeout(() => {
 			this._ignore_textarea_blur = false;
 			this._params_ui_active = false;
@@ -2873,7 +2974,11 @@ class Text_class extends Base_tools_class {
 				const ed = this.get_editor(layer);
 				if (ed) this.restore_selection(ed, selectionSnap);
 			}
-			this.focus_textarea();
+			if (activeNumberInput && document.contains(activeNumberInput)) {
+				activeNumberInput.focus();
+			} else {
+				this.focus_textarea();
+			}
 		}, 0);
 	}
 

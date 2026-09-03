@@ -517,7 +517,9 @@ config.TOOLS = [
 				value: 38,
 				min: 1,
 				max: 999,
-				step: 0.01
+				step: 1,
+					inputStep: 0.01,
+					inputType: 'text'
 			},
 			bold: {
 				value: false,

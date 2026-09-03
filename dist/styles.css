@@ -686,7 +686,8 @@ button img{
     margin: 0;
 }
 
-.ui_number_input > input[type="number"] {
+.ui_number_input > input[type="number"],
+.ui_number_input > input[type="text"] {
     border: none;
     border-radius: 0;
     -moz-appearance: textfield;
@@ -694,6 +695,10 @@ button img{
     padding-right: 2.5rem;
     padding-right: calc(var(--number-input-arrow-width) + .5rem);
     width: 100%;
+}
+
+.ui_number_input > input[type="text"] {
+    min-width: 5rem;
 }
 
 .ui_number_input > .increase_number,
@@ -746,6 +751,45 @@ button img{
     border-left: 3px solid transparent;
     border-right: 3px solid transparent;
     border-top: 3px solid var(--input-text-color);
+}
+
+.font_picker {
+    position: relative;
+    min-width: 12rem;
+}
+.font_picker_button {
+    width: 100%;
+    text-align: left;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+.font_picker_menu {
+    position: fixed;
+    z-index: 1000;
+    max-height: 32rem;
+    overflow-y: auto;
+    background: var(--input-background-color);
+    border: 1px solid var(--input-border-color);
+    box-shadow: 0 3px 8px rgba(0, 0, 0, .25);
+}
+.font_picker_option {
+    display: block;
+    width: 100%;
+    padding: .35rem .5rem;
+    border: 0;
+    border-radius: 0;
+    background: transparent;
+    color: var(--input-text-color);
+    text-align: left;
+    font-size: 15px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+.font_picker_option:hover,
+.font_picker_option:focus {
+    background: var(--input-background-color-hover);
 }
 
 /**********\

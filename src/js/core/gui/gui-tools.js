@@ -639,6 +639,8 @@ class GUI_tools_class {
 						max,
 						value,
 						step: step || 1,
+						inputStep: item.inputStep,
+						inputType: item.inputType,
 						exponentialStepButtons: !step
 					})
 					.on('input', () => {
@@ -679,6 +681,80 @@ class GUI_tools_class {
 				var selectList = document.createElement("select");
 				selectList.id = k;
 				const values = typeof item.values === 'function' ? item.values() : item.values;
+				if (k === 'font') {
+					const fontPicker = document.createElement('div');
+					fontPicker.className = 'font_picker';
+					const fontButton = document.createElement('button');
+					fontButton.type = 'button';
+					fontButton.className = 'font_picker_button';
+					fontButton.setAttribute('aria-haspopup', 'listbox');
+					fontButton.setAttribute('aria-expanded', 'false');
+					const fontMenu = document.createElement('div');
+					fontMenu.className = 'font_picker_menu';
+					fontMenu.setAttribute('role', 'listbox');
+					const updateFontButton = (value) => {
+						fontButton.textContent = value || 'Select font';
+						fontButton.style.fontFamily = value && !value.includes('...') ? `"${value}", sans-serif` : '';
+					};
+					// Toolbar ancestors clip vertical overflow, so the menu is positioned
+					// via fixed coordinates and attached to <body> only while open.
+					const onDocumentMouseDown = (event) => {
+						if (fontButton.contains(event.target) || fontMenu.contains(event.target)) return;
+						closeFontMenu();
+					};
+					const onDocumentKeyDown = (event) => {
+						if (event.key === 'Escape') closeFontMenu();
+					};
+					const closeFontMenu = () => {
+						if (fontMenu.parentNode) fontMenu.parentNode.removeChild(fontMenu);
+						fontButton.setAttribute('aria-expanded', 'false');
+						document.removeEventListener('mousedown', onDocumentMouseDown, true);
+						document.removeEventListener('keydown', onDocumentKeyDown, true);
+					};
+					const openFontMenu = () => {
+						const rect = fontButton.getBoundingClientRect();
+						fontMenu.style.left = rect.left + 'px';
+						fontMenu.style.top = (rect.bottom + 4) + 'px';
+						fontMenu.style.width = Math.max(rect.width, 200) + 'px';
+						// Keep the menu on-screen if there isn't enough room below the button.
+						fontMenu.style.maxHeight = Math.max(120, window.innerHeight - rect.bottom - 12) + 'px';
+						document.body.appendChild(fontMenu);
+						fontButton.setAttribute('aria-expanded', 'true');
+						document.addEventListener('mousedown', onDocumentMouseDown, true);
+						document.addEventListener('keydown', onDocumentKeyDown, true);
+					};
+					for (let j in values) {
+						const value = values[j];
+						const option = document.createElement('button');
+						option.type = 'button';
+						option.className = 'font_picker_option';
+						option.setAttribute('role', 'option');
+						option.setAttribute('aria-selected', String(item.value === value));
+						option.textContent = value || 'Select font';
+						if (value && !value.includes('...')) option.style.fontFamily = `"${value}", sans-serif`;
+						option.addEventListener('click', () => {
+							closeFontMenu();
+							const actionData = this.action_data();
+							actionData.attributes.font.value = value;
+							if (actionData.on_update != undefined) {
+								const result = this.tools_modules[actionData.name].object[actionData.on_update]({ key: 'font', value });
+								if (result && result.new_values) {
+									for (let key in result.new_values) actionData.attributes[key].value = result.new_values[key];
+								}
+							}
+							this.show_action_attributes();
+						});
+						fontMenu.appendChild(option);
+					}
+					updateFontButton(item.value);
+					fontButton.addEventListener('click', () => {
+						if (fontMenu.parentNode) closeFontMenu();
+						else openFontMenu();
+					});
+					fontPicker.appendChild(fontButton);
+					itemDom.appendChild(fontPicker);
+					continue;
+				}
 				for (let j in values) {
 					var option = document.createElement("option");
 					if (item.value == values[j]) {

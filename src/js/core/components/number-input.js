@@ -31,7 +31,10 @@ var Helper = new Helper_class();
         const $el = $(event.target.closest('.ui_number_input'));
         const value = $el.data('input').value;
         if (value != '') {
-            set_value($el, $el.data('input').value);
+            const parsedValue = parseFloat(value);
+            if (!isNaN(parsedValue)) {
+                $el.data('value', parsedValue);
+            }
         }
         $el.trigger('input', event);
     };
@@ -131,12 +134,12 @@ var Helper = new Helper_class();
     };
 
     const set_value = ($el, value) => {
-        const { min, max, step, stepDecimalPlaces, input } = $el.data();
+        const { min, max, inputStep, inputStepDecimalPlaces, input } = $el.data();
         if (typeof value === 'string') {
             value = parseFloat(value);
         }
         if (!isNaN(value)) {
-            value = parseFloat((step * Math.round(value / step)).toFixed(stepDecimalPlaces));
+            value = parseFloat((inputStep * Math.round(value / inputStep)).toFixed(inputStepDecimalPlaces));
             value = Math.max(min, Math.min(max, value));
             if (value + '.' !== input.value) {
                 input.value = value;
@@ -193,6 +196,8 @@ var Helper = new Helper_class();
                 const min = definition.min != null ? definition.min : parseFloat(el.getAttribute('min')) || null;
                 const max = definition.max != null ? definition.max : parseFloat(el.getAttribute('max')) || null;
                 const step = definition.step != null ? definition.step : el.hasAttribute('step') ? parseFloat(el.getAttribute('step')) : 1;
+                const inputStep = definition.inputStep != null ? definition.inputStep : step;
+                const inputType = definition.inputType || 'number';
                 const exponentialStepButtons = !!definition.exponentialStepButtons;
                 const disabled = definition.disabled != null ? definition.disabled : el.hasAttribute('disabled') ? true : false;
                 const value = definition.value != null ? definition.value : parseFloat(el.value) || 0;
@@ -212,9 +217,10 @@ var Helper = new Helper_class();
                 this[i] = el;
                 $el = $(el);
 
-                const input = $el.find('input[type="number"]')[0];
+                const input = $el.find('input')[0];
                 const increaseButton = $el.find('.increase_number')[0];
                 const decreaseButton = $el.find('.decrease_number')[0];
+				input.type = inputType;
 
                 if (classList) {
                     el.classList.add(classList);
@@ -231,15 +237,15 @@ var Helper = new Helper_class();
                 if (max != null) {
                     input.setAttribute('max', max);
                 }
-                if (Math.floor(step) === step) {
-                    input.setAttribute('step', step);
+                if (Math.floor(inputStep) === inputStep) {
+                    input.setAttribute('step', inputStep);
                 } else {
                     input.setAttribute('step', 'any');
                 }
 
-                let stepDecimalPlaces = 0;
-                if ((step % 1) != 0) 
-                    stepDecimalPlaces = step.toString().split(".")[1].length;  
+                let inputStepDecimalPlaces = 0;
+                if ((inputStep % 1) != 0)
+                    inputStepDecimalPlaces = inputStep.toString().split(".")[1].length;
 
                 $el.data({
                     id,
@@ -252,7 +258,8 @@ var Helper = new Helper_class();
                     min,
                     max,
                     step,
-                    stepDecimalPlaces,
+                    inputStep,
+                    inputStepDecimalPlaces,
                     exponentialStepButtons
                 });
 
