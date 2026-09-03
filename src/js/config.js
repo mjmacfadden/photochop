@@ -575,10 +575,27 @@ config.TOOLS = [
 	},
 	{
 		name: 'crop',
+		on_activate: 'on_activate',
 		on_update: 'on_params_update',
 		on_leave: 'on_leave',
 		attributes: {
-			crop: true,
+			aspect: {
+				value: 'Free',
+				values: ['Free', 'Original', '1:1', '4:5', '5:4', '16:9', '9:16', '3:2', '2:3', 'Custom'],
+			},
+			ratio_w: {
+				value: 1,
+				min: 1,
+			},
+			ratio_h: {
+				value: 1,
+				min: 1,
+			},
+			guides: {
+				value: 'Rule of Thirds',
+				values: ['Rule of Thirds', 'Grid', 'Diagonal', 'None'],
+			},
+			commit_crop: true,
 		},
 	},
 	{

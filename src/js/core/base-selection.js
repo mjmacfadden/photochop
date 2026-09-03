@@ -34,11 +34,15 @@ class Base_selection_class {
 	/**
 	 * settings:
 	 * - enable_background
+	 * - crop_shield
+	 * - crop_guides (thirds|grid|diagonal|none)
+	 * - crop_lines (legacy bool → thirds)
 	 * - enable_borders
 	 * - enable_controls
 	 * - enable_rotation
 	 * - enable_move
 	 * - keep_ratio
+	 * - fixed_ratio
 	 * 
 	 * @param {ctx} ctx
 	 * @param {object} settings
@@ -317,8 +321,34 @@ class Base_selection_class {
 			y = -data.height / 2;
 		}
 
-		//fill
-		if (settings.enable_background == true) {
+		//crop shield — dim outside the crop rectangle (Photoshop-like)
+		if (settings.crop_shield === true) {
+			var doc_w = config.WIDTH;
+			var doc_h = config.HEIGHT;
+			var rx = Math.min(x, x + w);
+			var ry = Math.min(y, y + h);
+			var rw = Math.abs(w);
+			var rh = Math.abs(h);
+			this.ctx.fillStyle = 'rgba(0, 0, 0, 0.55)';
+			// top
+			if (ry > 0) {
+				this.ctx.fillRect(0, 0, doc_w, ry);
+			}
+			// bottom
+			if (ry + rh < doc_h) {
+				this.ctx.fillRect(0, ry + rh, doc_w, doc_h - (ry + rh));
+			}
+			// left
+			if (rx > 0) {
+				this.ctx.fillRect(0, ry, rx, rh);
+			}
+			// right
+			if (rx + rw < doc_w) {
+				this.ctx.fillRect(rx + rw, ry, doc_w - (rx + rw), rh);
+			}
+		}
+		//fill inside selection (legacy green tint for non-crop tools)
+		else if (settings.enable_background == true) {
 			this.ctx.fillStyle = "rgba(0, 255, 0, 0.3)";
 			this.ctx.fillRect(x, y, w, h);
 		}
@@ -342,39 +372,39 @@ class Base_selection_class {
 			}
 		}
 
-		//show crop lines
-		if(settings.crop_lines === true){
-
-			for(var part = 1; part < 3; part++) {
+		//crop guide overlays (thirds / grid / diagonal / none)
+		var crop_guides = settings.crop_guides;
+		if (crop_guides == null && settings.crop_lines === true) {
+			crop_guides = 'thirds';
+		}
+		if (crop_guides && crop_guides !== 'none') {
+			var drawGuideLine = (x1, y1, x2, y2) => {
 				this.ctx.lineWidth = wholeLineWidth;
 				this.ctx.strokeStyle = 'rgb(255, 255, 255)';
 				this.ctx.beginPath();
-				this.ctx.moveTo(x + w / 3 * part - halfLineWidth, y);
-				this.ctx.lineTo(x + w / 3 * part - halfLineWidth, y + h);
+				this.ctx.moveTo(x1, y1);
+				this.ctx.lineTo(x2, y2);
 				this.ctx.stroke();
 
 				this.ctx.lineWidth = halfLineWidth;
 				this.ctx.strokeStyle = 'rgb(0, 0, 0)';
 				this.ctx.beginPath();
-				this.ctx.moveTo(x + w / 3 * part - halfLineWidth, y);
-				this.ctx.lineTo(x + w / 3 * part - halfLineWidth, y + h);
+				this.ctx.moveTo(x1, y1);
+				this.ctx.lineTo(x2, y2);
 				this.ctx.stroke();
+			};
+
+			if (crop_guides === 'thirds' || crop_guides === 'grid') {
+				var divisions = (crop_guides === 'grid') ? 4 : 3;
+				for (var part = 1; part < divisions; part++) {
+					drawGuideLine(x + w / divisions * part - halfLineWidth, y, x + w / divisions * part - halfLineWidth, y + h);
+					drawGuideLine(x, y + h / divisions * part - halfLineWidth, x + w, y + h / divisions * part - halfLineWidth);
+				}
 			}
-
-			for(var part = 1; part < 3; part++) {
-				this.ctx.lineWidth = wholeLineWidth;
-				this.ctx.strokeStyle = 'rgb(255, 255, 255)';
-				this.ctx.beginPath();
-				this.ctx.moveTo(x, y + h / 3 * part - halfLineWidth);
-				this.ctx.lineTo(x + w, y + h / 3 * part - halfLineWidth);
-				this.ctx.stroke();
-
-				this.ctx.lineWidth = halfLineWidth;
-				this.ctx.strokeStyle = 'rgb(0, 0, 0)';
-				this.ctx.beginPath();
-				this.ctx.moveTo(x, y + h / 3 * part - halfLineWidth);
-				this.ctx.lineTo(x + w, y + h / 3 * part - halfLineWidth);
-				this.ctx.stroke();
+			else if (crop_guides === 'diagonal') {
+				// both diagonals plus the shorter set of 45° lines from corners
+				drawGuideLine(x, y, x + w, y + h);
+				drawGuideLine(x + w, y, x, y + h);
 			}
 		}
 
@@ -1390,7 +1420,10 @@ class Base_selection_class {
 				const is_side_vertical = (is_drag_type_top || is_drag_type_bottom) && !is_drag_type_left && !is_drag_type_right;
 
 				const is_shift = (e.shiftKey === true) || (app.GUI && app.GUI.GUI_shortcuts && app.GUI.GUI_shortcuts.is_shift_down);
-				const base_lock = (config.aspect_lock !== undefined) ? config.aspect_lock : (settings.keep_ratio !== undefined ? settings.keep_ratio : true);
+				// Tool-specific keep_ratio (e.g. crop aspect presets) wins over select's global aspect_lock
+				const base_lock = (settings.keep_ratio !== undefined)
+					? !!settings.keep_ratio
+					: ((config.aspect_lock !== undefined) ? config.aspect_lock : true);
 				// Maintain aspect ratio on all handles unless shift is held
 				const keep_ratio = is_shift ? !base_lock : base_lock;
 
@@ -1424,7 +1457,9 @@ class Base_selection_class {
 
 				var orig_w = Math.max(1, this.click_details.width || 1);
 				var orig_h = Math.max(1, this.click_details.height || 1);
-				var ratio = orig_w / orig_h;
+				var ratio = (settings.fixed_ratio && settings.fixed_ratio > 0)
+					? settings.fixed_ratio
+					: (orig_w / orig_h);
 
 				if (keep_ratio) {
 					if (is_corner) {
