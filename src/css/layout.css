@@ -1398,16 +1398,25 @@ body.tool-pan.pan-dragging #canvas_minipaint{
 	cursor: none !important;
 }
 .middle_area.tool-selection #main_wrapper,
-.middle_area.tool-selection #main_wrapper *,
 .middle_area.tool-lasso #main_wrapper,
-.middle_area.tool-lasso #main_wrapper *,
 .middle_area.tool-magic_wand #main_wrapper,
-.middle_area.tool-magic_wand #main_wrapper *,
 .middle_area.tool-gradient #main_wrapper,
-.middle_area.tool-gradient #main_wrapper *,
-.middle_area.tool-crop #main_wrapper,
-.middle_area.tool-crop #main_wrapper *{
-	cursor: crosshair !important;
+.middle_area.tool-crop #main_wrapper{
+	cursor: crosshair;
+}
+/* let JS-driven resize/rotate cursors set on #main_wrapper (transform controls,
+crop handles) win over the default crosshair - not !important so inline styles apply */
+.middle_area.tool-selection #canvas_minipaint,
+.middle_area.tool-selection #canvas_overlay,
+.middle_area.tool-lasso #canvas_minipaint,
+.middle_area.tool-lasso #canvas_overlay,
+.middle_area.tool-magic_wand #canvas_minipaint,
+.middle_area.tool-magic_wand #canvas_overlay,
+.middle_area.tool-gradient #canvas_minipaint,
+.middle_area.tool-gradient #canvas_overlay,
+.middle_area.tool-crop #canvas_minipaint,
+.middle_area.tool-crop #canvas_overlay{
+	cursor: inherit;
 }
 .middle_area.tool-pick_color #main_wrapper,
 .middle_area.tool-pick_color #main_wrapper * {

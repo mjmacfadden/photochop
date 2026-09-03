@@ -256,6 +256,11 @@ class Crop_class extends Base_tools_class {
 		this.is_moving_selection = false;
 		this.move_start = null;
 
+		// Hit test resize handles first (forces the lock synchronously - the
+		// global document pointerdown listener that normally does this runs
+		// after this tool's own mousedown, which is too late to check here).
+		this.Base_selection.selected_object_actions(e);
+
 		if (this.Base_selection.mouse_lock !== null) {
 			return;
 		}

@@ -31,7 +31,7 @@ class Select_tool_class extends Base_tools_class {
 			enable_borders: true,
 			enable_controls: true,
 			keep_ratio: true,
-			enable_rotation: true,
+			enable_rotation: false,
 			enable_move: true,
 			data_function: function () {
 				if (config.mask_active === true && config.layer && config.layer.mask && config.layer.mask.linked === false) {
@@ -48,7 +48,6 @@ class Select_tool_class extends Base_tools_class {
 			const sel = this.Base_selection.find_settings();
 			sel.enable_borders = settings.value;
 			sel.enable_controls = settings.value;
-			sel.enable_rotation = settings.value;
 			this.Base_layers.render_interactive_layer(config.layer.id);
 		}
 	}
