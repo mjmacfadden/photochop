@@ -152,6 +152,10 @@ config.TOOLS = [
 	{
 		name: 'brush',
 		attributes: {
+			preset: {
+				value: 'Classic',
+				values: ['Classic', 'Paint', 'Pencil', 'Ink'],
+			},
 			size: 13,
 			opacity: {
 				value: 100,

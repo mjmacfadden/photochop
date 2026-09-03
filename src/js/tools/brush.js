@@ -5,6 +5,7 @@ import Base_layers_class from './../core/base-layers.js';
 import Helper_class from './../libs/helpers.js';
 import Mask_class from './../modules/mask/mask.js';
 import Layer_raster_class from './../modules/layer/raster.js';
+import HokusaiEngine from './../libs/hokusai/engine.js';
 
 class Brush_class extends Base_tools_class {
 
@@ -25,6 +26,11 @@ class Brush_class extends Base_tools_class {
 		this.last_x = null;
 		this.last_y = null;
 		this.last_size = null;
+		this.hokusai_session = null;
+		this.hokusai_base = null;
+		this.hokusai_last_t = 0;
+		this.hokusai_ready = false;
+		this.hokusai_pending = false;
 	}
 
 	load() {
@@ -133,8 +139,13 @@ class Brush_class extends Base_tools_class {
 		}
 		this.selection_snapshot = this.copy_layer_snapshot();
 
-		var point = this.get_layer_local_coords(mouse.x, mouse.y, layer);
 		var params = this.getParams();
+		if (this.is_hokusai_preset(params)) {
+			this.begin_hokusai_stroke(e, layer, params);
+			return;
+		}
+
+		var point = this.get_layer_local_coords(mouse.x, mouse.y, layer);
 		var size = params.size || 20;
 		if (params.pressure && this.pressure_supported) {
 			size = size * (this.pointer_pressure || 0.5) * 2;
@@ -159,6 +170,52 @@ class Brush_class extends Base_tools_class {
 		this.last_size = localSize;
 	}
 
+	begin_hokusai_stroke(e, layer, params) {
+		var presetId = HokusaiEngine.normalizePresetId(this.resolve_preset(params));
+		var mouse = this.get_mouse_info(e);
+		var point = this.get_layer_local_coords(mouse.x, mouse.y, layer);
+		var size = params.size || 20;
+
+		this.hokusai_base = document.createElement('canvas');
+		this.hokusai_base.width = this.tmpCanvas.width;
+		this.hokusai_base.height = this.tmpCanvas.height;
+		this.hokusai_base.getContext('2d').drawImage(this.tmpCanvas, 0, 0);
+
+		this.last_x = point.x;
+		this.last_y = point.y;
+		this.hokusai_pending = true;
+
+		config.layer.link_canvas = this.tmpCanvas;
+
+		var self = this;
+		this.ensure_hokusai_session(layer, presetId).then(function (session) {
+			if (!self.started) {
+				return;
+			}
+			session.setColorHex(config.COLOR);
+			session.setSizePx(size);
+			session.beginStroke();
+			self.feed_hokusai_pointer(e, point);
+			self.composite_hokusai_onto_tmp();
+			self.constrain_edit_to_selection(self.tmpCanvas, self.selection_snapshot);
+			self.Base_layers.render_interactive_layer(config.layer.id);
+			self.Base_layers.render();
+			self.hokusai_pending = false;
+		}).catch(function (err) {
+			console.error('Hokusai init failed', err);
+			self.started = false;
+			self.hokusai_pending = false;
+			self.tmpCanvas = null;
+			self.tmpCanvasCtx = null;
+			if (config.layer) {
+				config.layer.link_canvas = null;
+			}
+			if (typeof alertify !== 'undefined') {
+				alertify.error('Hokusai brush failed to load. Falling back unavailable this stroke.');
+			}
+		});
+	}
+
 	mousemove(e, is_touch) {
 		if (this.started == false) return;
 		var mouse = this.get_mouse_info(e);
@@ -172,10 +229,26 @@ class Brush_class extends Base_tools_class {
 		var layer = config.layer;
 		if (!layer || layer.type !== 'image' || !this.tmpCanvasCtx) return;
 
+		var params = this.getParams();
+		if (this.is_hokusai_preset(params)) {
+			if (this.hokusai_pending || !this.hokusai_session) {
+				return;
+			}
+			var hpoint = this.get_layer_local_coords(mouse.x, mouse.y, layer);
+			if (hpoint.x === this.last_x && hpoint.y === this.last_y) return;
+			this.feed_hokusai_pointer(e, hpoint);
+			this.composite_hokusai_onto_tmp();
+			this.constrain_edit_to_selection(this.tmpCanvas, this.selection_snapshot);
+			this.Base_layers.render_interactive_layer(config.layer.id);
+			this.Base_layers.render();
+			this.last_x = hpoint.x;
+			this.last_y = hpoint.y;
+			return;
+		}
+
 		var point = this.get_layer_local_coords(mouse.x, mouse.y, layer);
 		if (point.x === this.last_x && point.y === this.last_y) return;
 
-		var params = this.getParams();
 		var size = params.size || 20;
 		if (params.pressure && this.pressure_supported) {
 			size = size * (this.pointer_pressure || 0.5) * 2;
@@ -213,6 +286,13 @@ class Brush_class extends Base_tools_class {
 			return;
 		}
 
+		var params = this.getParams();
+		if (this.is_hokusai_preset(params) && this.hokusai_session && !this.hokusai_pending) {
+			this.hokusai_session.finishStroke();
+			this.composite_hokusai_onto_tmp();
+			this.constrain_edit_to_selection(this.tmpCanvas, this.selection_snapshot);
+		}
+
 		if (this.tmpCanvas && config.layer && config.layer.type === 'image') {
 			app.State.do_action(
 				new app.Actions.Bundle_action('brush_stroke', 'Brush Stroke', [
@@ -224,10 +304,107 @@ class Brush_class extends Base_tools_class {
 		this.tmpCanvas = null;
 		this.tmpCanvasCtx = null;
 		this.selection_snapshot = null;
+		this.hokusai_base = null;
+		this.hokusai_pending = false;
 		this.started = false;
 		this.last_x = null;
 		this.last_y = null;
 	}
+
+
+	resolve_preset(params) {
+		var preset = params && params.preset;
+		if (preset && typeof preset === 'object') {
+			preset = preset.value || preset;
+		}
+		return preset || 'Classic';
+	}
+
+	is_hokusai_preset(params) {
+		return HokusaiEngine.isHokusaiPreset(this.resolve_preset(params));
+	}
+
+	pressure_from_event(e) {
+		var p = null;
+		if (e && typeof e.pressure === 'number') {
+			p = e.pressure;
+		} else if (config.mouse && typeof config.mouse.pressure === 'number') {
+			p = config.mouse.pressure;
+		}
+		if (p != null && p > 0) {
+			return p;
+		}
+		return 0.5;
+	}
+
+	tilt_from_event(e) {
+		var tx = (e && e.tiltX) || 0;
+		var ty = (e && e.tiltY) || 0;
+		return {
+			x: Math.sin(tx * Math.PI / 180),
+			y: Math.sin(ty * Math.PI / 180),
+		};
+	}
+
+	ensure_hokusai_session(layer, presetId) {
+		var self = this;
+		var lw = layer.width_original || layer.width || config.WIDTH;
+		var lh = layer.height_original || layer.height || config.HEIGHT;
+		if (this.hokusai_session &&
+			this.hokusai_session.width === lw &&
+			this.hokusai_session.height === lh &&
+			this.hokusai_session.presetId === presetId) {
+			return Promise.resolve(this.hokusai_session);
+		}
+		if (this.hokusai_session) {
+			this.hokusai_session.dispose();
+			this.hokusai_session = null;
+		}
+		return HokusaiEngine.createSession(lw, lh, presetId).then(function (session) {
+			self.hokusai_session = session;
+			return session;
+		});
+	}
+
+	composite_hokusai_onto_tmp() {
+		if (!this.tmpCanvasCtx || !this.hokusai_session || !this.hokusai_base) {
+			return;
+		}
+		var stroke = this.hokusai_session.flushToStrokeCanvas();
+		this.tmpCanvasCtx.clearRect(0, 0, this.tmpCanvas.width, this.tmpCanvas.height);
+		this.tmpCanvasCtx.drawImage(this.hokusai_base, 0, 0);
+		this.tmpCanvasCtx.drawImage(stroke, 0, 0);
+	}
+
+	feed_hokusai_pointer(e, point) {
+		var pressure = this.pressure_from_event(e);
+		var tilt = this.tilt_from_event(e);
+		var stamp = (e && e.timeStamp) || performance.now();
+		var events = [];
+		if (e && typeof e.getCoalescedEvents === 'function') {
+			try {
+				events = e.getCoalescedEvents() || [];
+			} catch (err) {
+				events = [];
+			}
+		}
+		if (!events.length) {
+			events = [e];
+		}
+		for (var i = 0; i < events.length; i++) {
+			var ev = events[i] || e;
+			var pt = point;
+			if (ev !== e && config.layer) {
+				var mouse = this.get_mouse_info(ev);
+				pt = this.get_layer_local_coords(mouse.x, mouse.y, config.layer);
+			}
+			var p = this.pressure_from_event(ev);
+			var t = this.tilt_from_event(ev);
+			var ts = (ev && ev.timeStamp) || stamp;
+			this.hokusai_session.strokeTo(pt.x, pt.y, p, t.x, t.y, ts);
+		}
+	}
+
 
 	paint_dab(ctx, x, y, size, hardness, color, alpha) {
 		ctx.save();
