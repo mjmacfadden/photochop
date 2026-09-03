@@ -32,6 +32,8 @@ class Crop_class extends Base_tools_class {
 			enable_controls: true,
 			crop_lines: true,
 			crop_guides: 'thirds',
+			border_style: 'crop_ps',
+			handle_style: 'crop_ps',
 			enable_rotation: false,
 			enable_move: false,
 			keep_ratio: false,
@@ -98,6 +100,48 @@ class Crop_class extends Base_tools_class {
 	}
 
 	/**
+	 * Largest crop rect for the current aspect (full canvas when Free).
+	 */
+	compute_initial_crop_rect() {
+		var doc_w = config.WIDTH || 1;
+		var doc_h = config.HEIGHT || 1;
+		var ratio = this.get_aspect_ratio();
+		if (ratio == null || ratio <= 0) {
+			return { x: 0, y: 0, width: doc_w, height: doc_h };
+		}
+		var w;
+		var h;
+		if (doc_w / doc_h > ratio) {
+			h = doc_h;
+			w = Math.round(h * ratio);
+		}
+		else {
+			w = doc_w;
+			h = Math.round(w / ratio);
+		}
+		w = Math.max(1, Math.min(w, doc_w));
+		h = Math.max(1, Math.min(h, doc_h));
+		return {
+			x: Math.round((doc_w - w) / 2),
+			y: Math.round((doc_h - h) / 2),
+			width: w,
+			height: h,
+		};
+	}
+
+	/**
+	 * Apply an initial / refreshed full-document crop (aspect-aware).
+	 */
+	apply_initial_crop() {
+		var rect = this.compute_initial_crop_rect();
+		this.selection.x = rect.x;
+		this.selection.y = rect.y;
+		this.selection.width = rect.width;
+		this.selection.height = rect.height;
+		config.need_render = true;
+	}
+
+	/**
 	 * Sync Base_selection settings from current tool attributes.
 	 */
 	sync_selection_settings() {
@@ -111,6 +155,8 @@ class Crop_class extends Base_tools_class {
 		settings.crop_guides = this.get_guides_mode();
 		settings.crop_lines = settings.crop_guides === 'thirds';
 		settings.crop_shield = true;
+		settings.border_style = 'crop_ps';
+		settings.handle_style = 'crop_ps';
 		config.need_render = true;
 	}
 
@@ -148,7 +194,11 @@ class Crop_class extends Base_tools_class {
 	 */
 	constrain_existing_selection() {
 		var ratio = this.get_aspect_ratio();
-		if (ratio == null || this.selection.width == null || this.selection.width == 0 || this.selection.height == 0) {
+		if (this.selection.width == null || this.selection.width == 0 || this.selection.height == 0) {
+			this.apply_initial_crop();
+			return;
+		}
+		if (ratio == null || ratio <= 0) {
 			return;
 		}
 		var x = this.selection.x;
@@ -167,6 +217,13 @@ class Crop_class extends Base_tools_class {
 		}
 		new_w = Math.max(1, Math.min(new_w, config.WIDTH));
 		new_h = Math.max(1, Math.min(new_h, config.HEIGHT));
+		// Keep aspect after canvas clamp
+		if (new_w / new_h > ratio) {
+			new_w = Math.max(1, Math.round(new_h * ratio));
+		}
+		else {
+			new_h = Math.max(1, Math.round(new_w / ratio));
+		}
 		var nx = Math.round(cx - new_w / 2);
 		var ny = Math.round(cy - new_h / 2);
 		nx = Math.max(0, Math.min(nx, config.WIDTH - new_w));
@@ -287,8 +344,16 @@ class Crop_class extends Base_tools_class {
 		var height = mouse.y - this.selection.y;
 
 		if (width == 0 || height == 0) {
-			//cancel selection
-			this.Base_selection.reset_selection();
+			// Click without drag: keep / restore full-document crop
+			if (this.mousedown_selection && this.mousedown_selection.width) {
+				this.selection.x = this.mousedown_selection.x;
+				this.selection.y = this.mousedown_selection.y;
+				this.selection.width = this.mousedown_selection.width;
+				this.selection.height = this.mousedown_selection.height;
+			}
+			else {
+				this.apply_initial_crop();
+			}
 			config.need_render = true;
 			return;
 		}
@@ -364,12 +429,9 @@ class Crop_class extends Base_tools_class {
 	}
 
 	cancel_selection() {
-		if (this.selection.width == null || this.selection.width == 0) {
-			return;
-		}
-		app.State.do_action(
-			new app.Actions.Reset_selection_action(this.selection)
-		);
+		// Escape while Crop is active: reset to a fresh full-document (aspect-aware) crop
+		this.sync_selection_settings();
+		this.apply_initial_crop();
 	}
 
 	render(ctx, layer) {
@@ -529,10 +591,15 @@ class Crop_class extends Base_tools_class {
 		await app.State.do_action(
 			new app.Actions.Bundle_action('crop_tool', 'Crop Tool', actions)
 		);
+
+		// Stay on Crop with a fresh full-document rect ready to adjust
+		this.sync_selection_settings();
+		this.apply_initial_crop();
 	}
 
 	on_activate() {
 		this.sync_selection_settings();
+		this.apply_initial_crop();
 		return [];
 	}
 

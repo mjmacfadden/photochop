@@ -287,7 +287,9 @@ class Base_selection_class {
 			return;
 		}
 
-		var block_size_default = handle_size / config.ZOOM;
+		// Photoshop crop uses slightly smaller square handles than transform controls
+		var screen_handle = (settings.handle_style === 'crop_ps') ? 6 : handle_size;
+		var block_size_default = screen_handle / config.ZOOM;
 
 		//NOTE: x/y/w/h are intentionally NOT rounded - rounding at non-1 zoom
 		//shifts the bounding box off the layer's pixel edges, introducing
@@ -321,7 +323,7 @@ class Base_selection_class {
 			y = -data.height / 2;
 		}
 
-		//crop shield — dim outside the crop rectangle (Photoshop-like)
+		//crop shield — dim outside the crop rectangle (Photoshop-like ~65%)
 		if (settings.crop_shield === true) {
 			var doc_w = config.WIDTH;
 			var doc_h = config.HEIGHT;
@@ -329,7 +331,7 @@ class Base_selection_class {
 			var ry = Math.min(y, y + h);
 			var rw = Math.abs(w);
 			var rh = Math.abs(h);
-			this.ctx.fillStyle = 'rgba(0, 0, 0, 0.55)';
+			this.ctx.fillStyle = 'rgba(0, 0, 0, 0.65)';
 			// top
 			if (ry > 0) {
 				this.ctx.fillRect(0, 0, doc_w, ry);
@@ -355,9 +357,10 @@ class Base_selection_class {
 
 		const wholeLineWidth = 1 / config.ZOOM;
 		const halfLineWidth = wholeLineWidth / 2;
+		const is_crop_overlay = (settings.crop_shield === true || settings.border_style === 'crop_ps');
 
-		//borders - centered on the layer bounds so no padding is added
-		if (settings.enable_borders == true && (x != 0 || y != 0 || w != config.WIDTH || h != config.HEIGHT)) {
+		//borders - always for crop (incl. full-canvas); otherwise skip full-doc match
+		if (settings.enable_borders == true && (is_crop_overlay || x != 0 || y != 0 || w != config.WIDTH || h != config.HEIGHT)) {
 			this.ctx.lineWidth = wholeLineWidth;
 			if (settings.border_style === 'dashed_light') {
 				// Type tool paragraph box: light dashed (not marching ants)
@@ -366,13 +369,21 @@ class Base_selection_class {
 				this.ctx.setLineDash([dash, dash]);
 				this.ctx.strokeRect(x, y, w, h);
 				this.ctx.setLineDash([]);
+			} else if (is_crop_overlay) {
+				// Photoshop-like thin light crop rule + subtle dark hairline
+				this.ctx.strokeStyle = 'rgba(0, 0, 0, 0.35)';
+				this.ctx.lineWidth = wholeLineWidth * 1.5;
+				this.ctx.strokeRect(x, y, w, h);
+				this.ctx.strokeStyle = 'rgba(255, 255, 255, 0.95)';
+				this.ctx.lineWidth = wholeLineWidth;
+				this.ctx.strokeRect(x, y, w, h);
 			} else {
 				this.ctx.strokeStyle = '#3f8ff7';
 				this.ctx.strokeRect(x, y, w, h);
 			}
 		}
 
-		//crop guide overlays (thirds / grid / diagonal / none)
+		//crop guide overlays (thirds / grid / diagonal / none) — keep subtle
 		var crop_guides = settings.crop_guides;
 		if (crop_guides == null && settings.crop_lines === true) {
 			crop_guides = 'thirds';
@@ -380,14 +391,14 @@ class Base_selection_class {
 		if (crop_guides && crop_guides !== 'none') {
 			var drawGuideLine = (x1, y1, x2, y2) => {
 				this.ctx.lineWidth = wholeLineWidth;
-				this.ctx.strokeStyle = 'rgb(255, 255, 255)';
+				this.ctx.strokeStyle = 'rgba(255, 255, 255, 0.55)';
 				this.ctx.beginPath();
 				this.ctx.moveTo(x1, y1);
 				this.ctx.lineTo(x2, y2);
 				this.ctx.stroke();
 
 				this.ctx.lineWidth = halfLineWidth;
-				this.ctx.strokeStyle = 'rgb(0, 0, 0)';
+				this.ctx.strokeStyle = 'rgba(0, 0, 0, 0.35)';
 				this.ctx.beginPath();
 				this.ctx.moveTo(x1, y1);
 				this.ctx.lineTo(x2, y2);
@@ -402,22 +413,25 @@ class Base_selection_class {
 				}
 			}
 			else if (crop_guides === 'diagonal') {
-				// both diagonals plus the shorter set of 45° lines from corners
+				// both diagonals
 				drawGuideLine(x, y, x + w, y + h);
 				drawGuideLine(x + w, y, x, y + h);
 			}
 		}
 
-		const hitsLeftEdge = isRotated ? false : x < handle_size;
-		const hitsTopEdge = isRotated ? false : y < handle_size;
-		const hitsRightEdge = isRotated ? false : x + w > config.WIDTH - handle_size;
-		const hitsBottomEdge = isRotated ? false : y + h > config.HEIGHT - handle_size;
+		const hitsLeftEdge = isRotated ? false : x < screen_handle;
+		const hitsTopEdge = isRotated ? false : y < screen_handle;
+		const hitsRightEdge = isRotated ? false : x + w > config.WIDTH - screen_handle;
+		const hitsBottomEdge = isRotated ? false : y + h > config.HEIGHT - screen_handle;
 
-		//draw corners - square handles (default blue; Type tool uses black stroke / white fill)
+		//draw corners - square handles (default blue; Type tool bw; crop PS light)
 		var corner = (x, y, dx, dy, drag_type, cursor) => {
 			if (settings.handle_style === 'bw_square') {
 				this.ctx.strokeStyle = "#000000";
 				this.ctx.fillStyle = "#ffffff";
+			} else if (settings.handle_style === 'crop_ps') {
+				this.ctx.strokeStyle = "rgba(40, 40, 40, 0.85)";
+				this.ctx.fillStyle = "rgba(255, 255, 255, 0.95)";
 			} else {
 				this.ctx.strokeStyle = "#3f8ff7";
 				this.ctx.fillStyle = "#ffffff";
@@ -1540,6 +1554,43 @@ class Base_selection_class {
 							settings.data.y -= settings.data.height;
 						} else {
 							settings.data.y = this.click_details.y - settings.data.height;
+						}
+					}
+				}
+
+				// Keep crop rectangle inside document bounds and preserve fixed aspect
+				if (settings.crop_shield === true) {
+					var doc_w = config.WIDTH;
+					var doc_h = config.HEIGHT;
+					if (settings.data.x < 0) {
+						settings.data.width += settings.data.x;
+						settings.data.x = 0;
+					}
+					if (settings.data.y < 0) {
+						settings.data.height += settings.data.y;
+						settings.data.y = 0;
+					}
+					if (settings.data.x + settings.data.width > doc_w) {
+						settings.data.width = doc_w - settings.data.x;
+					}
+					if (settings.data.y + settings.data.height > doc_h) {
+						settings.data.height = doc_h - settings.data.y;
+					}
+					settings.data.width = Math.max(1, settings.data.width);
+					settings.data.height = Math.max(1, settings.data.height);
+					if (keep_ratio && settings.fixed_ratio && settings.fixed_ratio > 0) {
+						var fr = settings.fixed_ratio;
+						if (settings.data.width / settings.data.height > fr) {
+							settings.data.width = Math.max(1, Math.round(settings.data.height * fr));
+						}
+						else {
+							settings.data.height = Math.max(1, Math.round(settings.data.width / fr));
+						}
+						if (settings.data.x + settings.data.width > doc_w) {
+							settings.data.x = Math.max(0, doc_w - settings.data.width);
+						}
+						if (settings.data.y + settings.data.height > doc_h) {
+							settings.data.y = Math.max(0, doc_h - settings.data.height);
 						}
 					}
 				}
