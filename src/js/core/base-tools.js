@@ -87,7 +87,7 @@ class Base_tools_class {
 			}
 
 			// Custom brush cursor outline
-			var brushTools = ['brush', 'pencil', 'erase', 'clone', 'blur', 'sharpen', 'desaturate', 'bulge_pinch'];
+			var brushTools = ['brush', 'pencil', 'erase', 'clone', 'spot_heal', 'blur', 'sharpen', 'desaturate', 'bulge_pinch'];
 			if (config.TOOL && brushTools.includes(config.TOOL.name)) {
 				var params = activeTool.getParams ? activeTool.getParams() : (config.TOOL.attributes || {});
 				var size = params.size?.value ?? params.size ?? 10;

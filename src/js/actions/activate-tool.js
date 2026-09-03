@@ -66,7 +66,7 @@ export class Activate_tool_action extends Base_action {
 			//set default cursor
 			const mainWrapper = document.getElementById('main_wrapper');
 			const middleArea = document.querySelector('.middle_area');
-			const brushTools = ['brush', 'pencil', 'erase', 'clone', 'blur', 'sharpen', 'desaturate', 'bulge_pinch'];
+			const brushTools = ['brush', 'pencil', 'erase', 'clone', 'spot_heal', 'blur', 'sharpen', 'desaturate', 'bulge_pinch'];
 			const crosshairTools = ['selection', 'lasso', 'magic_wand', 'gradient', 'crop'];
 
 			let defaultCursor = 'default';
@@ -167,7 +167,7 @@ export class Activate_tool_action extends Base_action {
 		//set default cursor
 		const mainWrapper = document.getElementById('main_wrapper');
 		const middleArea = document.querySelector('.middle_area');
-		const brushTools = ['brush', 'pencil', 'erase', 'clone', 'blur', 'sharpen', 'desaturate', 'bulge_pinch'];
+		const brushTools = ['brush', 'pencil', 'erase', 'clone', 'spot_heal', 'blur', 'sharpen', 'desaturate', 'bulge_pinch'];
 		const crosshairTools = ['selection', 'lasso', 'magic_wand', 'gradient', 'crop'];
 
 		let defaultCursor = 'default';
