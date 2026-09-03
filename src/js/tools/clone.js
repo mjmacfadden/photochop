@@ -249,7 +249,7 @@ class Clone_class extends Base_tools_class {
 		this.Base_layers.render();
 	}
 
-	mouseup(e) {
+	async mouseup(e) {
 		if (this.sampling) {
 			this.sampling = false;
 			return;
@@ -257,25 +257,34 @@ class Clone_class extends Base_tools_class {
 		if (this.started == false) {
 			return;
 		}
-		delete config.layer.link_canvas;
-		this.constrain_edit_to_selection(this.tmpCanvas, this.selection_snapshot);
+		var layer = config.layer;
+		var canvas = this.tmpCanvas;
+		if (!layer || !canvas) {
+			this.started = false;
+			return;
+		}
+		this.constrain_edit_to_selection(canvas, this.selection_snapshot);
 
-		app.State.do_action(
-			new app.Actions.Bundle_action('clone_tool', 'Clone Tool', [
-				new app.Actions.Update_layer_image_action(this.tmpCanvas)
-			])
-		);
-
-		// decrease memory
-		this.tmpCanvas.width = 1;
-		this.tmpCanvas.height = 1;
-		this.tmpCanvas = null;
-		this.tmpCanvasCtx = null;
-		this.sourceCanvas = null;
-		this.selection_snapshot = null;
-		this.started = false;
-		this.last_mouse_x = null;
-		this.last_mouse_y = null;
+		// Await commit before dropping the temp canvas — shrinking to 1×1
+		// while toBlob is in flight would save a blank image.
+		try {
+			await app.State.do_action(
+				new app.Actions.Bundle_action('clone_tool', 'Clone Tool', [
+					new app.Actions.Update_layer_image_action(canvas, layer.id)
+				])
+			);
+		} finally {
+			if (layer.link_canvas === canvas) {
+				delete layer.link_canvas;
+			}
+			this.tmpCanvas = null;
+			this.tmpCanvasCtx = null;
+			this.sourceCanvas = null;
+			this.selection_snapshot = null;
+			this.started = false;
+			this.last_mouse_x = null;
+			this.last_mouse_y = null;
+		}
 	}
 
 	clone_general(canvas_from, canvas_to, type, mouse) {
