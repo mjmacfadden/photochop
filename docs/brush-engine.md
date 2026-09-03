@@ -1,17 +1,42 @@
-# Hokusai brush engine (Vantage Point)
+# Brush engine (Vantage Point)
 
-Vantage Point integrates **[Hokusai](https://github.com/reearth/hokusai)** via `hokusai-wasm`.
+Vantage Point paints with two engines behind a shared **Brush Library**:
 
-## Preset picker
+1. **Classic** — miniPaint-style dab / soft-stamp (no WASM).
+2. **Hokusai** — [Hokusai](https://github.com/reearth/hokusai) via `hokusai-wasm` for painterly presets.
 
-| Preset | Behavior |
-|--------|----------|
-| **Classic** | Existing miniPaint dab brush (no WASM). |
-| **Paint** | Hokusai + classic/brush.myb |
-| **Pencil** | Hokusai + classic/pencil.myb |
-| **Ink** | Hokusai + classic/pen.myb |
+## Brush Library UI
 
-When Paint / Pencil / Ink is selected, strokes go through Hokusai onto the active raster layer tmp canvas. Classic keeps the old path.
+When the Brush tool is active, the options bar shows a **Brushes** control (stroke thumbnail + name). Clicking opens a flyout inspired by Procreate / Photoshop / Krita:
+
+- Category tabs: All / Classic / Paint / Pencil / Ink / Airbrush / Marker
+- Grid with **stroke preview** + name + engine badge
+- Click applies size / opacity / hardness / pressure defaults
+- Size + Opacity stay on the options bar
+
+Implementation: `src/js/core/gui/gui-brush-library.js` + CSS in `src/css/layout.css`.
+
+## Custom brush format (vpbrush JSON)
+
+Presets live under `src/js/libs/brushes/` (not ABR).
+
+- Manifest: `src/js/libs/brushes/library.json`
+- Loader: `src/js/libs/brushes/library.js`
+- Tips / previews: `images/brushes/tips/`, `images/brushes/previews/`
+- Regenerate: `bash scripts/generate-brush-assets.sh`
+
+`engine: "classic"` uses the dab path. `engine: "hokusai"` maps `hokusai` to Paint/Pencil/Ink `.myb`. Legacy Classic/Paint/Pencil/Ink aliases still resolve.
+
+## Shipped library (12 brushes)
+
+| Category | Brushes |
+|----------|---------|
+| Classic | Round, Soft Round |
+| Paint | Paint, Heavy Paint (Hokusai) |
+| Pencil | Sketch (Hokusai), Soft Pencil (Classic) |
+| Ink | Fineliner, Ink Brush (Hokusai) |
+| Airbrush | Soft Airbrush, Spray (Classic) |
+| Marker | Chisel Marker, Felt Tip (Classic) |
 
 ## License / attribution
 
@@ -21,7 +46,9 @@ When Paint / Pencil / Ink is selected, strokes go through Hokusai onto the activ
 
 ## Layout
 
-Files live under src/js/libs/hokusai/: engine.js, presets.json, vendored wasm glue + binary, brushes myb files, notices.
+- src/js/libs/brushes/: library.json, library.js
+- src/js/libs/hokusai/: engine.js, wasm, .myb, presets.json
+- images/brushes/tips/ and images/brushes/previews/
 
 ## WASM strategy
 
@@ -33,12 +60,12 @@ Prebuilt artifacts are committed under src/js/libs/hokusai/. No Rust needed for 
 - hokusai_wasm.js is excluded from babel-loader
 - engine.js passes the emitted wasm URL into init()
 
-## How strokes work
-1. Read Brush tool preset attribute.
-2. Classic keeps the dab path.
-3. Paint/Pencil/Ink lazy-load the engine, size the surface to the layer, load myb, map color and size.
-4. Pressure from PointerEvent when present; else 0.5. Tilt via sin of degrees.
-5. Composite stroke pixels onto the layer tmp canvas; one Bundle_action per stroke on mouseup.
+## How strokes work / flash fix
+1. Read Brush Library preset id from the Brush tool attribute.
+2. Classic keeps the dab path; Hokusai presets lazy-load WASM.
+3. During stroke: set link_canvas once; only render_interactive_layer (rAF-throttled); never Base_layers.render() on move.
+4. Hokusai uses dirty-AABB whiteBgToStraightRgba + dirty-rect composite; queues events while session starts.
+5. One Bundle_action per stroke on mouseup, then clear link_canvas.
 
 ## Adding a preset
 1. Add a CC0 myb under brushes/.
@@ -47,13 +74,14 @@ Prebuilt artifacts are committed under src/js/libs/hokusai/. No Rust needed for 
 4. Add the label to config.js Brush preset.values.
 5. Rebuild the app bundle.
 
-## Known limits (v1)
+## Known limits
 - Raster layers only.
-- Engine pixels composite over white; alpha is approximated from distance-from-white.
+- Engine pixels composite over white; alpha approximated (dirty-rect optimized).
 - Wet smudge does not sample existing layer pixels in stock bindings.
-- No full brush browser UI; no ABR.
+- No ABR import.
 - Mask painting stays on the Classic path.
 - One undo bundle per stroke.
+- Interactive fast path requires a top-most normal layer.
 
 ## Upstream
 - Demo: https://reearth.github.io/hokusai/

@@ -6,6 +6,7 @@ import Helper_class from './../libs/helpers.js';
 import Mask_class from './../modules/mask/mask.js';
 import Layer_raster_class from './../modules/layer/raster.js';
 import HokusaiEngine from './../libs/hokusai/engine.js';
+import BrushLibrary from './../libs/brushes/library.js';
 
 class Brush_class extends Base_tools_class {
 
@@ -31,6 +32,9 @@ class Brush_class extends Base_tools_class {
 		this.hokusai_last_t = 0;
 		this.hokusai_ready = false;
 		this.hokusai_pending = false;
+		this.hokusai_event_queue = [];
+		this._raf_id = null;
+		this._raf_dirty = false;
 	}
 
 	load() {
@@ -97,6 +101,33 @@ class Brush_class extends Base_tools_class {
 		return { x: local_x, y: local_y };
 	}
 
+	/**
+	 * During a stroke only schedule the interactive fast path.
+	 * Never call Base_layers.render() here — that invalidates the document
+	 * cache and forces a full rebuild (visible flash) every pointer move.
+	 */
+	request_stroke_preview() {
+		this._raf_dirty = true;
+		if (this._raf_id != null) return;
+		var self = this;
+		this._raf_id = requestAnimationFrame(function () {
+			self._raf_id = null;
+			if (!self._raf_dirty || !self.started || !config.layer) return;
+			self._raf_dirty = false;
+			if (self.Base_layers.render_interactive_layer) {
+				self.Base_layers.render_interactive_layer(config.layer.id);
+			}
+		});
+	}
+
+	cancel_stroke_preview() {
+		this._raf_dirty = false;
+		if (this._raf_id != null) {
+			cancelAnimationFrame(this._raf_id);
+			this._raf_id = null;
+		}
+	}
+
 	mousedown(e) {
 		this.started = false;
 		var mouse = this.get_mouse_info(e);
@@ -139,6 +170,9 @@ class Brush_class extends Base_tools_class {
 		}
 		this.selection_snapshot = this.copy_layer_snapshot();
 
+		// Keep link_canvas stable for the whole stroke (set once, clear after commit).
+		config.layer.link_canvas = this.tmpCanvas;
+
 		var params = this.getParams();
 		if (this.is_hokusai_preset(params)) {
 			this.begin_hokusai_stroke(e, layer, params);
@@ -161,9 +195,7 @@ class Brush_class extends Base_tools_class {
 		this.paint_dab(this.tmpCanvasCtx, point.x, point.y, localSize, hardness, color, alpha);
 		this.constrain_edit_to_selection(this.tmpCanvas, this.selection_snapshot);
 
-		config.layer.link_canvas = this.tmpCanvas;
-		this.Base_layers.render_interactive_layer(config.layer.id);
-		this.Base_layers.render();
+		this.request_stroke_preview();
 
 		this.last_x = point.x;
 		this.last_y = point.y;
@@ -184,8 +216,9 @@ class Brush_class extends Base_tools_class {
 		this.last_x = point.x;
 		this.last_y = point.y;
 		this.hokusai_pending = true;
+		this.hokusai_event_queue = [{ e: e, point: point }];
 
-		config.layer.link_canvas = this.tmpCanvas;
+		// link_canvas already set in mousedown — do not null it while awaiting WASM.
 
 		var self = this;
 		this.ensure_hokusai_session(layer, presetId).then(function (session) {
@@ -195,21 +228,20 @@ class Brush_class extends Base_tools_class {
 			session.setColorHex(config.COLOR);
 			session.setSizePx(size);
 			session.beginStroke();
-			self.feed_hokusai_pointer(e, point);
+
+			var queue = self.hokusai_event_queue || [];
+			self.hokusai_event_queue = [];
+			for (var i = 0; i < queue.length; i++) {
+				self.feed_hokusai_pointer(queue[i].e, queue[i].point);
+			}
 			self.composite_hokusai_onto_tmp();
 			self.constrain_edit_to_selection(self.tmpCanvas, self.selection_snapshot);
-			self.Base_layers.render_interactive_layer(config.layer.id);
-			self.Base_layers.render();
+			self.request_stroke_preview();
 			self.hokusai_pending = false;
 		}).catch(function (err) {
 			console.error('Hokusai init failed', err);
-			self.started = false;
-			self.hokusai_pending = false;
-			self.tmpCanvas = null;
-			self.tmpCanvasCtx = null;
-			if (config.layer) {
-				config.layer.link_canvas = null;
-			}
+			// Abort stroke cleanly without leaving a dangling link mid-paint.
+			self.abort_stroke();
 			if (typeof alertify !== 'undefined') {
 				alertify.error('Hokusai brush failed to load. Falling back unavailable this stroke.');
 			}
@@ -231,16 +263,20 @@ class Brush_class extends Base_tools_class {
 
 		var params = this.getParams();
 		if (this.is_hokusai_preset(params)) {
-			if (this.hokusai_pending || !this.hokusai_session) {
-				return;
-			}
 			var hpoint = this.get_layer_local_coords(mouse.x, mouse.y, layer);
 			if (hpoint.x === this.last_x && hpoint.y === this.last_y) return;
+
+			if (this.hokusai_pending || !this.hokusai_session) {
+				// Queue events until the session is ready — never clear link_canvas.
+				this.hokusai_event_queue.push({ e: e, point: hpoint });
+				this.last_x = hpoint.x;
+				this.last_y = hpoint.y;
+				return;
+			}
 			this.feed_hokusai_pointer(e, hpoint);
 			this.composite_hokusai_onto_tmp();
 			this.constrain_edit_to_selection(this.tmpCanvas, this.selection_snapshot);
-			this.Base_layers.render_interactive_layer(config.layer.id);
-			this.Base_layers.render();
+			this.request_stroke_preview();
 			this.last_x = hpoint.x;
 			this.last_y = hpoint.y;
 			return;
@@ -269,15 +305,14 @@ class Brush_class extends Base_tools_class {
 		);
 
 		this.constrain_edit_to_selection(this.tmpCanvas, this.selection_snapshot);
-		this.Base_layers.render_interactive_layer(config.layer.id);
-		this.Base_layers.render();
+		this.request_stroke_preview();
 
 		this.last_x = point.x;
 		this.last_y = point.y;
 		this.last_size = localSize;
 	}
 
-	mouseup(e) {
+	async mouseup(e) {
 		if (this.started == false) return;
 
 		if (config.mask_active === true && config.layer && config.layer.mask != null) {
@@ -286,6 +321,8 @@ class Brush_class extends Base_tools_class {
 			return;
 		}
 
+		this.cancel_stroke_preview();
+
 		var params = this.getParams();
 		if (this.is_hokusai_preset(params) && this.hokusai_session && !this.hokusai_pending) {
 			this.hokusai_session.finishStroke();
@@ -293,31 +330,66 @@ class Brush_class extends Base_tools_class {
 			this.constrain_edit_to_selection(this.tmpCanvas, this.selection_snapshot);
 		}
 
-		if (this.tmpCanvas && config.layer && config.layer.type === 'image') {
-			app.State.do_action(
-				new app.Actions.Bundle_action('brush_stroke', 'Brush Stroke', [
-					new app.Actions.Update_layer_image_action(this.tmpCanvas, config.layer.id)
-				])
-			);
+		var layer = config.layer;
+		var canvas = this.tmpCanvas;
+		if (canvas && layer && layer.type === 'image') {
+			try {
+				await app.State.do_action(
+					new app.Actions.Bundle_action('brush_stroke', 'Brush Stroke', [
+						new app.Actions.Update_layer_image_action(canvas, layer.id)
+					])
+				);
+			} finally {
+				if (layer.link_canvas === canvas) {
+					delete layer.link_canvas;
+				}
+				this.reset_stroke_state();
+			}
+		} else {
+			this.abort_stroke();
 		}
+	}
 
+	reset_stroke_state() {
+		this.cancel_stroke_preview();
 		this.tmpCanvas = null;
 		this.tmpCanvasCtx = null;
 		this.selection_snapshot = null;
 		this.hokusai_base = null;
 		this.hokusai_pending = false;
+		this.hokusai_event_queue = [];
 		this.started = false;
 		this.last_x = null;
 		this.last_y = null;
+		this.last_size = null;
 	}
 
+	abort_stroke() {
+		if (!this.started && !this.tmpCanvas) return;
+		var layer = config.layer;
+		var canvas = this.tmpCanvas;
+		if (layer && layer.link_canvas === canvas) {
+			delete layer.link_canvas;
+		}
+		this.reset_stroke_state();
+		if (this.Base_layers) {
+			this.Base_layers.invalidate
+				? this.Base_layers.invalidate({ document: true, preview: true })
+				: (config.need_render = true);
+		}
+	}
+
+	on_leave() {
+		this.abort_stroke();
+		return [];
+	}
 
 	resolve_preset(params) {
 		var preset = params && params.preset;
 		if (preset && typeof preset === 'object') {
 			preset = preset.value || preset;
 		}
-		return preset || 'Classic';
+		return BrushLibrary.normalizeId(preset || 'classic-round');
 	}
 
 	is_hokusai_preset(params) {
@@ -366,14 +438,34 @@ class Brush_class extends Base_tools_class {
 		});
 	}
 
+	/**
+	 * Composite Hokusai stroke onto tmp without wiping the whole canvas to white.
+	 * Restores only the dirty AABB from the pre-stroke base, then draws the stroke.
+	 */
 	composite_hokusai_onto_tmp() {
 		if (!this.tmpCanvasCtx || !this.hokusai_session || !this.hokusai_base) {
 			return;
 		}
 		var stroke = this.hokusai_session.flushToStrokeCanvas();
-		this.tmpCanvasCtx.clearRect(0, 0, this.tmpCanvas.width, this.tmpCanvas.height);
-		this.tmpCanvasCtx.drawImage(this.hokusai_base, 0, 0);
-		this.tmpCanvasCtx.drawImage(stroke, 0, 0);
+		var dirty = this.hokusai_session.getDirtyRect && this.hokusai_session.getDirtyRect();
+		if (dirty && dirty.w > 0 && dirty.h > 0) {
+			// Restore base in dirty region, then overlay stroke (source-over).
+			this.tmpCanvasCtx.clearRect(dirty.x, dirty.y, dirty.w, dirty.h);
+			this.tmpCanvasCtx.drawImage(
+				this.hokusai_base,
+				dirty.x, dirty.y, dirty.w, dirty.h,
+				dirty.x, dirty.y, dirty.w, dirty.h
+			);
+			this.tmpCanvasCtx.drawImage(
+				stroke,
+				dirty.x, dirty.y, dirty.w, dirty.h,
+				dirty.x, dirty.y, dirty.w, dirty.h
+			);
+		} else {
+			this.tmpCanvasCtx.clearRect(0, 0, this.tmpCanvas.width, this.tmpCanvas.height);
+			this.tmpCanvasCtx.drawImage(this.hokusai_base, 0, 0);
+			this.tmpCanvasCtx.drawImage(stroke, 0, 0);
+		}
 	}
 
 	feed_hokusai_pointer(e, point) {
