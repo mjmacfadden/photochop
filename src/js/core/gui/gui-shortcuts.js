@@ -309,6 +309,17 @@ class GUI_shortcuts_class {
 				return;
 			}
 
+			// Ctrl/Cmd + Alt/Option + V = File > Paste as New
+			if ((event.ctrlKey || event.metaKey) && event.altKey && !event.shiftKey
+				&& (event.code === 'KeyV' || event.keyCode === 86)) {
+				event.preventDefault();
+				event.stopImmediatePropagation();
+				if (app.GUI && app.GUI.modules && app.GUI.modules['file/new']) {
+					app.GUI.modules['file/new'].paste_as_new();
+				}
+				return;
+			}
+
 			// Ctrl/Cmd + Delete/Backspace = Fill with background color
 			if ((event.ctrlKey || event.metaKey) && !event.altKey
 				&& (event.code === 'Delete' || event.code === 'Backspace' || event.key === 'Delete' || event.key === 'Backspace' || event.keyCode === 46 || event.keyCode === 8)) {

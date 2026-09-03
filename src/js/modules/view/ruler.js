@@ -5,6 +5,8 @@ import Base_layers_class from './../../core/base-layers.js';
 import Tools_settings_class from './../tools/settings.js';
 import zoomView from './../../libs/zoomView.js';
 
+const RULER_FONT = "300 10px -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif";
+
 var instance = null;
 
 class View_ruler_class {
@@ -228,7 +230,7 @@ class View_ruler_class {
 		ctx_left.strokeStyle = color;
 		ctx_left.fillStyle = color;
 		ctx_left.lineWidth = 1;
-		ctx_left.font = "11px Arial";
+		ctx_left.font = RULER_FONT;
 
 		ctx_left.clearRect(0, 0, ruler_left.width, ruler_left.height);
 
@@ -269,7 +271,7 @@ class View_ruler_class {
 		ctx_top.strokeStyle = color;
 		ctx_top.fillStyle = color;
 		ctx_top.lineWidth = 1;
-		ctx_top.font = "11px Arial";
+		ctx_top.font = RULER_FONT;
 
 		ctx_top.clearRect(0, 0, ruler_top.width, ruler_top.height);
 
