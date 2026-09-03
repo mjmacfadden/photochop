@@ -270,9 +270,10 @@ class GUI_shortcuts_class {
 			if (event.code === 'Space' && !event.ctrlKey && !event.metaKey && !event.altKey) {
 				event.preventDefault();
 				event.stopImmediatePropagation();
-				if (this.space_pan_tool == null) {
+				if (this.space_pan_tool == null && app.GUI && app.GUI.GUI_tools) {
+					this.abort_active_paint_stroke();
 					this.space_pan_tool = app.GUI.GUI_tools.active_tool;
-					app.GUI.GUI_tools.activate_tool('pan');
+					app.GUI.GUI_tools.activate_tool('pan', { skip_history: true });
 				}
 				return;
 			}
@@ -436,7 +437,7 @@ class GUI_shortcuts_class {
 			this.space_pan_tool = null;
 			event.preventDefault();
 			event.stopImmediatePropagation();
-			app.GUI.GUI_tools.activate_tool(restore_tool);
+			app.GUI.GUI_tools.activate_tool(restore_tool, { skip_history: true });
 		}, true);
 	}
 
@@ -543,6 +544,29 @@ class GUI_shortcuts_class {
 				e.preventDefault();
 				this.toggle_logo();
 			});
+		}
+	}
+
+
+	abort_active_paint_stroke() {
+		if (!app.GUI || !app.GUI.GUI_tools) return;
+		var key = app.GUI.GUI_tools.active_tool;
+		var mod = app.GUI.GUI_tools.tools_modules[key];
+		var tool = mod && mod.object;
+		if (!tool) return;
+		if (typeof tool.abort_stroke === 'function') {
+			tool.abort_stroke();
+			return;
+		}
+		if (tool.started && tool.tmpCanvas && config.layer) {
+			if (config.layer.link_canvas === tool.tmpCanvas) {
+				delete config.layer.link_canvas;
+			}
+			tool.tmpCanvas = null;
+			tool.tmpCanvasCtx = null;
+			tool.started = false;
+			config.need_render = true;
+			if (app.Layers) app.Layers.render();
 		}
 	}
 
