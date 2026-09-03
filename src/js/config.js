@@ -576,6 +576,7 @@ config.TOOLS = [
 	{
 		name: 'spot_heal',
 		title: 'Spot Healing Brush',
+		on_leave: 'on_leave',
 		attributes: {
 			size: 30,
 			hardness: {

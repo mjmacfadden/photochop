@@ -227,6 +227,33 @@ class Spot_heal_class extends Base_tools_class {
 		}
 	}
 
+	abort_stroke() {
+		if (!this.started) return;
+		var layer = config.layer;
+		var canvas = this.tmpCanvas;
+		if (layer && layer.link_canvas === canvas) {
+			delete layer.link_canvas;
+		}
+		this.tmpCanvas = null;
+		this.tmpCanvasCtx = null;
+		this.layerImageData = null;
+		this.selection_snapshot = null;
+		this.started = false;
+		this.last_mouse_x = null;
+		this.last_mouse_y = null;
+		this.recentOffsets = [];
+		this.maskCache = {};
+		config.need_render = true;
+		if (this.Base_layers) this.Base_layers.render();
+	}
+
+	on_leave() {
+		// Space→Pan (and any tool switch) must drop an in-progress heal
+		// without committing a half stroke.
+		this.abort_stroke();
+		return [];
+	}
+
 	/**
 	 * One heal stamp at mouse position (document coords).
 	 * 1) Map to layer-original coords
