@@ -20,6 +20,11 @@ class Brush_class extends Base_tools_class {
 		this.pressure_supported = false;
 		this.pointer_pressure = 0; // range [0 - 1]
 		this.soft_stamp_cache = {};
+		this.tip_image_cache = {};
+		this.tip_stamp_cache = {};
+		this.active_tip_path = null;
+		this.active_spacing = 0.25;
+		this.active_flow = 1;
 		this.tmpCanvas = null;
 		this.tmpCanvasCtx = null;
 		this.selection_snapshot = null;
@@ -39,6 +44,7 @@ class Brush_class extends Base_tools_class {
 
 	load() {
 		// Event routing is handled centrally by Base_tools_class
+		this.preload_tips();
 	}
 
 	ensure_raster_layer() {
@@ -179,20 +185,15 @@ class Brush_class extends Base_tools_class {
 			return;
 		}
 
+		var paint = this.resolve_paint_state(params, layer);
 		var point = this.get_layer_local_coords(mouse.x, mouse.y, layer);
-		var size = params.size || 20;
-		if (params.pressure && this.pressure_supported) {
-			size = size * (this.pointer_pressure || 0.5) * 2;
-		}
+		var localSize = this.size_for_pressure(paint, this.pointer_pressure);
+		var alpha = this.alpha_for_pressure(paint, this.pointer_pressure);
 
-		var scale = (layer.width_original || layer.width || 1) / (layer.width || 1);
-		var localSize = Math.max(1, size * scale);
-		var hardness = (params.hardness != null) ? params.hardness : 100;
-		var color = config.COLOR;
-		var toolOpacity = (params.opacity != null) ? params.opacity / 100 : 1;
-		var alpha = ((config.ALPHA != null) ? config.ALPHA / 255 : 1) * toolOpacity;
-
-		this.paint_dab(this.tmpCanvasCtx, point.x, point.y, localSize, hardness, color, alpha);
+		this.paint_dab(
+			this.tmpCanvasCtx, point.x, point.y, localSize,
+			paint.hardness, paint.color, alpha, paint
+		);
 		this.constrain_edit_to_selection(this.tmpCanvas, this.selection_snapshot);
 
 		this.request_stroke_preview();
@@ -285,23 +286,20 @@ class Brush_class extends Base_tools_class {
 		var point = this.get_layer_local_coords(mouse.x, mouse.y, layer);
 		if (point.x === this.last_x && point.y === this.last_y) return;
 
-		var size = params.size || 20;
-		if (params.pressure && this.pressure_supported) {
-			size = size * (this.pointer_pressure || 0.5) * 2;
+		var paint = this.resolve_paint_state(params, layer);
+		var p = (e && e.pressure) || this.pointer_pressure || 0.5;
+		if (e && typeof e.pressure === 'number' && e.pressure > 0) {
+			this.pointer_pressure = e.pressure;
+			p = e.pressure;
 		}
-
-		var scale = (layer.width_original || layer.width || 1) / (layer.width || 1);
-		var localSize = Math.max(1, size * scale);
-		var hardness = (params.hardness != null) ? params.hardness : 100;
-		var color = config.COLOR;
-		var toolOpacity = (params.opacity != null) ? params.opacity / 100 : 1;
-		var alpha = ((config.ALPHA != null) ? config.ALPHA / 255 : 1) * toolOpacity;
+		var localSize = this.size_for_pressure(paint, p);
+		var alpha = this.alpha_for_pressure(paint, p);
 
 		this.paint_stroke_segment(
 			this.tmpCanvasCtx,
 			this.last_x, this.last_y, this.last_size,
 			point.x, point.y, localSize,
-			hardness, color, alpha
+			paint.hardness, paint.color, alpha, paint
 		);
 
 		this.constrain_edit_to_selection(this.tmpCanvas, this.selection_snapshot);
@@ -498,9 +496,102 @@ class Brush_class extends Base_tools_class {
 	}
 
 
-	paint_dab(ctx, x, y, size, hardness, color, alpha) {
+	preload_tips() {
+		var brushes = BrushLibrary.getBrushes ? BrushLibrary.getBrushes() : [];
+		for (var i = 0; i < brushes.length; i++) {
+			if (brushes[i] && brushes[i].tip) {
+				this.ensure_tip_image(brushes[i].tip);
+			}
+		}
+	}
+
+	ensure_tip_image(path) {
+		if (!path) return null;
+		if (this.tip_image_cache[path]) return this.tip_image_cache[path];
+		var img = new Image();
+		img.decoding = 'async';
+		img.src = path;
+		this.tip_image_cache[path] = img;
+		return img;
+	}
+
+	tip_image_ready(img) {
+		return !!(img && img.complete && img.naturalWidth > 0);
+	}
+
+	/**
+	 * Resolve classic/stamp paint options from the active Brush Library preset.
+	 * Hokusai presets never reach here (routed earlier).
+	 */
+	resolve_paint_state(params, layer) {
+		var brush = BrushLibrary.getBrush(this.resolve_preset(params));
+		var size = (params.size != null) ? params.size : ((brush.size && brush.size.default) || 20);
+		var hardness = (params.hardness != null) ? params.hardness
+			: (brush.hardness != null ? brush.hardness : 100);
+		var toolOpacity = (params.opacity != null) ? params.opacity / 100
+			: ((brush.opacity && brush.opacity.default != null) ? brush.opacity.default / 100 : 1);
+		var flow = 1;
+		if (brush.flow && brush.flow.default != null) {
+			flow = brush.flow.default / 100;
+		}
+		var spacing = (brush.spacing != null) ? brush.spacing : 0.25;
+		var scale = 1;
+		if (layer) {
+			scale = (layer.width_original || layer.width || 1) / (layer.width || 1);
+		}
+		var tipPath = null;
+		var useTip = false;
+		if (brush && (brush.engine === 'stamp' || brush.engine === 'classic') && brush.tip) {
+			tipPath = brush.tip;
+			useTip = true;
+			this.ensure_tip_image(tipPath);
+		}
+		this.active_tip_path = tipPath;
+		this.active_spacing = spacing;
+		this.active_flow = flow;
+
+		var pressureSize = !!(params.pressure || (brush.size && brush.size.pressure));
+		var pressureOpacity = !!(brush.opacity && brush.opacity.pressure);
+
+		return {
+			brush: brush,
+			baseSize: size,
+			scale: scale,
+			hardness: hardness,
+			color: config.COLOR,
+			toolOpacity: toolOpacity,
+			flow: flow,
+			spacing: spacing,
+			tipPath: tipPath,
+			useTip: useTip,
+			pressureSize: pressureSize,
+			pressureOpacity: pressureOpacity,
+		};
+	}
+
+	size_for_pressure(paint, pressure) {
+		var size = paint.baseSize;
+		if (paint.pressureSize && this.pressure_supported) {
+			size = size * (pressure || 0.5) * 2;
+		}
+		return Math.max(1, size * paint.scale);
+	}
+
+	alpha_for_pressure(paint, pressure) {
+		var alpha = ((config.ALPHA != null) ? config.ALPHA / 255 : 1) * paint.toolOpacity * paint.flow;
+		if (paint.pressureOpacity && this.pressure_supported) {
+			alpha *= (pressure || 0.5);
+		}
+		return Math.max(0, Math.min(1, alpha));
+	}
+
+	paint_dab(ctx, x, y, size, hardness, color, alpha, paint) {
 		ctx.save();
 		ctx.globalAlpha = alpha;
+		if (paint && paint.useTip && this.stamp_tip_dab(ctx, x, y, size, hardness, color, paint.tipPath)) {
+			ctx.restore();
+			return;
+		}
 		if (hardness < 100) {
 			this.stamp_soft(ctx, x, y, size, hardness, color, 1);
 		} else {
@@ -512,10 +603,37 @@ class Brush_class extends Base_tools_class {
 		ctx.restore();
 	}
 
-	paint_stroke_segment(ctx, x0, y0, s0, x1, y1, s1, hardness, color, alpha) {
+	paint_stroke_segment(ctx, x0, y0, s0, x1, y1, s1, hardness, color, alpha, paint) {
 		var dx = x1 - x0;
 		var dy = y1 - y0;
 		var dist = Math.sqrt(dx * dx + dy * dy);
+
+		// Tip-stamp path: space dabs as a fraction of brush diameter.
+		if (paint && paint.useTip) {
+			var tipImg = this.ensure_tip_image(paint.tipPath);
+			if (this.tip_image_ready(tipImg)) {
+				ctx.save();
+				ctx.globalAlpha = alpha;
+				var spacingFrac = (paint.spacing != null) ? paint.spacing : 0.25;
+				var avgSize = Math.max(1, (s0 + s1) / 2);
+				var step = Math.max(0.5, avgSize * spacingFrac);
+				var count = Math.max(1, Math.ceil(dist / step));
+				for (var i = 0; i <= count; i++) {
+					var t = i / count;
+					this.stamp_tip_dab(
+						ctx,
+						x0 + dx * t,
+						y0 + dy * t,
+						s0 + (s1 - s0) * t,
+						hardness,
+						color,
+						paint.tipPath
+					);
+				}
+				ctx.restore();
+				return;
+			}
+		}
 
 		if (hardness < 100) {
 			ctx.save();
@@ -541,6 +659,83 @@ class Brush_class extends Base_tools_class {
 			ctx.fill();
 			ctx.restore();
 		}
+	}
+
+	/**
+	 * Build a foreground-tinted tip stamp, optionally softened by hardness.
+	 * Tip alpha is preserved; RGB is replaced with the paint color.
+	 */
+	build_tip_stamp(tipImg, size, hardness, color) {
+		size = Math.max(1, Math.round(size));
+		hardness = Math.max(0, Math.min(100, Math.round(hardness)));
+		var side = size + 2;
+		var pad = 1;
+		var center = side / 2;
+
+		var canvas = document.createElement('canvas');
+		canvas.width = side;
+		canvas.height = side;
+		var ctx = canvas.getContext('2d');
+
+		ctx.clearRect(0, 0, side, side);
+		ctx.drawImage(tipImg, pad, pad, size, size);
+
+		// Tint: keep tip alpha, fill with foreground color.
+		ctx.globalCompositeOperation = 'source-in';
+		ctx.fillStyle = color;
+		ctx.fillRect(0, 0, side, side);
+		ctx.globalCompositeOperation = 'source-over';
+
+		if (hardness < 100) {
+			var r_outer = size / 2;
+			var r_inner = r_outer * (hardness / 100);
+			var mask = document.createElement('canvas');
+			mask.width = side;
+			mask.height = side;
+			var mctx = mask.getContext('2d');
+			var gradient = mctx.createRadialGradient(center, center, r_inner, center, center, r_outer);
+			gradient.addColorStop(0, 'rgba(0,0,0,1)');
+			gradient.addColorStop(1, 'rgba(0,0,0,0)');
+			mctx.fillStyle = gradient;
+			mctx.fillRect(0, 0, side, side);
+			ctx.globalCompositeOperation = 'destination-in';
+			ctx.drawImage(mask, 0, 0);
+			ctx.globalCompositeOperation = 'source-over';
+		}
+
+		return {
+			canvas: canvas,
+			center: center,
+			size: size,
+			hardness: hardness,
+			color: color,
+		};
+	}
+
+	get_tip_stamp(tipPath, size, hardness, color) {
+		var tipImg = this.ensure_tip_image(tipPath);
+		if (!this.tip_image_ready(tipImg)) return null;
+		size = Math.max(1, Math.round(size));
+		hardness = Math.round(hardness);
+		var key = tipPath + '_' + size + '_' + hardness + '_' + color;
+		if (this.tip_stamp_cache[key] == null) {
+			// Bound cache growth — drop oldest half when huge.
+			var keys = Object.keys(this.tip_stamp_cache);
+			if (keys.length > 120) {
+				for (var i = 0; i < 60; i++) {
+					delete this.tip_stamp_cache[keys[i]];
+				}
+			}
+			this.tip_stamp_cache[key] = this.build_tip_stamp(tipImg, size, hardness, color);
+		}
+		return this.tip_stamp_cache[key];
+	}
+
+	stamp_tip_dab(ctx, x, y, size, hardness, color, tipPath) {
+		var stamp = this.get_tip_stamp(tipPath, size, hardness, color);
+		if (!stamp) return false;
+		ctx.drawImage(stamp.canvas, Math.round(x - stamp.center), Math.round(y - stamp.center));
+		return true;
 	}
 
 	build_soft_stamp(size, hardness, color) {
