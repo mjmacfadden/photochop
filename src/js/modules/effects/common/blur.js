@@ -13,11 +13,6 @@ class Effects_blur_class extends Effects_common_class {
 	}
 
 	blur(filter_id) {
-		if (app.GUI && app.GUI.modules && app.GUI.modules['layer/adjustment']) {
-			app.GUI.modules['layer/adjustment'].create_or_edit('blur');
-			return;
-		}
-
 		if (config.layer.type == null) {
 			alertify.error('Layer is empty.');
 			return;
@@ -26,7 +21,7 @@ class Effects_blur_class extends Effects_common_class {
 		var filter = this.Base_layers.find_filter_by_id(filter_id, 'blur');
 
 		var params = [
-			{name: "value", title: "Percentage:", value: filter.value ??= 5, range: [0, 50]},
+			{name: "value", title: "Radius (px):", value: filter.value ??= 5, range: [0, 50]},
 		];
 		this.show_dialog('blur', params, filter_id);
 	}

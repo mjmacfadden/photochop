@@ -386,9 +386,9 @@ const menuDefinition = [
 						target: 'layer/adjustment.invert'
 					},
 					{
-						name: 'Gaussian Blur',
+						name: 'Exposure',
 						ellipsis: true,
-						target: 'layer/adjustment.blur'
+						target: 'layer/adjustment.exposure'
 					},
 					{
 						name: 'Threshold',

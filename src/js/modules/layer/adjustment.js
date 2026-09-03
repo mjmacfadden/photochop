@@ -81,12 +81,14 @@ class Layer_adjustment_class {
 					{ name: 'value', title: 'Percentage:', value: 100, range: [0, 100] }
 				]
 			},
-			'blur': {
-				title: 'Gaussian Blur',
-				name: 'Gaussian Blur',
-				default_params: { value: 5 },
+			'exposure': {
+				title: 'Exposure',
+				name: 'Exposure',
+				default_params: { exposure: 0, offset: 0, gamma: 1 },
 				params: [
-					{ name: 'value', title: 'Radius (px):', value: 5, range: [0, 50] }
+					{ name: 'exposure', title: 'Exposure:', value: 0, range: [-20, 20], step: 0.01 },
+					{ name: 'offset', title: 'Offset:', value: 0, range: [-0.5, 0.5], step: 0.001 },
+					{ name: 'gamma', title: 'Gamma Correction:', value: 1, range: [0.1, 3], step: 0.01 }
 				]
 			},
 			'threshold': {
@@ -166,8 +168,8 @@ class Layer_adjustment_class {
 		this.create_or_edit('invert');
 	}
 
-	blur() {
-		this.create_or_edit('blur');
+	exposure() {
+		this.create_or_edit('exposure');
 	}
 
 	threshold() {

@@ -524,6 +524,23 @@ function convert_psd_adjustment(psdLayer, id, name, opacity, visible, compositio
 			params = { value: 100 };
 			break;
 		}
+		case 'exposure': {
+			// ag-psd ExposureAdjustment: exposure, offset, gamma (same units as PS UI)
+			adjustment_type = 'exposure';
+			let exposure = adj.exposure != null ? Number(adj.exposure) : 0;
+			let offset = adj.offset != null ? Number(adj.offset) : 0;
+			let gamma = adj.gamma != null ? Number(adj.gamma) : 1;
+			if (!isFinite(exposure)) exposure = 0;
+			if (!isFinite(offset)) offset = 0;
+			if (!isFinite(gamma) || gamma <= 0) gamma = 1;
+			params = {
+				exposure: Math.max(-20, Math.min(20, exposure)),
+				offset: Math.max(-0.5, Math.min(0.5, offset)),
+				// PS/ag-psd gamma is ~0.01..9.99; UI defaults to 0.1..3 but preserve wider on import
+				gamma: Math.max(0.01, Math.min(9.99, gamma)),
+			};
+			break;
+		}
 		default: {
 			adjustment_type = 'brightness';
 			params = { value: 0 };
@@ -1072,8 +1089,22 @@ function export_layer_to_psd(layer, docWidth, docHeight) {
 			adjObj = { type: 'threshold', level: p.value ?? 128 };
 		} else if (normType === 'grayscale') {
 			adjObj = { type: 'black & white' };
+		} else if (normType === 'exposure') {
+			// ag-psd: { type: 'exposure', exposure, offset, gamma }
+			let exposure = (p.exposure !== undefined) ? Number(p.exposure) : 0;
+			let offset = (p.offset !== undefined) ? Number(p.offset) : 0;
+			let gamma = (p.gamma !== undefined) ? Number(p.gamma) : 1;
+			if (!isFinite(exposure)) exposure = 0;
+			if (!isFinite(offset)) offset = 0;
+			if (!isFinite(gamma) || gamma <= 0) gamma = 1;
+			adjObj = {
+				type: 'exposure',
+				exposure: Math.max(-20, Math.min(20, exposure)),
+				offset: Math.max(-0.5, Math.min(0.5, offset)),
+				gamma: Math.max(0.01, Math.min(9.99, gamma)),
+			};
 		}
-		// blur: no PSD adjustment mapping — skipped (documented in audit)
+		// blur is a Filters effect only — no PSD adjustment mapping
 
 		const psdLayer = {
 			name: layer.name || 'Adjustment',

@@ -33,9 +33,10 @@
 | invert | **Supported** | **Supported** | |
 | threshold | **Supported** | **Supported** | |
 | black & white | **Partial** → `grayscale` (no channel mix) | **Supported** as `black & white` | Lossy vs PS B&W |
-| levels / curves / exposure / color balance / photo filter / vibrance / etc. | **Missing** (default stub → brightness 0) | **Missing** | Silent no-op on unknown `adj.type` |
+| exposure | **Supported** → `exposure` (exposure/offset/gamma) | **Supported** | ag-psd `exposure`, `offset`, `gamma`; canvas `c*2^e+offset` then `pow(c,1/γ)` |
+| levels / curves / color balance / vibrance / etc. | **Missing** (default stub → brightness 0) | **Missing** | Silent no-op on unknown `adj.type` |
 | sepia (VP-native) | **Partial** ← photo filter approx | **Supported** → photo filter | Density ↔ sepia value |
-| blur (VP-native) | N/A | **Skipped** | No PSD adjustment mapping |
+| blur | N/A (Effects → Common Filters → Gaussian Blur) | N/A | Removed from adjustments; no PSD adj export |
 
 ---
 
@@ -71,7 +72,7 @@
 |------|-----------|---------|---------|
 | Structure | Groups, order, opacity, visibility, masks, text styleRuns | Blend map (lossy modes) | Smart objects, vectors/paths, CMYK/16-bit honesty UX |
 | FX | Drop shadow, outer/inner glow, stroke (basic params) | Stroke position; multi-shadow OK | Bevel, satin, overlays |
-| Adjustments | Brightness/contrast, invert, threshold | Hue/sat (split), B&W→grayscale | Levels, curves, exposure, etc. |
+| Adjustments | Brightness/contrast, invert, threshold, exposure, hue/sat | B&W→grayscale; sepia↔photo filter | Levels, curves, vibrance, etc. |
 | Clipping | Flag read | Overwrites blend into `source-atop` | True clip+blend |
 
 ### Export
@@ -80,7 +81,7 @@
 |------|-----------|---------|---------|
 | Structure | Nested groups, masks, text, composite via `app.Layers` | Lossy blend set | Smart objects |
 | FX | Drop shadow | — | Outer/inner glow, stroke, other FX |
-| Adjustments | Brightness/contrast, invert, threshold, grayscale→B&W | — | Hue-rotate, saturate, sepia, blur |
+| Adjustments | Brightness/contrast, invert, threshold, grayscale→B&W, hue/sat, sepia, exposure | — | Levels/curves/etc. (blur is Effects-only) |
 | Clipping | `clipping: true` when composition is source-atop | Always pairs with blendMode normal | Coexistent non-normal blend |
 
 ---
@@ -149,8 +150,8 @@ Branch work after the initial audit. **Photopea is the interim oracle; Photoshop
 - **PSD import** maps `hue/saturation` `master` (and legacy top-level) to **both** channels (no longer hue≠0 drops sat).
 - **PSD export** writes `hue/saturation` from `hue-saturation` **and** legacy `hue-rotate` / `saturate` layers.
 - **Sepia** exports as `photo filter` (warm brown + density); `photo filter` imports approximate as `sepia`.
-- **Blur** — **skipped** (no PSD adjustment-layer mapping; smart-object filterFX out of scope). Documented here intentionally.
-- **Exposure** — **skipped** this pass (prefer solid hue/sat over a half-baked exposure).
+- **Blur** — removed from New Adjustment Layer; lives under **Effects → Common Filters → Gaussian Blur** (destructive layer filter). No PSD adjustment export.
+- **Exposure** — first-class adjustment (`exposure` / `offset` / `gamma`); canvas compositor (not CSS); PSD import/export via ag-psd `type: 'exposure'`.
 
 ### Still open / unchanged
 - Clipping + blend coexistence (model change).
