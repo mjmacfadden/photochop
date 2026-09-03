@@ -574,6 +574,28 @@ config.TOOLS = [
 		},
 	},
 	{
+		name: 'spot_heal',
+		title: 'Spot Healing Brush',
+		on_leave: 'on_leave',
+		attributes: {
+			size: 30,
+			hardness: {
+				value: 50,
+				min: 0,
+				max: 100,
+				step: 1,
+				slider: true,
+			},
+			strength: {
+				value: 100,
+				min: 1,
+				max: 100,
+				step: 1,
+				slider: true,
+			},
+		},
+	},
+	{
 		name: 'crop',
 		on_activate: 'on_activate',
 		on_update: 'on_params_update',
