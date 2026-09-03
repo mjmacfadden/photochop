@@ -1,0 +1,31 @@
+{
+  "name": "hokusai-wasm",
+  "type": "module",
+  "collaborators": [
+    "Re:Earth and contributors"
+  ],
+  "description": "wasm-bindgen bindings for the hokusai brush engine",
+  "version": "0.3.0",
+  "license": "MIT OR Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/reearth/hokusai"
+  },
+  "files": [
+    "hokusai_wasm_bg.wasm",
+    "hokusai_wasm.js",
+    "hokusai_wasm.d.ts"
+  ],
+  "main": "hokusai_wasm.js",
+  "types": "hokusai_wasm.d.ts",
+  "sideEffects": [
+    "./snippets/*"
+  ],
+  "keywords": [
+    "brush",
+    "painting",
+    "libmypaint",
+    "mypaint",
+    "wasm"
+  ]
+}

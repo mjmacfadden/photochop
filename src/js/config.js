@@ -152,6 +152,19 @@ config.TOOLS = [
 	{
 		name: 'brush',
 		attributes: {
+			preset: {
+				value: 'classic-round',
+				ui: 'brush_library',
+				values: [
+					'classic-round', 'classic-soft',
+					'paint-basic', 'paint-heavy',
+					'pencil-sketch', 'pencil-soft',
+					'ink-fineliner', 'ink-brush',
+					'airbrush-soft', 'airbrush-spray',
+					'marker-chisel', 'marker-felt',
+					'Classic', 'Paint', 'Pencil', 'Ink'
+				],
+			},
 			size: 13,
 			opacity: {
 				value: 100,

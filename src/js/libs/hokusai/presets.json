@@ -1,0 +1,26 @@
+{
+  "version": 1,
+  "presets": [
+    {
+      "id": "Paint",
+      "label": "Paint",
+      "file": "brushes/paint.myb",
+      "source": "mypaint-brushes classic/brush (CC0 1.0)",
+      "notes": "Soft round paint dab; wet-ish feel when the .myb uses smudge."
+    },
+    {
+      "id": "Pencil",
+      "label": "Pencil",
+      "file": "brushes/pencil.myb",
+      "source": "mypaint-brushes classic/pencil (CC0 1.0)",
+      "notes": "Harder, grainy mark-making."
+    },
+    {
+      "id": "Ink",
+      "label": "Ink",
+      "file": "brushes/ink.myb",
+      "source": "mypaint-brushes classic/pen (CC0 1.0)",
+      "notes": "Calligraphic ink/pen stroke with pressure width."
+    }
+  ]
+}

@@ -16,7 +16,7 @@ module.exports = function (env, argv) {
 		clean: true
 	},
 	resolve: {
-		extensions: ['.js', '.css'],
+		extensions: ['.js', '.css', '.json'],
 		alias: {
 			Utilities: path.resolve(__dirname, './../node_modules/'),
 			'vp-local-keys': fs.existsSync(path.resolve(__dirname, 'src/js/config.keys.local.js'))
@@ -38,8 +38,19 @@ module.exports = function (env, argv) {
 			},
 			{
 				test: /\.js$/,
-				exclude: /(node_modules|bower_components)/,
+				exclude: /(node_modules|bower_components|libs\/hokusai\/hokusai_wasm\.js)/,
 				use: ['babel-loader']
+			},
+			{
+				test: /\.wasm$/,
+				type: 'asset/resource',
+				generator: {
+					filename: '[name][ext]'
+				}
+			},
+			{
+				test: /\.(myb)$/,
+				type: 'asset/source'
 			},
 		]
 	},

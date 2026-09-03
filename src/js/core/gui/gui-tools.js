@@ -11,6 +11,7 @@ import alertify from './../../../../node_modules/alertifyjs/build/alertify.min.j
 import Base_gui_class from '../base-gui.js';
 import GUI_shortcuts_class from './gui-shortcuts.js';
 import Dialog_class from './../../libs/popup.js';
+import GUI_brush_library_class from './gui-brush-library.js';
 
 var instance = null;
 var Helper = new Helper_class();
@@ -34,6 +35,7 @@ class GUI_tools_class {
 		//active tool
 		this.active_tool = 'select';
 		this.tools_modules = {};
+		this.Brush_library = new GUI_brush_library_class();
 	}
 
 	load_plugins() {
@@ -73,6 +75,7 @@ class GUI_tools_class {
 
 	render_main_tools() {
 		this.load_plugins();
+		window.GUI_tools = this;
 		var shortcuts = new GUI_shortcuts_class();
 
 		// Build reverse map: tool name -> shortcut key
@@ -660,6 +663,10 @@ class GUI_tools_class {
 				itemDom.appendChild(elementTitle);
 				itemDom.appendChild($numberInput[0]);
 				}
+			}
+			else if (typeof item == 'object' && item.ui === 'brush_library') {
+				// Brush Library trigger (Procreate / PS / Krita style picker)
+				this.Brush_library.render_trigger(itemDom);
 			}
 			else if (typeof item == 'object') {
 				//select

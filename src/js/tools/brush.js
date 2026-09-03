@@ -5,6 +5,8 @@ import Base_layers_class from './../core/base-layers.js';
 import Helper_class from './../libs/helpers.js';
 import Mask_class from './../modules/mask/mask.js';
 import Layer_raster_class from './../modules/layer/raster.js';
+import HokusaiEngine from './../libs/hokusai/engine.js';
+import BrushLibrary from './../libs/brushes/library.js';
 
 class Brush_class extends Base_tools_class {
 
@@ -18,6 +20,11 @@ class Brush_class extends Base_tools_class {
 		this.pressure_supported = false;
 		this.pointer_pressure = 0; // range [0 - 1]
 		this.soft_stamp_cache = {};
+		this.tip_image_cache = {};
+		this.tip_stamp_cache = {};
+		this.active_tip_path = null;
+		this.active_spacing = 0.25;
+		this.active_flow = 1;
 		this.tmpCanvas = null;
 		this.tmpCanvasCtx = null;
 		this.selection_snapshot = null;
@@ -25,10 +32,19 @@ class Brush_class extends Base_tools_class {
 		this.last_x = null;
 		this.last_y = null;
 		this.last_size = null;
+		this.hokusai_session = null;
+		this.hokusai_base = null;
+		this.hokusai_last_t = 0;
+		this.hokusai_ready = false;
+		this.hokusai_pending = false;
+		this.hokusai_event_queue = [];
+		this._raf_id = null;
+		this._raf_dirty = false;
 	}
 
 	load() {
 		// Event routing is handled centrally by Base_tools_class
+		this.preload_tips();
 	}
 
 	ensure_raster_layer() {
@@ -91,6 +107,33 @@ class Brush_class extends Base_tools_class {
 		return { x: local_x, y: local_y };
 	}
 
+	/**
+	 * During a stroke only schedule the interactive fast path.
+	 * Never call Base_layers.render() here — that invalidates the document
+	 * cache and forces a full rebuild (visible flash) every pointer move.
+	 */
+	request_stroke_preview() {
+		this._raf_dirty = true;
+		if (this._raf_id != null) return;
+		var self = this;
+		this._raf_id = requestAnimationFrame(function () {
+			self._raf_id = null;
+			if (!self._raf_dirty || !self.started || !config.layer) return;
+			self._raf_dirty = false;
+			if (self.Base_layers.render_interactive_layer) {
+				self.Base_layers.render_interactive_layer(config.layer.id);
+			}
+		});
+	}
+
+	cancel_stroke_preview() {
+		this._raf_dirty = false;
+		if (this._raf_id != null) {
+			cancelAnimationFrame(this._raf_id);
+			this._raf_id = null;
+		}
+	}
+
 	mousedown(e) {
 		this.started = false;
 		var mouse = this.get_mouse_info(e);
@@ -133,30 +176,77 @@ class Brush_class extends Base_tools_class {
 		}
 		this.selection_snapshot = this.copy_layer_snapshot();
 
-		var point = this.get_layer_local_coords(mouse.x, mouse.y, layer);
+		// Keep link_canvas stable for the whole stroke (set once, clear after commit).
+		config.layer.link_canvas = this.tmpCanvas;
+
 		var params = this.getParams();
-		var size = params.size || 20;
-		if (params.pressure && this.pressure_supported) {
-			size = size * (this.pointer_pressure || 0.5) * 2;
+		if (this.is_hokusai_preset(params)) {
+			this.begin_hokusai_stroke(e, layer, params);
+			return;
 		}
 
-		var scale = (layer.width_original || layer.width || 1) / (layer.width || 1);
-		var localSize = Math.max(1, size * scale);
-		var hardness = (params.hardness != null) ? params.hardness : 100;
-		var color = config.COLOR;
-		var toolOpacity = (params.opacity != null) ? params.opacity / 100 : 1;
-		var alpha = ((config.ALPHA != null) ? config.ALPHA / 255 : 1) * toolOpacity;
+		var paint = this.resolve_paint_state(params, layer);
+		var point = this.get_layer_local_coords(mouse.x, mouse.y, layer);
+		var localSize = this.size_for_pressure(paint, this.pointer_pressure);
+		var alpha = this.alpha_for_pressure(paint, this.pointer_pressure);
 
-		this.paint_dab(this.tmpCanvasCtx, point.x, point.y, localSize, hardness, color, alpha);
+		this.paint_dab(
+			this.tmpCanvasCtx, point.x, point.y, localSize,
+			paint.hardness, paint.color, alpha, paint
+		);
 		this.constrain_edit_to_selection(this.tmpCanvas, this.selection_snapshot);
 
-		config.layer.link_canvas = this.tmpCanvas;
-		this.Base_layers.render_interactive_layer(config.layer.id);
-		this.Base_layers.render();
+		this.request_stroke_preview();
 
 		this.last_x = point.x;
 		this.last_y = point.y;
 		this.last_size = localSize;
+	}
+
+	begin_hokusai_stroke(e, layer, params) {
+		var presetId = HokusaiEngine.normalizePresetId(this.resolve_preset(params));
+		var mouse = this.get_mouse_info(e);
+		var point = this.get_layer_local_coords(mouse.x, mouse.y, layer);
+		var size = params.size || 20;
+
+		this.hokusai_base = document.createElement('canvas');
+		this.hokusai_base.width = this.tmpCanvas.width;
+		this.hokusai_base.height = this.tmpCanvas.height;
+		this.hokusai_base.getContext('2d').drawImage(this.tmpCanvas, 0, 0);
+
+		this.last_x = point.x;
+		this.last_y = point.y;
+		this.hokusai_pending = true;
+		this.hokusai_event_queue = [{ e: e, point: point }];
+
+		// link_canvas already set in mousedown — do not null it while awaiting WASM.
+
+		var self = this;
+		this.ensure_hokusai_session(layer, presetId).then(function (session) {
+			if (!self.started) {
+				return;
+			}
+			session.setColorHex(config.COLOR);
+			session.setSizePx(size);
+			session.beginStroke();
+
+			var queue = self.hokusai_event_queue || [];
+			self.hokusai_event_queue = [];
+			for (var i = 0; i < queue.length; i++) {
+				self.feed_hokusai_pointer(queue[i].e, queue[i].point);
+			}
+			self.composite_hokusai_onto_tmp();
+			self.constrain_edit_to_selection(self.tmpCanvas, self.selection_snapshot);
+			self.request_stroke_preview();
+			self.hokusai_pending = false;
+		}).catch(function (err) {
+			console.error('Hokusai init failed', err);
+			// Abort stroke cleanly without leaving a dangling link mid-paint.
+			self.abort_stroke();
+			if (typeof alertify !== 'undefined') {
+				alertify.error('Hokusai brush failed to load. Falling back unavailable this stroke.');
+			}
+		});
 	}
 
 	mousemove(e, is_touch) {
@@ -172,39 +262,55 @@ class Brush_class extends Base_tools_class {
 		var layer = config.layer;
 		if (!layer || layer.type !== 'image' || !this.tmpCanvasCtx) return;
 
+		var params = this.getParams();
+		if (this.is_hokusai_preset(params)) {
+			var hpoint = this.get_layer_local_coords(mouse.x, mouse.y, layer);
+			if (hpoint.x === this.last_x && hpoint.y === this.last_y) return;
+
+			if (this.hokusai_pending || !this.hokusai_session) {
+				// Queue events until the session is ready — never clear link_canvas.
+				this.hokusai_event_queue.push({ e: e, point: hpoint });
+				this.last_x = hpoint.x;
+				this.last_y = hpoint.y;
+				return;
+			}
+			this.feed_hokusai_pointer(e, hpoint);
+			this.composite_hokusai_onto_tmp();
+			this.constrain_edit_to_selection(this.tmpCanvas, this.selection_snapshot);
+			this.request_stroke_preview();
+			this.last_x = hpoint.x;
+			this.last_y = hpoint.y;
+			return;
+		}
+
 		var point = this.get_layer_local_coords(mouse.x, mouse.y, layer);
 		if (point.x === this.last_x && point.y === this.last_y) return;
 
-		var params = this.getParams();
-		var size = params.size || 20;
-		if (params.pressure && this.pressure_supported) {
-			size = size * (this.pointer_pressure || 0.5) * 2;
+		var paint = this.resolve_paint_state(params, layer);
+		var p = (e && e.pressure) || this.pointer_pressure || 0.5;
+		if (e && typeof e.pressure === 'number' && e.pressure > 0) {
+			this.pointer_pressure = e.pressure;
+			p = e.pressure;
 		}
-
-		var scale = (layer.width_original || layer.width || 1) / (layer.width || 1);
-		var localSize = Math.max(1, size * scale);
-		var hardness = (params.hardness != null) ? params.hardness : 100;
-		var color = config.COLOR;
-		var toolOpacity = (params.opacity != null) ? params.opacity / 100 : 1;
-		var alpha = ((config.ALPHA != null) ? config.ALPHA / 255 : 1) * toolOpacity;
+		var localSize = this.size_for_pressure(paint, p);
+		var alpha = this.alpha_for_pressure(paint, p);
 
 		this.paint_stroke_segment(
 			this.tmpCanvasCtx,
 			this.last_x, this.last_y, this.last_size,
 			point.x, point.y, localSize,
-			hardness, color, alpha
+			paint.hardness, paint.color, alpha, paint
 		);
 
 		this.constrain_edit_to_selection(this.tmpCanvas, this.selection_snapshot);
-		this.Base_layers.render_interactive_layer(config.layer.id);
-		this.Base_layers.render();
+		this.request_stroke_preview();
 
 		this.last_x = point.x;
 		this.last_y = point.y;
 		this.last_size = localSize;
 	}
 
-	mouseup(e) {
+	async mouseup(e) {
 		if (this.started == false) return;
 
 		if (config.mask_active === true && config.layer && config.layer.mask != null) {
@@ -213,25 +319,279 @@ class Brush_class extends Base_tools_class {
 			return;
 		}
 
-		if (this.tmpCanvas && config.layer && config.layer.type === 'image') {
-			app.State.do_action(
-				new app.Actions.Bundle_action('brush_stroke', 'Brush Stroke', [
-					new app.Actions.Update_layer_image_action(this.tmpCanvas, config.layer.id)
-				])
-			);
+		this.cancel_stroke_preview();
+
+		var params = this.getParams();
+		if (this.is_hokusai_preset(params) && this.hokusai_session && !this.hokusai_pending) {
+			this.hokusai_session.finishStroke();
+			this.composite_hokusai_onto_tmp();
+			this.constrain_edit_to_selection(this.tmpCanvas, this.selection_snapshot);
 		}
 
+		var layer = config.layer;
+		var canvas = this.tmpCanvas;
+		if (canvas && layer && layer.type === 'image') {
+			try {
+				await app.State.do_action(
+					new app.Actions.Bundle_action('brush_stroke', 'Brush Stroke', [
+						new app.Actions.Update_layer_image_action(canvas, layer.id)
+					])
+				);
+			} finally {
+				if (layer.link_canvas === canvas) {
+					delete layer.link_canvas;
+				}
+				this.reset_stroke_state();
+			}
+		} else {
+			this.abort_stroke();
+		}
+	}
+
+	reset_stroke_state() {
+		this.cancel_stroke_preview();
 		this.tmpCanvas = null;
 		this.tmpCanvasCtx = null;
 		this.selection_snapshot = null;
+		this.hokusai_base = null;
+		this.hokusai_pending = false;
+		this.hokusai_event_queue = [];
 		this.started = false;
 		this.last_x = null;
 		this.last_y = null;
+		this.last_size = null;
 	}
 
-	paint_dab(ctx, x, y, size, hardness, color, alpha) {
+	abort_stroke() {
+		if (!this.started && !this.tmpCanvas) return;
+		var layer = config.layer;
+		var canvas = this.tmpCanvas;
+		if (layer && layer.link_canvas === canvas) {
+			delete layer.link_canvas;
+		}
+		this.reset_stroke_state();
+		if (this.Base_layers) {
+			this.Base_layers.invalidate
+				? this.Base_layers.invalidate({ document: true, preview: true })
+				: (config.need_render = true);
+		}
+	}
+
+	on_leave() {
+		this.abort_stroke();
+		return [];
+	}
+
+	resolve_preset(params) {
+		var preset = params && params.preset;
+		if (preset && typeof preset === 'object') {
+			preset = preset.value || preset;
+		}
+		return BrushLibrary.normalizeId(preset || 'classic-round');
+	}
+
+	is_hokusai_preset(params) {
+		return HokusaiEngine.isHokusaiPreset(this.resolve_preset(params));
+	}
+
+	pressure_from_event(e) {
+		var p = null;
+		if (e && typeof e.pressure === 'number') {
+			p = e.pressure;
+		} else if (config.mouse && typeof config.mouse.pressure === 'number') {
+			p = config.mouse.pressure;
+		}
+		if (p != null && p > 0) {
+			return p;
+		}
+		return 0.5;
+	}
+
+	tilt_from_event(e) {
+		var tx = (e && e.tiltX) || 0;
+		var ty = (e && e.tiltY) || 0;
+		return {
+			x: Math.sin(tx * Math.PI / 180),
+			y: Math.sin(ty * Math.PI / 180),
+		};
+	}
+
+	ensure_hokusai_session(layer, presetId) {
+		var self = this;
+		var lw = layer.width_original || layer.width || config.WIDTH;
+		var lh = layer.height_original || layer.height || config.HEIGHT;
+		if (this.hokusai_session &&
+			this.hokusai_session.width === lw &&
+			this.hokusai_session.height === lh &&
+			this.hokusai_session.presetId === presetId) {
+			return Promise.resolve(this.hokusai_session);
+		}
+		if (this.hokusai_session) {
+			this.hokusai_session.dispose();
+			this.hokusai_session = null;
+		}
+		return HokusaiEngine.createSession(lw, lh, presetId).then(function (session) {
+			self.hokusai_session = session;
+			return session;
+		});
+	}
+
+	/**
+	 * Composite Hokusai stroke onto tmp without wiping the whole canvas to white.
+	 * Restores only the dirty AABB from the pre-stroke base, then draws the stroke.
+	 */
+	composite_hokusai_onto_tmp() {
+		if (!this.tmpCanvasCtx || !this.hokusai_session || !this.hokusai_base) {
+			return;
+		}
+		var stroke = this.hokusai_session.flushToStrokeCanvas();
+		var dirty = this.hokusai_session.getDirtyRect && this.hokusai_session.getDirtyRect();
+		if (dirty && dirty.w > 0 && dirty.h > 0) {
+			// Restore base in dirty region, then overlay stroke (source-over).
+			this.tmpCanvasCtx.clearRect(dirty.x, dirty.y, dirty.w, dirty.h);
+			this.tmpCanvasCtx.drawImage(
+				this.hokusai_base,
+				dirty.x, dirty.y, dirty.w, dirty.h,
+				dirty.x, dirty.y, dirty.w, dirty.h
+			);
+			this.tmpCanvasCtx.drawImage(
+				stroke,
+				dirty.x, dirty.y, dirty.w, dirty.h,
+				dirty.x, dirty.y, dirty.w, dirty.h
+			);
+		} else {
+			this.tmpCanvasCtx.clearRect(0, 0, this.tmpCanvas.width, this.tmpCanvas.height);
+			this.tmpCanvasCtx.drawImage(this.hokusai_base, 0, 0);
+			this.tmpCanvasCtx.drawImage(stroke, 0, 0);
+		}
+	}
+
+	feed_hokusai_pointer(e, point) {
+		var pressure = this.pressure_from_event(e);
+		var tilt = this.tilt_from_event(e);
+		var stamp = (e && e.timeStamp) || performance.now();
+		var events = [];
+		if (e && typeof e.getCoalescedEvents === 'function') {
+			try {
+				events = e.getCoalescedEvents() || [];
+			} catch (err) {
+				events = [];
+			}
+		}
+		if (!events.length) {
+			events = [e];
+		}
+		for (var i = 0; i < events.length; i++) {
+			var ev = events[i] || e;
+			var pt = point;
+			if (ev !== e && config.layer) {
+				var mouse = this.get_mouse_info(ev);
+				pt = this.get_layer_local_coords(mouse.x, mouse.y, config.layer);
+			}
+			var p = this.pressure_from_event(ev);
+			var t = this.tilt_from_event(ev);
+			var ts = (ev && ev.timeStamp) || stamp;
+			this.hokusai_session.strokeTo(pt.x, pt.y, p, t.x, t.y, ts);
+		}
+	}
+
+
+	preload_tips() {
+		var brushes = BrushLibrary.getBrushes ? BrushLibrary.getBrushes() : [];
+		for (var i = 0; i < brushes.length; i++) {
+			if (brushes[i] && brushes[i].tip) {
+				this.ensure_tip_image(brushes[i].tip);
+			}
+		}
+	}
+
+	ensure_tip_image(path) {
+		if (!path) return null;
+		if (this.tip_image_cache[path]) return this.tip_image_cache[path];
+		var img = new Image();
+		img.decoding = 'async';
+		img.src = path;
+		this.tip_image_cache[path] = img;
+		return img;
+	}
+
+	tip_image_ready(img) {
+		return !!(img && img.complete && img.naturalWidth > 0);
+	}
+
+	/**
+	 * Resolve classic/stamp paint options from the active Brush Library preset.
+	 * Hokusai presets never reach here (routed earlier).
+	 */
+	resolve_paint_state(params, layer) {
+		var brush = BrushLibrary.getBrush(this.resolve_preset(params));
+		var size = (params.size != null) ? params.size : ((brush.size && brush.size.default) || 20);
+		var hardness = (params.hardness != null) ? params.hardness
+			: (brush.hardness != null ? brush.hardness : 100);
+		var toolOpacity = (params.opacity != null) ? params.opacity / 100
+			: ((brush.opacity && brush.opacity.default != null) ? brush.opacity.default / 100 : 1);
+		var flow = 1;
+		if (brush.flow && brush.flow.default != null) {
+			flow = brush.flow.default / 100;
+		}
+		var spacing = (brush.spacing != null) ? brush.spacing : 0.25;
+		var scale = 1;
+		if (layer) {
+			scale = (layer.width_original || layer.width || 1) / (layer.width || 1);
+		}
+		var tipPath = null;
+		var useTip = false;
+		if (brush && (brush.engine === 'stamp' || brush.engine === 'classic') && brush.tip) {
+			tipPath = brush.tip;
+			useTip = true;
+			this.ensure_tip_image(tipPath);
+		}
+		this.active_tip_path = tipPath;
+		this.active_spacing = spacing;
+		this.active_flow = flow;
+
+		var pressureSize = !!(params.pressure || (brush.size && brush.size.pressure));
+		var pressureOpacity = !!(brush.opacity && brush.opacity.pressure);
+
+		return {
+			brush: brush,
+			baseSize: size,
+			scale: scale,
+			hardness: hardness,
+			color: config.COLOR,
+			toolOpacity: toolOpacity,
+			flow: flow,
+			spacing: spacing,
+			tipPath: tipPath,
+			useTip: useTip,
+			pressureSize: pressureSize,
+			pressureOpacity: pressureOpacity,
+		};
+	}
+
+	size_for_pressure(paint, pressure) {
+		var size = paint.baseSize;
+		if (paint.pressureSize && this.pressure_supported) {
+			size = size * (pressure || 0.5) * 2;
+		}
+		return Math.max(1, size * paint.scale);
+	}
+
+	alpha_for_pressure(paint, pressure) {
+		var alpha = ((config.ALPHA != null) ? config.ALPHA / 255 : 1) * paint.toolOpacity * paint.flow;
+		if (paint.pressureOpacity && this.pressure_supported) {
+			alpha *= (pressure || 0.5);
+		}
+		return Math.max(0, Math.min(1, alpha));
+	}
+
+	paint_dab(ctx, x, y, size, hardness, color, alpha, paint) {
 		ctx.save();
 		ctx.globalAlpha = alpha;
+		if (paint && paint.useTip && this.stamp_tip_dab(ctx, x, y, size, hardness, color, paint.tipPath)) {
+			ctx.restore();
+			return;
+		}
 		if (hardness < 100) {
 			this.stamp_soft(ctx, x, y, size, hardness, color, 1);
 		} else {
@@ -243,10 +603,37 @@ class Brush_class extends Base_tools_class {
 		ctx.restore();
 	}
 
-	paint_stroke_segment(ctx, x0, y0, s0, x1, y1, s1, hardness, color, alpha) {
+	paint_stroke_segment(ctx, x0, y0, s0, x1, y1, s1, hardness, color, alpha, paint) {
 		var dx = x1 - x0;
 		var dy = y1 - y0;
 		var dist = Math.sqrt(dx * dx + dy * dy);
+
+		// Tip-stamp path: space dabs as a fraction of brush diameter.
+		if (paint && paint.useTip) {
+			var tipImg = this.ensure_tip_image(paint.tipPath);
+			if (this.tip_image_ready(tipImg)) {
+				ctx.save();
+				ctx.globalAlpha = alpha;
+				var spacingFrac = (paint.spacing != null) ? paint.spacing : 0.25;
+				var avgSize = Math.max(1, (s0 + s1) / 2);
+				var step = Math.max(0.5, avgSize * spacingFrac);
+				var count = Math.max(1, Math.ceil(dist / step));
+				for (var i = 0; i <= count; i++) {
+					var t = i / count;
+					this.stamp_tip_dab(
+						ctx,
+						x0 + dx * t,
+						y0 + dy * t,
+						s0 + (s1 - s0) * t,
+						hardness,
+						color,
+						paint.tipPath
+					);
+				}
+				ctx.restore();
+				return;
+			}
+		}
 
 		if (hardness < 100) {
 			ctx.save();
@@ -272,6 +659,83 @@ class Brush_class extends Base_tools_class {
 			ctx.fill();
 			ctx.restore();
 		}
+	}
+
+	/**
+	 * Build a foreground-tinted tip stamp, optionally softened by hardness.
+	 * Tip alpha is preserved; RGB is replaced with the paint color.
+	 */
+	build_tip_stamp(tipImg, size, hardness, color) {
+		size = Math.max(1, Math.round(size));
+		hardness = Math.max(0, Math.min(100, Math.round(hardness)));
+		var side = size + 2;
+		var pad = 1;
+		var center = side / 2;
+
+		var canvas = document.createElement('canvas');
+		canvas.width = side;
+		canvas.height = side;
+		var ctx = canvas.getContext('2d');
+
+		ctx.clearRect(0, 0, side, side);
+		ctx.drawImage(tipImg, pad, pad, size, size);
+
+		// Tint: keep tip alpha, fill with foreground color.
+		ctx.globalCompositeOperation = 'source-in';
+		ctx.fillStyle = color;
+		ctx.fillRect(0, 0, side, side);
+		ctx.globalCompositeOperation = 'source-over';
+
+		if (hardness < 100) {
+			var r_outer = size / 2;
+			var r_inner = r_outer * (hardness / 100);
+			var mask = document.createElement('canvas');
+			mask.width = side;
+			mask.height = side;
+			var mctx = mask.getContext('2d');
+			var gradient = mctx.createRadialGradient(center, center, r_inner, center, center, r_outer);
+			gradient.addColorStop(0, 'rgba(0,0,0,1)');
+			gradient.addColorStop(1, 'rgba(0,0,0,0)');
+			mctx.fillStyle = gradient;
+			mctx.fillRect(0, 0, side, side);
+			ctx.globalCompositeOperation = 'destination-in';
+			ctx.drawImage(mask, 0, 0);
+			ctx.globalCompositeOperation = 'source-over';
+		}
+
+		return {
+			canvas: canvas,
+			center: center,
+			size: size,
+			hardness: hardness,
+			color: color,
+		};
+	}
+
+	get_tip_stamp(tipPath, size, hardness, color) {
+		var tipImg = this.ensure_tip_image(tipPath);
+		if (!this.tip_image_ready(tipImg)) return null;
+		size = Math.max(1, Math.round(size));
+		hardness = Math.round(hardness);
+		var key = tipPath + '_' + size + '_' + hardness + '_' + color;
+		if (this.tip_stamp_cache[key] == null) {
+			// Bound cache growth — drop oldest half when huge.
+			var keys = Object.keys(this.tip_stamp_cache);
+			if (keys.length > 120) {
+				for (var i = 0; i < 60; i++) {
+					delete this.tip_stamp_cache[keys[i]];
+				}
+			}
+			this.tip_stamp_cache[key] = this.build_tip_stamp(tipImg, size, hardness, color);
+		}
+		return this.tip_stamp_cache[key];
+	}
+
+	stamp_tip_dab(ctx, x, y, size, hardness, color, tipPath) {
+		var stamp = this.get_tip_stamp(tipPath, size, hardness, color);
+		if (!stamp) return false;
+		ctx.drawImage(stamp.canvas, Math.round(x - stamp.center), Math.round(y - stamp.center));
+		return true;
 	}
 
 	build_soft_stamp(size, hardness, color) {
