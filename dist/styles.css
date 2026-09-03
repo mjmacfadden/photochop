@@ -1581,6 +1581,7 @@ IMPORTANT: any new icon should also must be added on /service-worker.js + its ve
 .sidebar_left .text:after{ background-image: url('../images/icons/text.svg'); background-size: 16px auto; }
 .sidebar_left .gradient:after{ background-image: url('../images/icons/gradient.png'); background-size: 18px 12px; filter: none; }
 .sidebar_left .clone:after{ background-image: url('../images/icons/clone.svg'); }
+.sidebar_left .spot_heal:after{ background-image: url('../images/icons/spot_heal.svg'); }
 .sidebar_left .crop:after{ background-image: url('../images/icons/crop.svg'); }
 .sidebar_left .blur:after{ background-image: url('../images/icons/blur.svg'); }
 .sidebar_left .sharpen:after{ background-image: url('../images/icons/sharpen.svg'); }
@@ -2480,6 +2481,7 @@ body.tool-pan.pan-dragging #canvas_minipaint{
 .middle_area.tool-brush #main_wrapper,
 .middle_area.tool-pencil #main_wrapper,
 .middle_area.tool-erase #main_wrapper,
+.middle_area.tool-spot_heal #main_wrapper,
 .middle_area.tool-clone #main_wrapper,
 .middle_area.tool-blur #main_wrapper,
 .middle_area.tool-sharpen #main_wrapper,
@@ -2490,6 +2492,7 @@ body.tool-pan.pan-dragging #canvas_minipaint{
 .middle_area.tool-brush #main_wrapper *,
 .middle_area.tool-pencil #main_wrapper *,
 .middle_area.tool-erase #main_wrapper *,
+.middle_area.tool-spot_heal #main_wrapper *,
 .middle_area.tool-clone #main_wrapper *,
 .middle_area.tool-blur #main_wrapper *,
 .middle_area.tool-sharpen #main_wrapper *,
