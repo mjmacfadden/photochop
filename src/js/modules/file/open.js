@@ -102,7 +102,7 @@ class File_open_class {
 		a.setAttribute("id", "file_open_as_layer");
 		a.type = 'file';
 		a.multiple = 'multiple';
-		a.accept = 'image/*,.psd,image/vnd.adobe.photoshop,image/x-photoshop';
+		a.accept = 'image/*,.psd,.ttf,.otf,.woff,.woff2,image/vnd.adobe.photoshop,image/x-photoshop';
 		document.getElementById("tmp").appendChild(a);
 		document.getElementById('file_open_as_layer').addEventListener('change', function (e) {
 			_this.open_handler_as_layer(e);
@@ -138,6 +138,19 @@ class File_open_class {
 
 		for (var i = 0, f; i < files.length; i++) {
 			f = files[i];
+			var isFont = (f.name && f.name.match(/\.(ttf|otf|woff|woff2)$/i)) ||
+				(f.type && (f.type.startsWith('font/') || f.type.includes('font') || f.type.includes('opentype')));
+			if (isFont) {
+				if (app.FontManager) {
+					try {
+						var loadedFamily = await app.FontManager.addFontFile(f);
+						alertify.success('Font "' + loadedFamily + '" installed and saved.');
+					} catch (err) {
+						alertify.error('Failed to install font: ' + (err.message || err));
+					}
+				}
+				continue;
+			}
 			var isPsd = (f.name && f.name.toLowerCase().endsWith('.psd')) ||
 				f.type === 'image/vnd.adobe.photoshop' ||
 				f.type === 'image/x-photoshop' ||
@@ -157,7 +170,7 @@ class File_open_class {
 			}
 
 			if (!f.type.match('image.*') && !f.name.match(/\.(png|jpg|jpeg|webp|gif|avif)/i)) {
-				alertify.error('Wrong file type, must be image or psd.');
+				alertify.error('Wrong file type, must be image, psd, or font.');
 				continue;
 			}
 
@@ -195,7 +208,7 @@ class File_open_class {
 		a.setAttribute("id", "file_open");
 		a.type = 'file';
 		a.multiple = 'multiple';
-		a.accept = 'image/*,.json,.psd,application/json,image/vnd.adobe.photoshop,image/x-photoshop';
+		a.accept = 'image/*,.json,.psd,.ttf,.otf,.woff,.woff2,application/json,image/vnd.adobe.photoshop,image/x-photoshop';
 		document.getElementById("tmp").appendChild(a);
 		document.getElementById('file_open').addEventListener('change', function (e) {
 			_this.open_handler(e);
@@ -421,6 +434,19 @@ class File_open_class {
 
 		for (var i = 0; i < files.length; i++) {
 			var f = files[i];
+			var isFont = (f.name && f.name.match(/\.(ttf|otf|woff|woff2)$/i)) ||
+				(f.type && (f.type.startsWith('font/') || f.type.includes('font') || f.type.includes('opentype')));
+			if (isFont) {
+				if (app.FontManager) {
+					try {
+						var loadedFamily = await app.FontManager.addFontFile(f);
+						alertify.success('Font "' + loadedFamily + '" installed and saved.');
+					} catch (err) {
+						alertify.error('Failed to install font: ' + (err.message || err));
+					}
+				}
+				continue;
+			}
 			var isJson = f.name.toLowerCase().endsWith('.json') || f.type === 'application/json' || f.type === 'text/json';
 			var isPsd = (f.name && f.name.toLowerCase().endsWith('.psd')) ||
 				f.type === 'image/vnd.adobe.photoshop' ||
@@ -431,7 +457,7 @@ class File_open_class {
 
 			if (!f.type.match('image.*') && !isJson && !isPsd && !f.name.match(/\.(png|jpg|jpeg|webp|gif|avif|psd)/i)) {
 				if(dir_opened == false) {
-					alertify.error('Wrong file type, must be image, json, or psd.');
+					alertify.error('Wrong file type, must be image, json, psd, or font.');
 				}
 				continue;
 			}
@@ -777,7 +803,7 @@ class File_open_class {
 				ZOOM: 1,
 				WIDTH: parseInt(json.info.width),
 				HEIGHT: parseInt(json.info.height),
-				user_fonts: json.user_fonts || {}
+				user_fonts: Object.assign({}, app.FontManager ? app.FontManager.get_user_fonts() : {}, json.user_fonts || {})
 			}),
 			new app.Actions.Reset_layers_action(),
 			new app.Actions.Prepare_canvas_action('do'),

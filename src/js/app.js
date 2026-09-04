@@ -8,5 +8,6 @@ export default {
 	FileOpen: null,
 	FileSave: null,
 	Documents: null,
-	Actions: null
+	Actions: null,
+	FontManager: null
 };

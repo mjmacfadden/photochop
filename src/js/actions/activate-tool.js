@@ -109,8 +109,12 @@ export class Activate_tool_action extends Base_action {
 					if (typeof textTool.sync_fill_from_foreground === 'function') {
 						textTool.sync_fill_from_foreground({ rebuild: true });
 					}
-					if (config.layer && config.layer.type === 'text' && textTool.focus_textarea) {
-						textTool.focus_textarea();
+					textTool.focused = false;
+					if (config.layer && config.layer.type === 'text') {
+						const editor = textTool.get_editor(config.layer);
+						if (editor) {
+							textTool.update_tool_attributes(config.layer, editor);
+						}
 					}
 				}
 			}

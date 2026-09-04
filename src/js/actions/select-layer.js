@@ -32,8 +32,23 @@ export class Select_layer_action extends Base_action {
 		this.old_layer = old_layer;
 
 		if (old_layer !== new_layer) {
+			const textTool = (app.GUI && app.GUI.GUI_tools && app.GUI.GUI_tools.tools_modules['text'])
+				? app.GUI.GUI_tools.tools_modules['text'].object
+				: null;
+			if (textTool && textTool.focused) {
+				await textTool.commit_text_changes();
+				textTool.focused = false;
+				if (textTool.textarea) textTool.textarea.blur();
+			}
 			config.layer = new_layer;
 			config.mask_active = false;
+			if (new_layer && new_layer.type === 'text' && config.TOOL && config.TOOL.name === 'text' && textTool) {
+				textTool.focused = false;
+				const editor = textTool.get_editor(new_layer);
+				if (editor) {
+					textTool.update_tool_attributes(new_layer, editor);
+				}
+			}
 		} else if (!this.ignore_same_selection) {
 			throw new Error('Aborted - Layer already selected');
 		}

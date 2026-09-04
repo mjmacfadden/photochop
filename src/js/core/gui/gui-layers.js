@@ -355,12 +355,35 @@ class GUI_layers_class {
 
 		document.getElementById('layers_base').addEventListener('dblclick', function (event) {
 			var target = event.target;
+			var item = target.closest('.item');
+			var layer_id = (target.dataset && target.dataset.id) ? parseInt(target.dataset.id) : (item && item.dataset && item.dataset.id ? parseInt(item.dataset.id) : null);
+			var dbl_layer = layer_id != null ? app.Layers.get_layer(layer_id) : null;
+
+			// If double-clicking a text layer thumbnail or row (not the rename label)
+			if (dbl_layer && dbl_layer.type === 'text' && target.id !== 'layer_name') {
+				const textTool = (app.GUI && app.GUI.GUI_tools && app.GUI.GUI_tools.tools_modules['text'])
+					? app.GUI.GUI_tools.tools_modules['text'].object
+					: null;
+				(async () => {
+					await app.GUI.GUI_tools.activate_tool('text');
+					if (config.layer && config.layer.id !== dbl_layer.id) {
+						await app.State.do_action(
+							new app.Actions.Select_layer_action(dbl_layer.id, true)
+						);
+					}
+					if (textTool && typeof textTool.enter_edit_mode === 'function') {
+						await textTool.enter_edit_mode(dbl_layer, null, { selectAll: true });
+					}
+				})();
+				return;
+			}
+
 			if (target.id == 'layer_name') {
-				var layer_id = parseInt(target.dataset.id);
-				var dbl_layer = app.Layers.get_layer(layer_id);
-				if (dbl_layer && dbl_layer.type === 'adjustment') {
+				var target_layer_id = parseInt(target.dataset.id);
+				var target_dbl_layer = app.Layers.get_layer(target_layer_id);
+				if (target_dbl_layer && target_dbl_layer.type === 'adjustment') {
 					if (app.GUI && app.GUI.modules && app.GUI.modules['layer/adjustment']) {
-						app.GUI.modules['layer/adjustment'].edit(layer_id);
+						app.GUI.modules['layer/adjustment'].edit(target_layer_id);
 						return;
 					}
 				}
@@ -879,7 +902,7 @@ class GUI_layers_class {
 	 */
 	select_layer_from_panel(layer_id, event) {
 		var id = parseInt(layer_id, 10);
-		if (!id || !app.Layers.get_layer(id)) {
+		if (!id || !app.Layers.find_layer(id)) {
 			return;
 		}
 

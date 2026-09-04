@@ -53,6 +53,18 @@ class Select_tool_class extends Base_tools_class {
 		}
 	}
 
+	async dblclick(e) {
+		const textTool = (app.GUI && app.GUI.GUI_tools && app.GUI.GUI_tools.tools_modules['text'])
+			? app.GUI.GUI_tools.tools_modules['text'].object
+			: null;
+		if (!textTool) return;
+		const targetLayer = textTool.get_text_layer_at_mouse(e) || (config.layer && config.layer.type === 'text' ? config.layer : null);
+		if (targetLayer && targetLayer.type === 'text') {
+			await app.GUI.GUI_tools.activate_tool('text');
+			await textTool.enter_edit_mode(targetLayer, e);
+		}
+	}
+
 	load() {
 		// Event routing is handled centrally by Base_tools_class
 	}

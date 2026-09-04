@@ -751,6 +751,7 @@ function convert_psd_text(psdLayer, id, name, opacity, visible, composition, mas
 	if (paraStyle.justification) {
 		if (paraStyle.justification.includes('center')) halign = 'center';
 		else if (paraStyle.justification.includes('right')) halign = 'right';
+		else if (paraStyle.justification.includes('justify')) halign = 'justify';
 	}
 
 	// 5. Build Spans Across Lines
@@ -1313,6 +1314,7 @@ function build_psd_text_from_layer(layer) {
 	let justification = 'left';
 	if (halign === 'center') justification = 'center';
 	else if (halign === 'right') justification = 'right';
+	else if (halign === 'justify') justification = 'justifyLeft';
 
 	const w = Math.max(1, Math.round(layer.width || 1));
 	const h = Math.max(1, Math.round(layer.height || 1));

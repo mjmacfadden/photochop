@@ -32,7 +32,7 @@ export class Insert_layer_action extends Base_action {
 		let autoresize_as = null;
 
 		// Only trust selection if that layer still exists (group delete can leave a stale ref).
-		const active_layer = (config.layer && app.Layers.get_layer(config.layer.id))
+		const active_layer = (config.layer && config.layers && config.layers.find((l) => l.id === config.layer.id))
 			? config.layer
 			: null;
 		if (config.layer && !active_layer) {

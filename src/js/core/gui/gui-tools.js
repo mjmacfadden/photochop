@@ -670,6 +670,65 @@ class GUI_tools_class {
 				// Brush Library trigger (Procreate / PS / Krita style picker)
 				this.Brush_library.render_trigger(itemDom);
 			}
+			else if (typeof item == 'object' && (item.type === 'button_group' || item.icons || k === 'halign')) {
+				const buttonGroup = document.createElement('div');
+				buttonGroup.className = 'ui_button_group no_wrap';
+				buttonGroup.id = k + '_button_group';
+
+				const values = typeof item.values === 'function' ? item.values() : item.values;
+				const currentValue = String(item.value != null ? (item.value.value || item.value) : '').toLowerCase();
+
+				for (let j in values) {
+					const val = values[j];
+					const valStr = String(val);
+					const isSelected = currentValue === valStr.toLowerCase();
+
+					const btn = document.createElement('button');
+					btn.type = 'button';
+					btn.className = 'trn ui_icon_button input_height';
+					btn.id = k + '_' + valStr.toLowerCase();
+					btn.title = k === 'halign' ? `${valStr} Align` : valStr;
+					btn.setAttribute('aria-pressed', isSelected ? 'true' : 'false');
+
+					const iconName = item.icons ? (item.icons[valStr] || item.icons[valStr.toLowerCase()]) : null;
+					if (iconName) {
+						btn.innerHTML = `<img style="width:16px;height:16px;" alt="${valStr}" src="images/icons/${iconName}" />`;
+					} else {
+						btn.textContent = valStr;
+					}
+
+					btn.addEventListener('click', () => {
+						const actionData = this.action_data();
+						if (typeof actionData.attributes[k] === 'object') {
+							actionData.attributes[k].value = val;
+						} else {
+							actionData.attributes[k] = val;
+						}
+
+						const groupButtons = buttonGroup.querySelectorAll('button');
+						groupButtons.forEach(b => {
+							b.setAttribute('aria-pressed', b === btn ? 'true' : 'false');
+						});
+
+						if (actionData.on_update != undefined) {
+							var moduleKey = actionData.name;
+							var functionName = actionData.on_update;
+							const result = this.tools_modules[moduleKey].object[functionName]({ key: k, value: val });
+							if (result && result.new_values) {
+								for (let key in result.new_values) {
+									actionData.attributes[key].value = result.new_values[key];
+								}
+							}
+						}
+
+						this.show_action_attributes();
+					});
+
+					buttonGroup.appendChild(btn);
+				}
+
+				itemDom.appendChild(buttonGroup);
+			}
 			else if (typeof item == 'object') {
 				//select
 
@@ -695,6 +754,10 @@ class GUI_tools_class {
 					const updateFontButton = (value) => {
 						fontButton.textContent = value || 'Select font';
 						fontButton.style.fontFamily = value && !value.includes('...') ? `"${value}", sans-serif` : '';
+						if (value && !value.includes('...') && app.FontManager) {
+							const fontSource = (config.user_fonts && config.user_fonts[value]) ? config.user_fonts[value].source : 'google';
+							app.FontManager.loadFont(value, fontSource);
+						}
 					};
 					// Toolbar ancestors clip vertical overflow, so the menu is positioned
 					// via fixed coordinates and attached to <body> only while open.
@@ -730,8 +793,22 @@ class GUI_tools_class {
 						option.className = 'font_picker_option';
 						option.setAttribute('role', 'option');
 						option.setAttribute('aria-selected', String(item.value === value));
-						option.textContent = value || 'Select font';
-						if (value && !value.includes('...')) option.style.fontFamily = `"${value}", sans-serif`;
+						let labelText = value || 'Select font';
+						if (config.user_fonts && config.user_fonts[value]) {
+							if (config.user_fonts[value].source === 'user_uploaded') {
+								labelText += ' (Custom)';
+							} else if (config.user_fonts[value].source === 'local') {
+								labelText += ' (System)';
+							}
+						}
+						option.textContent = labelText;
+						if (value && !value.includes('...')) {
+							option.style.fontFamily = `"${value}", sans-serif`;
+							if (app.FontManager) {
+								const fontSource = (config.user_fonts && config.user_fonts[value]) ? config.user_fonts[value].source : 'google';
+								app.FontManager.loadFont(value, fontSource);
+							}
+						}
 						option.addEventListener('click', () => {
 							closeFontMenu();
 							const actionData = this.action_data();

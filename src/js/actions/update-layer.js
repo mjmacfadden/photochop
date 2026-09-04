@@ -81,6 +81,24 @@ export class Update_layer_action extends Base_action {
 			}
 		}
 
+		// Keep point text anchor in sync with layer movement if params not explicitly specified in settings
+		if (this.reference_layer.type === 'text' && this.reference_layer.params && this.reference_layer.params.boundary === 'dynamic' && !('params' in this.settings)) {
+			var new_tx = (this.reference_layer.x != null) ? this.reference_layer.x : 0;
+			var new_ty = (this.reference_layer.y != null) ? this.reference_layer.y : 0;
+			var tx_changed = new_tx !== old_x || new_ty !== old_y;
+			if (tx_changed) {
+				if (!this.old_settings.params) {
+					this.old_settings.params = JSON.parse(JSON.stringify(this.reference_layer.params));
+				}
+				if (this.reference_layer.params.anchor_x != null) {
+					this.reference_layer.params.anchor_x += (new_tx - old_x);
+				}
+				if (this.reference_layer.params.anchor_y != null) {
+					this.reference_layer.params.anchor_y += (new_ty - old_y);
+				}
+			}
+		}
+
 		if (this.reference_layer.type === 'text' && ('data' in this.settings)) {
 			this.reference_layer._needs_update_data = true;
 			// Sync the live text editor immediately (don't wait for the next render).

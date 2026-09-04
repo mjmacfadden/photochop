@@ -505,6 +505,7 @@ config.TOOLS = [
 	{
 		name: 'text',
 		on_update: 'on_params_update',
+		on_leave: 'on_leave',
 		attributes: {
 			font: {
 				value: 'Roboto',
@@ -538,11 +539,16 @@ config.TOOLS = [
 				icon: `strikethrough.svg`
 			},
 			fill: '#008000',
-			stroke: '#000000',
-			stroke_size: {
-				value: 0,
-				min: 0,
-				step: 0.1
+			halign: {
+				type: 'button_group',
+				value: 'Left',
+				values: ['Left', 'Center', 'Right', 'Justify'],
+				icons: {
+					Left: 'align-left.svg',
+					Center: 'align-center.svg',
+					Right: 'align-right.svg',
+					Justify: 'align-justify.svg',
+				}
 			},
 			kerning: {
 				value: 0,
@@ -555,10 +561,6 @@ config.TOOLS = [
 				min: -999,
 				max: 999,
 				step: 1
-			},
-			halign: {
-				value: 'Left',
-				values: ['Left', 'Center', 'Right'],
 			},
 			boundary: {
 				title: 'Mode',

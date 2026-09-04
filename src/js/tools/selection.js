@@ -84,7 +84,12 @@ class Selection_class extends Base_tools_class {
 		document.addEventListener('keydown', (e) => {
 			var code = e.keyCode;
 			var key = e.key;
-			if (this.Helper.is_input(e.target))
+			if (this.Helper.is_input(e.target) || this.Helper.is_input(document.activeElement))
+				return;
+			const textTool = (app.GUI && app.GUI.GUI_tools && app.GUI.GUI_tools.tools_modules['text'])
+				? app.GUI.GUI_tools.tools_modules['text'].object
+				: null;
+			if (textTool && textTool.focused)
 				return;
 
 			if (code == 27 || key === 'Escape') {
