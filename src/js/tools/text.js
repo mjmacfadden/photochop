@@ -12,11 +12,9 @@ import alertify from './../../../node_modules/alertifyjs/build/alertify.min.js';
 import googleFontsCache from './../libs/google-fonts-cache.json';
 
 /**
- * TODO
- * - Add leading, superscript, subscript
- * - Implement text direction (right to left, top to bottom, etc.); currently partial implementation
- * - Allow search & add google fonts
- * - Undo history
+ * Type layers stay editable vector records (span JSON), redrawn each frame.
+ * Glyphs currently use canvas fillText + metrics (FIXME: swap for Typr paths).
+ * Out of scope: text on a path, warp, PSD type round-trip, HarfBuzz/RTL.
  */
 
 // Default text styling
@@ -35,8 +33,8 @@ export const metaDefaults = {
 	stroke_size: 0,
 	stroke_color: '#000000'
 };
-
 const LOREM_IPSUM = 'Lorem ipsum';
+const LOREM_PARAGRAPH = 'Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut labore et dolore magna aliqua. Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris nisi ut aliquip ex ea commodo consequat. Duis aute irure dolor in reprehenderit in voluptate velit esse cillum dolore eu fugiat nulla pariatur. Excepteur sint occaecat cupidatat non proident, sunt in culpa qui officia deserunt mollit anim id est laborum. Sed ut perspiciatis unde omnis iste natus error sit voluptatem accusantium doloremque laudantium, totam rem aperiam, eaque ipsa quae ab illo inventore veritatis et quasi architecto beatae vitae dicta sunt explicabo. Nemo enim ipsam voluptatem quia voluptas sit aspernatur aut odit aut fugit, sed quia consequuntur magni dolores eos qui ratione voluptatem sequi nesciunt. Neque porro quisquam est, qui dolorem ipsum quia dolor sit amet, consectetur, adipisci velit, sed quia non numquam eius modi tempora incidunt ut labore et dolore magnam aliquam quaerat voluptatem.';
 
 // Global map of font name to font metrics information.
 const fontMetricsMap = new Map();
@@ -53,6 +51,13 @@ fontLoadMap.set('Times New Roman', true);
 fontLoadMap.set('Verdana', true);
 
 export function load_font_family({ family, variants, source }, successCallback) {
+	if (!source && family && config.user_fonts[family] && config.user_fonts[family].source) {
+		source = config.user_fonts[family].source;
+	}
+	if (!source && family && app.FontManager && typeof app.FontManager.getCachedSystemFonts === 'function'
+		&& app.FontManager.getCachedSystemFonts().includes(family)) {
+		source = 'local';
+	}
 	if (source === 'local') {
 		if (app.FontManager) {
 			app.FontManager.loadSystemFont(family).then(() => {
@@ -1468,7 +1473,7 @@ class Text_editor_class {
 		const boundary = layer.params.boundary;
 		const textDirection = layer.params.text_direction;
 		const wrapDirection = layer.params.wrap_direction;
-		const halign = layer.params.halign;
+		const halign = (layer.params.halign || 'left').toLowerCase();
 		const valign = layer.params.valign;
 		const isHorizontalTextDirection = ['ltr', 'rtl'].includes(textDirection);
 		const isNegativeTextDirection = ['rtl', 'btt'].includes(textDirection);
@@ -1556,12 +1561,7 @@ class Text_editor_class {
 								});
 							}
 						}
-						// For word split only, break out.
-						else if (layer.params.wrap === 'word') {
-							wrapCharacterOffsets.push(wrapAccumulativeSize);
-							break;
-						}
-						// Otherwise, split the word
+						// No break opportunity: split the long word (Photoshop/Photopea).
 						else {
 							if (s === 0 && c === 0) {
 								c++;
@@ -1734,15 +1734,6 @@ class Text_editor_class {
 		}
 
 		this._livePointScale = null;
-		if (this._pointTransforming && this.textBoundaryWidth > 0 && this.textBoundaryHeight > 0) {
-			const bw = Math.max(1, this.textBoundaryWidth);
-			const bh = Math.max(1, this.textBoundaryHeight);
-			const sx = layer.width / bw;
-			const sy = layer.height / bh;
-			if (Math.abs(sx - 1) > 0.01 || Math.abs(sy - 1) > 0.01) {
-				this._livePointScale = { sx, sy };
-			}
-		}
 
 		if (!this.lineRenderInfo) return;
 
@@ -1767,7 +1758,8 @@ class Text_editor_class {
 			let wrapIndex = 0;
 			const cursorLine = this.selection.isActiveSideEnd ? this.selection.end.line : this.selection.start.line;
 			const cursorCharacter = this.selection.isActiveSideEnd ? this.selection.end.character : this.selection.start.character;
-			if(layer.rotate){
+			const hasRotate = !!layer.rotate;
+			if(hasRotate){
 				const alpha = (layer.rotate * Math.PI) / 180;
 				ctx.save();
 				// Move the canvas to the center before rotating
@@ -1777,10 +1769,13 @@ class Text_editor_class {
 				ctx.translate(-layer.x - layer.width / 2, -layer.y - layer.height / 2);
 
 			}
-			if (this._livePointScale) {
-				const { sx, sy } = this._livePointScale;
+			const layerScaleX = (layer.params && layer.params.scale_x != null) ? layer.params.scale_x : 1;
+			const layerScaleY = (layer.params && layer.params.scale_y != null) ? layer.params.scale_y : 1;
+			const hasLayerScale = Math.abs(layerScaleX - 1) > 0.001 || Math.abs(layerScaleY - 1) > 0.001;
+			if (hasLayerScale) {
+				ctx.save();
 				ctx.translate(layer.x, layer.y);
-				ctx.scale(sx, sy);
+				ctx.scale(layerScaleX, layerScaleY);
 				ctx.translate(-layer.x, -layer.y);
 			}
 			for (let line of this.lineRenderInfo.lines) {
@@ -1941,7 +1936,10 @@ class Text_editor_class {
 				}
 				lineIndex++;
 			}
-			if(layer.rotate){
+			if (hasLayerScale) {
+				ctx.restore();
+			}
+			if (hasRotate) {
 				ctx.restore();
 			}
 		} catch (error) {
@@ -2697,6 +2695,9 @@ class Google_fonts_search_class {
 						}
 					}
 				}
+				if (app.FontManager && typeof app.FontManager.persistSelectedLocalFonts === 'function') {
+					app.FontManager.persistSelectedLocalFonts();
+				}
 				app.GUI.GUI_tools.show_action_attributes();
 			}
 		});
@@ -2705,6 +2706,14 @@ class Google_fonts_search_class {
 
 
 class Text_class extends Base_tools_class {
+
+	is_cursor_active() {
+		const isTextLayer = config.layer && config.layer.type === 'text';
+		if (!isTextLayer) return false;
+		if (this.focused) return true;
+		const editor = this.get_editor(config.layer);
+		return !!(editor && editor.selection && (editor.selection.isCursorVisible || editor.selection.isVisible));
+	}
 
 	constructor(ctx) {
 		super();
@@ -2722,7 +2731,7 @@ class Text_class extends Base_tools_class {
 		this.focusedWidth = null;
 		this.focusedHeight = null;
 		this.typing_commit_timer = null;
-		this.create_box_threshold = 4; // px drag before point text becomes paragraph/box
+		this.create_box_threshold = 8; // px drag before point text becomes paragraph/box
 		this.mousedownX = 0;
 		this.mousedownY = 0;
 		this.mousedownBounds = {};
@@ -2858,6 +2867,9 @@ class Text_class extends Base_tools_class {
 
 			this.textarea.addEventListener('input', (e) => {
 				const inputValue = e.target.value;
+				if (!inputValue && !isComposing) {
+					return;
+				}
 				if(isComposing){
 					const editor = this.get_editor(config.layer);
 					editor.replace_entire_IME_text(beforeImeText, inputValue);
@@ -2903,6 +2915,14 @@ class Text_class extends Base_tools_class {
 						(async () => {
 							await app.State.redo();
 						})();
+						return;
+					}
+					// Select All shortcut while focused in textarea
+					if ((e.ctrlKey || e.metaKey) && (e.key === 'a' || e.key === 'A' || e.code === 'KeyA' || e.keyCode === 65)) {
+						e.preventDefault();
+						e.stopImmediatePropagation();
+						const editor = this.get_editor(config.layer);
+						this.select_all_text(editor);
 						return;
 					}
 					let handled = true;
@@ -2971,12 +2991,6 @@ class Text_class extends Base_tools_class {
 							break;
 						case 'a':
 						case 'A':
-							if (e.ctrlKey || e.metaKey) {
-								e.preventDefault();
-								e.stopImmediatePropagation();
-								this.select_all_text(editor);
-								break;
-							}
 							handled = false;
 							break;
 						case 'Enter':
@@ -3159,6 +3173,46 @@ class Text_class extends Base_tools_class {
 		}
 	}
 
+	is_paragraph_drag(width, height) {
+		const threshold = this.create_box_threshold || 8;
+		return width >= threshold && height >= threshold;
+	}
+
+	mouse_to_local(layer, mouse) {
+		if (!layer || !mouse) return { x: 0, y: 0 };
+		let localX = mouse.x - layer.x;
+		let localY = mouse.y - layer.y;
+		if (layer.rotate) {
+			const cx = layer.x + layer.width / 2;
+			const cy = layer.y + layer.height / 2;
+			const rad = -(layer.rotate * Math.PI) / 180;
+			const cosA = Math.cos(rad);
+			const sinA = Math.sin(rad);
+			const dx = mouse.x - cx;
+			const dy = mouse.y - cy;
+			localX = (cx + (dx * cosA - dy * sinA)) - layer.x;
+			localY = (cy + (dx * sinA + dy * cosA)) - layer.y;
+		}
+		const sx = (layer.params && layer.params.scale_x != null) ? layer.params.scale_x : 1;
+		const sy = (layer.params && layer.params.scale_y != null) ? layer.params.scale_y : 1;
+		return {
+			x: (localX - 1) / (sx || 1),
+			y: (localY - 1) / (sy || 1)
+		};
+	}
+
+	ensure_font_registered(family) {
+		if (!family || family.includes('...')) return;
+		if (config.user_fonts[family]) return;
+		if (app.FontManager && typeof app.FontManager.getCachedSystemFonts === 'function'
+			&& app.FontManager.getCachedSystemFonts().includes(family)) {
+			config.user_fonts[family] = { family, source: 'local' };
+			if (typeof app.FontManager.persistSelectedLocalFonts === 'function') {
+				app.FontManager.persistSelectedLocalFonts();
+			}
+		}
+	}
+
 	focus_textarea() {
 		if (!this.textarea) return;
 		this.focused = true;
@@ -3199,6 +3253,7 @@ class Text_class extends Base_tools_class {
 		this.creating = false;
 		this.selecting = false;
 		this.resizing = false;
+		this.end_point_text_resize();
 
 		this.mousedownX = mouse.x;
 		this.mousedownY = mouse.y;
@@ -3247,20 +3302,8 @@ class Text_class extends Base_tools_class {
 						this.layer.params.anchor_y = this.layer.y;
 					}
 				}
-				let localX = mouse.x - this.layer.x;
-				let localY = mouse.y - this.layer.y;
-				if (this.layer.rotate) {
-					const cx = this.layer.x + this.layer.width / 2;
-					const cy = this.layer.y + this.layer.height / 2;
-					const rad = -(this.layer.rotate * Math.PI) / 180;
-					const cosA = Math.cos(rad);
-					const sinA = Math.sin(rad);
-					const dx = mouse.x - cx;
-					const dy = mouse.y - cy;
-					localX = (cx + (dx * cosA - dy * sinA)) - this.layer.x;
-					localY = (cy + (dx * sinA + dy * cosA)) - this.layer.y;
-				}
-				editor.trigger_cursor_start(this.layer, localX - 1, localY - 1);
+				const local = this.mouse_to_local(this.layer, mouse);
+				editor.trigger_cursor_start(this.layer, local.x, local.y);
 				this.focusedValue = JSON.stringify(editor.document.lines);
 				this.focusedX = this.layer.x;
 				this.focusedY = this.layer.y;
@@ -3287,7 +3330,9 @@ class Text_class extends Base_tools_class {
 					wrap_direction: 'ttb',
 					halign: initialHalign,
 					valign: 'top',
-					wrap: 'letter'
+					wrap: 'letter',
+					scale_x: 1,
+					scale_y: 1
 				},
 				render_function: [this.name, 'render'],
 				x: mouse.x,
@@ -3335,7 +3380,7 @@ class Text_class extends Base_tools_class {
 				config.layer.y = this.selection.y;
 				config.layer.width = this.selection.width;
 				config.layer.height = this.selection.height;
-				// Point (dynamic): keep dynamic — transform scales glyphs (see bake_point_text_scale).
+				// Point (dynamic): keep dynamic — transform uses geometric scale_x/y.
 				// Paragraph (box): only the frame changes; glyphs reflow / clip.
 			}
 		}
@@ -3345,7 +3390,7 @@ class Text_class extends Base_tools_class {
 			}
 			const width = Math.abs(mouse.x - this.mousedownX);
 			const height = Math.abs(mouse.y - this.mousedownY);
-			const isBoxDrag = width >= 40 && height >= 30;
+			const isBoxDrag = this.is_paragraph_drag(width, height);
 
 			// Photoshop-like: click = point/dynamic text; click-drag past threshold = paragraph/box
 			if (isBoxDrag) {
@@ -3368,20 +3413,8 @@ class Text_class extends Base_tools_class {
 		} else {
 			const editor = this.get_editor(this.layer);
 			if (editor && this.layer && this.selecting) {
-				let localX = mouse.x - this.layer.x;
-				let localY = mouse.y - this.layer.y;
-				if (this.layer.rotate) {
-					const cx = this.layer.x + this.layer.width / 2;
-					const cy = this.layer.y + this.layer.height / 2;
-					const rad = -(this.layer.rotate * Math.PI) / 180;
-					const cosA = Math.cos(rad);
-					const sinA = Math.sin(rad);
-					const dx = mouse.x - cx;
-					const dy = mouse.y - cy;
-					localX = (cx + (dx * cosA - dy * sinA)) - this.layer.x;
-					localY = (cy + (dx * sinA + dy * cosA)) - this.layer.y;
-				}
-				editor.trigger_cursor_move(this.layer, localX - 1, localY - 1);
+				const local = this.mouse_to_local(this.layer, mouse);
+				editor.trigger_cursor_move(this.layer, local.x, local.y);
 			}
 		}
 		this.Base_layers.render();
@@ -3437,13 +3470,11 @@ class Text_class extends Base_tools_class {
 				if (wasDynamic && this.mousedownBounds.width > 0) {
 					if (!this._point_resize_snapshot) {
 						this.begin_point_text_resize(config.layer);
-						this._point_resize_base_width = Math.max(1, this.mousedownBounds.width);
-						this._point_resize_base_height = Math.max(1, this.mousedownBounds.height);
 					}
-					const scaledData = this.apply_point_text_resize(config.layer, nextW, nextH);
-					if (scaledData) {
-						update.data = scaledData;
-						this.focusedValue = JSON.stringify(scaledData);
+					this.apply_point_text_resize(config.layer, nextW, nextH);
+					if (config.layer.params) {
+						update.params.scale_x = (config.layer.params.scale_x != null) ? config.layer.params.scale_x : 1;
+						update.params.scale_y = (config.layer.params.scale_y != null) ? config.layer.params.scale_y : 1;
 					}
 					this.end_point_text_resize();
 				}
@@ -3462,7 +3493,7 @@ class Text_class extends Base_tools_class {
 		else if (this.creating) {
 			let width = Math.abs(mouse.x - this.mousedownX);
 			let height = Math.abs(mouse.y - this.mousedownY);
-			const isBoxDrag = width >= 40 && height >= 30;
+			const isBoxDrag = this.is_paragraph_drag(width, height);
 
 			if (config.layer && config.layer.type === 'text') {
 				const nextParams = JSON.parse(JSON.stringify(config.layer.params || {}));
@@ -3491,7 +3522,7 @@ class Text_class extends Base_tools_class {
 					config.layer.width = nextW;
 					config.layer.height = nextH;
 					if (ed) {
-						this.seed_placeholder_text(config.layer, ed, { selectAll: true });
+						this.fill_box_with_lorem_ipsum(config.layer, ed, { selectAll: true });
 						this.focusedValue = JSON.stringify(ed.document.lines);
 					}
 				} else {
@@ -3505,15 +3536,19 @@ class Text_class extends Base_tools_class {
 					nextH = config.layer.height;
 				}
 
+				const createUpdate = {
+					x: nextX,
+					y: nextY,
+					width: nextW,
+					height: nextH,
+					params: nextParams
+				};
+				if (ed && ed.document && ed.document.lines) {
+					createUpdate.data = JSON.parse(JSON.stringify(ed.document.lines));
+				}
 				await app.State.do_action(
 					new app.Actions.Bundle_action('resize_text_layer', 'Resize Text Layer', [
-						new app.Actions.Update_layer_action(config.layer.id, {
-							x: nextX,
-							y: nextY,
-							width: nextW,
-							height: nextH,
-							params: nextParams
-						})
+						new app.Actions.Update_layer_action(config.layer.id, createUpdate)
 					]),
 					{ merge_with_history: 'new_text_layer' }
 				);
@@ -3657,6 +3692,16 @@ class Text_class extends Base_tools_class {
 		);
 
 		const oldData = JSON.parse(JSON.stringify(editor.document.lines));
+		let nextParams = null;
+		// An explicit size from the options bar is visual — drop leftover geometric scale.
+		if (meta.size != null && layer.params && (
+			(layer.params.scale_x != null && Math.abs(layer.params.scale_x - 1) > 0.001) ||
+			(layer.params.scale_y != null && Math.abs(layer.params.scale_y - 1) > 0.001)
+		)) {
+			nextParams = JSON.parse(JSON.stringify(layer.params));
+			nextParams.scale_x = 1;
+			nextParams.scale_y = 1;
+		}
 		if (hadSelection) {
 			editor.document.queuedMetaChanges = null;
 			editor.document.set_meta_range(
@@ -3690,10 +3735,12 @@ class Text_class extends Base_tools_class {
 		editor.hasValueChanged = true;
 		this._preserve_selection = hadSelection ? selectionSnap : null;
 		layer.data = oldData;
+		const layerUpdate = {
+			data: JSON.parse(JSON.stringify(editor.document.lines))
+		};
+		if (nextParams) layerUpdate.params = nextParams;
 		await app.State.do_action(
-			new app.Actions.Update_layer_action(layer.id, {
-				data: JSON.parse(JSON.stringify(editor.document.lines))
-			})
+			new app.Actions.Update_layer_action(layer.id, layerUpdate)
 		);
 
 		const editorAfter = this.get_editor(layer);
@@ -3736,7 +3783,10 @@ class Text_class extends Base_tools_class {
 					};
 					new Google_fonts_search_class().show();
 				}
-				else if (value) meta.family = value;
+				else if (value) {
+					this.ensure_font_registered(value);
+					meta.family = value;
+				}
 				break;
 			case 'size':
 				if (value) meta.size = value;
@@ -3805,6 +3855,17 @@ class Text_class extends Base_tools_class {
 					}
 					this.focusedWidth = config.layer.width;
 					this.focusedHeight = config.layer.height;
+					const editor = this.get_editor(config.layer);
+					if (editor) {
+						editor.hasValueChanged = true;
+						let ctx = editor.editingCtx;
+						if (!ctx && app.GUI && app.GUI.canvas_ctx) ctx = app.GUI.canvas_ctx;
+						if (!ctx) {
+							const c = document.getElementById('canvas_minipaint');
+							ctx = c ? c.getContext('2d') : document.createElement('canvas').getContext('2d');
+						}
+						editor.calculate_text_placement(ctx, config.layer);
+					}
 					config.need_render_changed_params = true;
 					app.State.do_action(
 						new app.Actions.Update_layer_action(config.layer.id, updates)
@@ -3951,62 +4012,48 @@ class Text_class extends Base_tools_class {
 	}
 
 
-	_scale_text_lines(lines, scale) {
-		const out = JSON.parse(JSON.stringify(lines || [[{ text: '', meta: {} }]]));
-		for (const line of out) {
-			for (const span of line) {
-				if (!span.meta) span.meta = {};
-				const size = (span.meta.size != null) ? span.meta.size : metaDefaults.size;
-				span.meta.size = Math.max(1, Math.round(size * scale * 100) / 100);
-				if (span.meta.stroke_size != null && span.meta.stroke_size > 0) {
-					span.meta.stroke_size = Math.max(0, Math.round(span.meta.stroke_size * scale * 10) / 10);
-				}
-				if (span.meta.leading != null) {
-					span.meta.leading = Math.max(0, Math.round(span.meta.leading * scale));
-				}
-			}
-		}
-		return out;
-	}
-
-	bake_point_text_scale(layer, scale, { commit = true } = {}) {
-		if (!layer || layer.type !== 'text' || !scale || !isFinite(scale) || Math.abs(scale - 1) < 1e-6) {
-			return null;
-		}
-		const editor = this.get_editor(layer);
-		const source = (this._point_resize_snapshot)
-			? this._point_resize_snapshot
-			: (editor ? editor.document.lines : (layer.data || [[{ text: '', meta: {} }]]));
-		const lines = this._scale_text_lines(source, scale);
-		if (commit) {
-			layer.data = JSON.parse(JSON.stringify(lines));
-			if (editor) {
-				editor.hasValueChanged = true;
-				editor.set_lines(JSON.parse(JSON.stringify(lines)), true);
-				editor.hasValueChanged = true;
-			}
-		}
-		return lines;
-	}
-
 	/**
-	 * Start a point-text transform: remember pre-drag fonts so scale is always
-	 * relative to the drag start (not compounded each move).
+	 * Start a point-text transform: remember pre-drag box and scale so the ratio is
+	 * always relative to the drag start (not compounded each move).
 	 */
 	begin_point_text_resize(layer) {
 		if (!layer || layer.type !== 'text') return;
 		const editor = this.get_editor(layer);
+		if (editor) {
+			let ctx = editor.editingCtx;
+			if (!ctx && app.GUI && app.GUI.canvas_ctx) ctx = app.GUI.canvas_ctx;
+			if (!ctx) {
+				const c = document.getElementById('canvas_minipaint');
+				ctx = c ? c.getContext('2d') : document.createElement('canvas').getContext('2d');
+			}
+			if (!editor.textBoundaryWidth || !editor.textBoundaryHeight) {
+				editor.calculate_text_placement(ctx, layer);
+			}
+		}
 		const lines = editor ? editor.document.lines : layer.data;
 		this._point_resize_snapshot = JSON.parse(JSON.stringify(lines || [[{ text: '', meta: {} }]]));
-		this._point_resize_base_width = Math.max(1, layer.width || 1);
-		this._point_resize_base_height = Math.max(1, layer.height || 1);
+		const sx = (layer.params && layer.params.scale_x != null) ? layer.params.scale_x : 1;
+		const sy = (layer.params && layer.params.scale_y != null) ? layer.params.scale_y : 1;
+		const layoutW = (editor && editor.textBoundaryWidth) ? (editor.textBoundaryWidth * sx + 1) : 0;
+		const layoutH = (editor && editor.textBoundaryHeight) ? (editor.textBoundaryHeight * sy + 1) : 0;
+		let bw = Number(layer.width);
+		let bh = Number(layer.height);
+		if (!isFinite(bw) || bw < 1) bw = 1;
+		if (!isFinite(bh) || bh < 1) bh = 1;
+		// Never use a stub 1×1 box as the scale base — that maps any drag to size 999.
+		if (layoutW > bw) bw = layoutW;
+		if (layoutH > bh) bh = layoutH;
+		this._point_resize_base_width = bw;
+		this._point_resize_base_height = bh;
+		this._point_resize_base_scale_x = sx;
+		this._point_resize_base_scale_y = sy;
 		this._point_resize_layer_id = layer.id;
 		this._point_resize_last_scale = 1;
 	}
 
 	/**
-	 * Apply point-text scale from the drag-start snapshot to real font sizes.
-	 * Uses uniform scale from width+height so handles stay proportional.
+	 * Scale point text with the transform box via geometric scale_x/y only.
+	 * Font sizes are NOT baked — baking from a tiny layer box jumps to 999 and clips.
 	 */
 	apply_point_text_resize(layer, currentWidth, currentHeight) {
 		if (!layer || layer.type !== 'text' || !this._point_resize_snapshot) return null;
@@ -4015,39 +4062,41 @@ class Text_class extends Base_tools_class {
 		const baseH = Math.max(1, this._point_resize_base_height || 1);
 		const w = Math.max(1, currentWidth != null ? currentWidth : (layer.width || baseW));
 		const h = Math.max(1, currentHeight != null ? currentHeight : (layer.height || baseH));
-		const scale = Math.max(0.05, Math.sqrt(Math.abs((w / baseW) * (h / baseH))));
-		this._point_resize_last_scale = scale;
-		const lines = this.bake_point_text_scale(layer, scale, { commit: true });
-		if (lines && lines[0] && lines[0][0] && lines[0][0].meta && lines[0][0].meta.size != null) {
-			const size = lines[0][0].meta.size;
-			try {
-				for (const tool of (config.TOOLS || [])) {
-					if (tool.name === 'text' && tool.attributes && tool.attributes.size) {
-						if (typeof tool.attributes.size === 'object') tool.attributes.size.value = size;
-						else tool.attributes.size = size;
-					}
-				}
-			} catch (e) { /* ignore */ }
-		}
-		return lines;
+		const rx = w / baseW;
+		const ry = h / baseH;
+		const baseScaleX = this._point_resize_base_scale_x != null ? this._point_resize_base_scale_x : 1;
+		const baseScaleY = this._point_resize_base_scale_y != null ? this._point_resize_base_scale_y : 1;
+
+		if (!layer.params) layer.params = {};
+		layer.params.scale_x = Math.max(0.01, baseScaleX * rx);
+		layer.params.scale_y = Math.max(0.01, baseScaleY * ry);
+		this._point_resize_last_scale = ry;
+		return null;
 	}
 
 	end_point_text_resize() {
 		this._point_resize_snapshot = null;
 		this._point_resize_base_width = null;
 		this._point_resize_base_height = null;
+		this._point_resize_base_scale_x = null;
+		this._point_resize_base_scale_y = null;
 		this._point_resize_layer_id = null;
 	}
 
 	is_point_text_transform_active(layer) {
-		// Live ctx.scale preview disabled when we bake real font sizes during drag.
-		// Returning false avoids double-scaling (fonts *and* canvas scale).
+		// Editor.render already applies params.scale_x/y. Returning true here would
+		// skip resize_to_dynamic_bounds after commit; snapshot already does that
+		// during the drag.
 		return false;
 	}
 
 	resize_to_dynamic_bounds(layer, editor) {
 		// During Move-handle scaling, the drag owns width/height.
 		if (this._point_resize_snapshot) return;
+		// During Select-tool moving, the drag owns layer position.
+		if (app.GUI && app.GUI.GUI_tools && app.GUI.GUI_tools.tools_modules['select'] && app.GUI.GUI_tools.tools_modules['select'].object && app.GUI.GUI_tools.tools_modules['select'].object.moving) {
+			return;
+		}
 		if (layer && layer.type === 'text' && layer.params && layer.params.boundary === 'dynamic' && editor) {
 			if (!editor.textBoundaryWidth || !editor.textBoundaryHeight || editor.hasValueChanged) {
 				let ctx = editor.editingCtx;
@@ -4058,8 +4107,10 @@ class Text_class extends Base_tools_class {
 				}
 				editor.calculate_text_placement(ctx, layer);
 			}
-			const new_width = Math.max(1, Math.ceil(editor.textBoundaryWidth + 1));
-			const new_height = Math.max(1, Math.ceil(editor.textBoundaryHeight + 1));
+			const sx = (layer.params.scale_x != null) ? layer.params.scale_x : 1;
+			const sy = (layer.params.scale_y != null) ? layer.params.scale_y : 1;
+			const new_width = Math.max(1, Math.ceil(editor.textBoundaryWidth * sx + 1));
+			const new_height = Math.max(1, Math.ceil(editor.textBoundaryHeight * sy + 1));
 			const halign = (layer.params.halign || 'left').toLowerCase();
 			if (layer.params.anchor_x == null) {
 				if (halign === 'center') {
@@ -4138,26 +4189,26 @@ class Text_class extends Base_tools_class {
 		}
 
 		if (this._selection_config) {
-			if (!isEditing && isActiveLayerAndTextTool) {
-				// Whole layer selected mode: show standard transform controls with handles
-				this._selection_config.enable_borders = true;
-				this._selection_config.enable_controls = true;
-				this._selection_config.enable_rotation = true;
+			if (isActiveLayerAndTextTool) {
+				// While using the Type tool:
+				// - Paragraph (box) text always shows dashed_light border with bw_square corner handles
+				// - Point text does not use box selection borders (it uses baseline + anchor square chrome)
+				this._selection_config.enable_borders = isBoxBoundary;
+				this._selection_config.enable_controls = isBoxBoundary;
+				this._selection_config.enable_rotation = false;
+				this._selection_config.border_style = isBoxBoundary ? 'dashed_light' : null;
+				this._selection_config.handle_style = isBoxBoundary ? 'bw_square' : null;
+				this._selection_config.keep_ratio = false;
+			} else {
+				this._selection_config.enable_borders = false;
+				this._selection_config.enable_controls = false;
+				this._selection_config.enable_rotation = false;
 				this._selection_config.border_style = null;
 				this._selection_config.handle_style = null;
-				this._selection_config.keep_ratio = (config.aspect_lock !== undefined) ? config.aspect_lock : true;
-			} else {
-				// Inline text editing mode: only paragraph (box) text shows dashed boundary
-				const showBoxChrome = isEditing && isBoxBoundary;
-				this._selection_config.enable_borders = showBoxChrome;
-				this._selection_config.enable_controls = showBoxChrome;
-				this._selection_config.enable_rotation = false;
-				this._selection_config.border_style = showBoxChrome ? 'dashed_light' : null;
-				this._selection_config.handle_style = showBoxChrome ? 'bw_square' : null;
 				this._selection_config.keep_ratio = false;
 			}
 		}
-		if (!this.resizing && isActiveLayerAndTextTool && (!isEditing || isBoxBoundary)) {
+		if (!this.resizing && isActiveLayerAndTextTool && isBoxBoundary) {
 			this.selection.x = layer.x;
 			this.selection.y = layer.y;
 			this.selection.width = layer.width;
@@ -4222,6 +4273,9 @@ class Text_class extends Base_tools_class {
 	 */
 	seed_placeholder_text(layer, editor, { selectAll = true } = {}) {
 		if (!layer || !editor) return;
+		if (!layer.params) layer.params = {};
+		layer.params.scale_x = 1;
+		layer.params.scale_y = 1;
 		load_font_family({ family: metaDefaults.family }, () => {
 			this.hasValueChanged = true;
 			if (this.Base_layers) this.Base_layers.render();
@@ -4245,6 +4299,68 @@ class Text_class extends Base_tools_class {
 	}
 
 	/**
+	 * Fill paragraph box text layer with as much Lorem Ipsum as the box will hold.
+	 */
+	fill_box_with_lorem_ipsum(layer, editor, { selectAll = true } = {}) {
+		if (!layer || !editor) return;
+		if (!layer.params) layer.params = {};
+		layer.params.scale_x = 1;
+		layer.params.scale_y = 1;
+		load_font_family({ family: metaDefaults.family }, () => {
+			this.hasValueChanged = true;
+			if (this.Base_layers) this.Base_layers.render();
+		});
+		const meta = this.build_default_span_meta();
+		const words = LOREM_PARAGRAPH.split(/\s+/);
+		let wordIndex = 0;
+		let currentText = '';
+		let bestText = words[0] || 'Lorem';
+
+		let ctx = editor.editingCtx;
+		if (!ctx && app.GUI && app.GUI.canvas_ctx) ctx = app.GUI.canvas_ctx;
+		if (!ctx) {
+			const c = document.getElementById('canvas_minipaint');
+			ctx = c ? c.getContext('2d') : document.createElement('canvas').getContext('2d');
+		}
+
+		// Progressively add words chunk-by-chunk and measure height
+		const targetH = Math.max(20, layer.height);
+		const maxWords = 500;
+		let added = 0;
+		while (added < maxWords) {
+			const nextWord = words[wordIndex % words.length];
+			wordIndex++;
+			added++;
+			const testText = currentText ? (currentText + ' ' + nextWord) : nextWord;
+			editor.document.lines = [[{ text: testText, meta: JSON.parse(JSON.stringify(meta)) }]];
+			editor.calculate_text_placement(ctx, layer);
+			const h = editor.textBoundaryHeight || 0;
+			if (h > targetH && currentText) {
+				// Exceeded box height
+				break;
+			}
+			currentText = testText;
+			bestText = testText;
+		}
+
+		editor.document.lines = [[{ text: bestText, meta }]];
+		editor.hasValueChanged = true;
+		layer.data = editor.document.lines;
+		editor.set_lines(editor.document.lines, false);
+		if (selectAll) {
+			const lastLine = editor.document.lines.length - 1;
+			editor.selection.set_position(0, 0, false);
+			editor.selection.set_position(lastLine, editor.document.get_line_character_count(lastLine), true);
+		}
+		editor.calculate_text_placement(ctx, layer);
+		this.focusedValue = JSON.stringify(editor.document.lines);
+		this.focusedX = layer.x;
+		this.focusedY = layer.y;
+		this.focusedWidth = layer.width;
+		this.focusedHeight = layer.height;
+	}
+
+	/**
 	 * Point-text chrome: black square anchor at baseline start + light underline.
 	 */
 	draw_point_text_chrome(ctx, layer, editor) {
@@ -4252,8 +4368,10 @@ class Text_class extends Base_tools_class {
 		if (!editor.lineRenderInfo || !editor.lineRenderInfo.wrapSizes || !editor.lineRenderInfo.wrapSizes.length) return;
 		const wrap0 = editor.lineRenderInfo.wrapSizes[0];
 		const line0 = editor.lineRenderInfo.lines && editor.lineRenderInfo.lines[0];
+		const sx = (layer.params.scale_x != null) ? layer.params.scale_x : 1;
+		const sy = (layer.params.scale_y != null) ? layer.params.scale_y : 1;
 		const offsets = line0 && line0.wraps && line0.wraps[0] ? line0.wraps[0].characterOffsets : [0, 0];
-		const textWidth = Math.max(0, (offsets[offsets.length - 1] || 0));
+		const textWidth = Math.max(0, (offsets[offsets.length - 1] || 0) * sx);
 		const halign = (layer.params.halign || 'left').toLowerCase();
 		let ax = layer.x + 1;
 		if (layer.params.anchor_x != null) {
@@ -4263,7 +4381,7 @@ class Text_class extends Base_tools_class {
 		} else if (halign === 'right') {
 			ax = layer.x + 1 + textWidth;
 		}
-		const baselineY = layer.y + 1 + wrap0.offset + wrap0.baseline;
+		const baselineY = layer.y + 1 + (wrap0.offset + wrap0.baseline) * sy;
 		const underlineY = baselineY + 2;
 		// Light baseline under the text (spans the text bounds)
 		ctx.save();
@@ -4428,6 +4546,9 @@ class Text_class extends Base_tools_class {
 		const ed = editor || (config.layer ? this.get_editor(config.layer) : null);
 		if (!ed || !ed.document || !config.layer) return;
 		this.focused = true;
+		if (this.textarea) {
+			this.textarea.value = '';
+		}
 		ed.selection.set_position(0, 0, false);
 		const lastLine = Math.max(0, ed.document.lines.length - 1);
 		const lastChar = ed.document.get_line_character_count(lastLine);
@@ -4476,20 +4597,8 @@ class Text_class extends Base_tools_class {
 				this.select_all_text(editor);
 			} else if (event) {
 				const mouse = this.get_mouse_info(event);
-				let localX = mouse.x - layer.x;
-				let localY = mouse.y - layer.y;
-				if (layer.rotate) {
-					const cx = layer.x + layer.width / 2;
-					const cy = layer.y + layer.height / 2;
-					const rad = -(layer.rotate * Math.PI) / 180;
-					const cosA = Math.cos(rad);
-					const sinA = Math.sin(rad);
-					const dx = mouse.x - cx;
-					const dy = mouse.y - cy;
-					localX = (cx + (dx * cosA - dy * sinA)) - layer.x;
-					localY = (cy + (dx * sinA + dy * cosA)) - layer.y;
-				}
-				editor.trigger_cursor_start(layer, localX - 1, localY - 1);
+				const local = this.mouse_to_local(layer, mouse);
+				editor.trigger_cursor_start(layer, local.x, local.y);
 				editor.trigger_cursor_end();
 				// If double-clicked a word, select that word
 				const pos = editor.selection.get_position();

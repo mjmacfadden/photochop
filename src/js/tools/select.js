@@ -194,8 +194,10 @@ class Select_tool_class extends Base_tools_class {
 		this.mousedown_dimensions = {
 			x: Math.round(config.layer.x),
 			y: Math.round(config.layer.y),
-			width: Math.round(config.layer.width),
-			height: Math.round(config.layer.height),
+			width: config.layer.width,
+			height: config.layer.height,
+			anchor_x: (config.layer.params && config.layer.params.anchor_x != null) ? config.layer.params.anchor_x : null,
+			anchor_y: (config.layer.params && config.layer.params.anchor_y != null) ? config.layer.params.anchor_y : null,
 			mask: config.layer.mask ? {
 				x: config.layer.mask.x,
 				y: config.layer.mask.y,
@@ -219,8 +221,6 @@ class Select_tool_class extends Base_tools_class {
 					&& app.GUI.GUI_tools.tools_modules['text'].object;
 				if (textTool && typeof textTool.begin_point_text_resize === 'function') {
 					textTool.begin_point_text_resize(config.layer);
-					textTool._point_resize_base_width = Math.max(1, this.mousedown_dimensions.width);
-					textTool._point_resize_base_height = Math.max(1, this.mousedown_dimensions.height);
 				}
 			} catch (e) { /* ignore */ }
 		}
@@ -243,7 +243,7 @@ class Select_tool_class extends Base_tools_class {
 				config.layer.rotate = rotate;
 			}
 
-			// Point text: bake font sizes from drag-start snapshot (not a temporary canvas scale)
+			// Point text: geometric scale_x/y from drag-start snapshot (do not bake font size)
 			if (this._resizing_point_text && config.layer && config.layer.type === 'text') {
 				try {
 					const textTool = app.GUI && app.GUI.GUI_tools && app.GUI.GUI_tools.tools_modules
@@ -267,6 +267,8 @@ class Select_tool_class extends Base_tools_class {
 				delete config.layer.mask._alpha_source;
 			} else {
 				// Move layer (and linked mask moves with it)
+				const prevMoveX = config.layer.x;
+				const prevMoveY = config.layer.y;
 				config.layer.x = Math.round(mouse.x - mouse.click_x + this.mousedown_dimensions.x);
 				config.layer.y = Math.round(mouse.y - mouse.click_y + this.mousedown_dimensions.y);
 				this.Mask.preview_linked_mask_transform(config.layer, this.mousedown_dimensions, config.layer);
@@ -280,6 +282,13 @@ class Select_tool_class extends Base_tools_class {
 					if(snap_info.y != null) {
 						config.layer.y = snap_info.y;
 					}
+				}
+
+				if (config.layer.type === 'text' && config.layer.params && config.layer.params.boundary === 'dynamic') {
+					const dx = config.layer.x - prevMoveX;
+					const dy = config.layer.y - prevMoveY;
+					if (config.layer.params.anchor_x != null) config.layer.params.anchor_x += dx;
+					if (config.layer.params.anchor_y != null) config.layer.params.anchor_y += dy;
 				}
 			}
 
@@ -322,7 +331,7 @@ class Select_tool_class extends Base_tools_class {
 				this.mousedown_dimensions.width !== width || this.mousedown_dimensions.height !== height
 			) {
 				var layerUpdate = { x, y, width, height };
-				// Point text: finalize font scale from drag-start snapshot into history
+				// Point text: finalize geometric scale from drag-start snapshot into history
 				if (resizingPointText && this.mousedown_dimensions.width > 0) {
 					try {
 						const textTool = app.GUI && app.GUI.GUI_tools && app.GUI.GUI_tools.tools_modules
@@ -331,37 +340,23 @@ class Select_tool_class extends Base_tools_class {
 						if (textTool) {
 							if (!textTool._point_resize_snapshot && typeof textTool.begin_point_text_resize === 'function') {
 								textTool.begin_point_text_resize(config.layer);
-								textTool._point_resize_base_width = Math.max(1, this.mousedown_dimensions.width);
 							}
-							// Restore pre-drag fonts so Update_layer records the correct old_settings
-							if (textTool._point_resize_snapshot) {
-								const pre = JSON.parse(JSON.stringify(textTool._point_resize_snapshot));
-								config.layer.data = pre;
-								const ed = textTool.get_editor(config.layer);
-								if (ed) {
-									ed.set_lines(JSON.parse(JSON.stringify(pre)));
-									ed.hasValueChanged = true;
-								}
+							const preParams = config.layer.params ? JSON.parse(JSON.stringify(config.layer.params)) : {};
+							if (textTool._point_resize_base_scale_x != null) preParams.scale_x = textTool._point_resize_base_scale_x;
+							if (textTool._point_resize_base_scale_y != null) preParams.scale_y = textTool._point_resize_base_scale_y;
+							if (typeof textTool.apply_point_text_resize === 'function') {
+								textTool.apply_point_text_resize(config.layer, width, height);
 							}
-							const scaledData = (typeof textTool.apply_point_text_resize === 'function')
-								? textTool.apply_point_text_resize(config.layer, width, height)
-								: null;
-							if (scaledData) {
-								// Put pre-drag data back on the layer so the action's old_settings is pre-drag;
-								// the action itself applies scaledData.
-								if (textTool._point_resize_snapshot) {
-									config.layer.data = JSON.parse(JSON.stringify(textTool._point_resize_snapshot));
-								}
-								layerUpdate.data = JSON.parse(JSON.stringify(scaledData));
-								textTool.focusedValue = JSON.stringify(scaledData);
-								textTool.focusedWidth = width;
-								textTool.focusedHeight = height;
-							}
+							const nextParams = config.layer.params ? JSON.parse(JSON.stringify(config.layer.params)) : {};
+							if (nextParams.scale_x == null) nextParams.scale_x = 1;
+							if (nextParams.scale_y == null) nextParams.scale_y = 1;
+							config.layer.params = JSON.parse(JSON.stringify(preParams));
+							layerUpdate.params = nextParams;
 							if (typeof textTool.end_point_text_resize === 'function') {
 								textTool.end_point_text_resize();
 							}
 						}
-					} catch (e) { console.warn('point text scale bake failed', e); }
+					} catch (e) { console.warn('point text scale failed', e); }
 				}
 				var resize_actions = [
 					new app.Actions.Update_layer_action(config.layer.id, layerUpdate)
@@ -422,6 +417,10 @@ class Select_tool_class extends Base_tools_class {
 				var new_y = Math.round(mouse.y - mouse.click_y + this.mousedown_dimensions.y);
 				config.layer.x = this.mousedown_dimensions.x;
 				config.layer.y = this.mousedown_dimensions.y;
+				if (config.layer.type === 'text' && config.layer.params) {
+					if (this.mousedown_dimensions.anchor_x != null) config.layer.params.anchor_x = this.mousedown_dimensions.anchor_x;
+					if (this.mousedown_dimensions.anchor_y != null) config.layer.params.anchor_y = this.mousedown_dimensions.anchor_y;
+				}
 				if (this.mousedown_mask_dimensions != null) {
 					Object.assign(config.layer.mask, this.mousedown_mask_dimensions);
 				}

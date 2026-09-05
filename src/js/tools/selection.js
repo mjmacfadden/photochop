@@ -89,7 +89,7 @@ class Selection_class extends Base_tools_class {
 			const textTool = (app.GUI && app.GUI.GUI_tools && app.GUI.GUI_tools.tools_modules['text'])
 				? app.GUI.GUI_tools.tools_modules['text'].object
 				: null;
-			if (textTool && textTool.focused)
+			if (textTool && (textTool.focused || (typeof textTool.is_cursor_active === 'function' && textTool.is_cursor_active())))
 				return;
 
 			if (code == 27 || key === 'Escape') {

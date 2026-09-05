@@ -54,6 +54,7 @@ class Font_manager_class {
 				this.cachedSystemFonts = JSON.parse(cached);
 			}
 		} catch (e) {}
+		this.restoreSelectedLocalFonts();
 
 		// Load stored custom fonts from IndexedDB
 		try {
@@ -364,6 +365,30 @@ class Font_manager_class {
 			}
 		} catch (e) {}
 		return [];
+	}
+
+	restoreSelectedLocalFonts() {
+		try {
+			const raw = localStorage.getItem('photochop_selected_local_fonts');
+			if (!raw) return;
+			const names = JSON.parse(raw);
+			if (!Array.isArray(names)) return;
+			for (const name of names) {
+				if (!name) continue;
+				if (!config.user_fonts[name]) {
+					config.user_fonts[name] = { family: name, source: 'local' };
+				}
+			}
+		} catch (e) {}
+	}
+
+	persistSelectedLocalFonts() {
+		try {
+			const names = Object.keys(config.user_fonts).filter((name) => {
+				return config.user_fonts[name] && config.user_fonts[name].source === 'local';
+			});
+			localStorage.setItem('photochop_selected_local_fonts', JSON.stringify(names));
+		} catch (e) {}
 	}
 }
 

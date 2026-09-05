@@ -99,26 +99,40 @@ export class Update_layer_action extends Base_action {
 			}
 		}
 
-		if (this.reference_layer.type === 'text' && ('data' in this.settings)) {
-			this.reference_layer._needs_update_data = true;
+		if (this.reference_layer.type === 'text') {
+			if ('data' in this.settings) {
+				this.reference_layer._needs_update_data = true;
+			}
 			// Sync the live text editor immediately (don't wait for the next render).
 			// Otherwise point-text transform scale can look correct for one frame then snap back.
 			if (app.GUI && app.GUI.GUI_tools && app.GUI.GUI_tools.tools_modules['text']) {
 				const textTool = app.GUI.GUI_tools.tools_modules['text'].object;
 				if (textTool && typeof textTool.get_editor === 'function') {
 					const editor = textTool.get_editor(this.reference_layer);
-					if (editor && typeof editor.set_lines === 'function') {
+					if (editor) {
 						editor.hasValueChanged = true;
-						editor.set_lines(JSON.parse(JSON.stringify(this.reference_layer.data || [])));
+						if ('data' in this.settings && typeof editor.set_lines === 'function') {
+							editor.set_lines(JSON.parse(JSON.stringify(this.reference_layer.data || [])));
+						}
+						let ctx = editor.editingCtx;
+						if (!ctx && app.GUI && app.GUI.canvas_ctx) ctx = app.GUI.canvas_ctx;
+						if (!ctx) {
+							const c = document.getElementById('canvas_minipaint');
+							ctx = c ? c.getContext('2d') : document.createElement('canvas').getContext('2d');
+						}
+						editor.calculate_text_placement(ctx, this.reference_layer);
 						if (textTool.layer === this.reference_layer || config.layer === this.reference_layer) {
 							textTool.focusedValue = JSON.stringify(editor.document.lines);
 							textTool.focusedWidth = this.reference_layer.width;
 							textTool.focusedHeight = this.reference_layer.height;
+							textTool.focusedX = this.reference_layer.x;
+							textTool.focusedY = this.reference_layer.y;
 						}
 					}
 				}
 			}
 		}
+
 		if (this.settings.params || this.settings.width || this.settings.height) {
 			config.need_render_changed_params = true;
 		}
@@ -156,14 +170,32 @@ export class Update_layer_action extends Base_action {
 				this.old_mask = null;
 			}
 			if (this.reference_layer.type === 'text') {
-				this.reference_layer._needs_update_data = true;
+				if ('data' in this.old_settings) {
+					this.reference_layer._needs_update_data = true;
+				}
 				if (app.GUI && app.GUI.GUI_tools && app.GUI.GUI_tools.tools_modules['text']) {
 					const textTool = app.GUI.GUI_tools.tools_modules['text'].object;
 					if (textTool && typeof textTool.get_editor === 'function') {
 						const editor = textTool.get_editor(this.reference_layer);
-						if (editor && typeof editor.set_lines === 'function') {
+						if (editor) {
 							editor.hasValueChanged = true;
-							editor.set_lines(JSON.parse(JSON.stringify(this.reference_layer.data || [])));
+							if ('data' in this.old_settings && typeof editor.set_lines === 'function') {
+								editor.set_lines(JSON.parse(JSON.stringify(this.reference_layer.data || [])));
+							}
+							let ctx = editor.editingCtx;
+							if (!ctx && app.GUI && app.GUI.canvas_ctx) ctx = app.GUI.canvas_ctx;
+							if (!ctx) {
+								const c = document.getElementById('canvas_minipaint');
+								ctx = c ? c.getContext('2d') : document.createElement('canvas').getContext('2d');
+							}
+							editor.calculate_text_placement(ctx, this.reference_layer);
+							if (textTool.layer === this.reference_layer || config.layer === this.reference_layer) {
+								textTool.focusedValue = JSON.stringify(editor.document.lines);
+								textTool.focusedWidth = this.reference_layer.width;
+								textTool.focusedHeight = this.reference_layer.height;
+								textTool.focusedX = this.reference_layer.x;
+								textTool.focusedY = this.reference_layer.y;
+							}
 						}
 					}
 				}

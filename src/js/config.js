@@ -511,7 +511,11 @@ config.TOOLS = [
 				value: 'Roboto',
 				values() {
 					const user_font_names = Object.keys(config.user_fonts);
-					return ['', '[Add Font...]', ...Array.from(new Set([...config.FONTS, ...user_font_names].sort()))];
+					const systemFonts = (typeof window !== 'undefined' && window.FontManager
+						&& typeof window.FontManager.getCachedSystemFonts === 'function')
+						? window.FontManager.getCachedSystemFonts()
+						: [];
+					return ['[Add Font...]', ...Array.from(new Set([...config.FONTS, ...user_font_names, ...systemFonts].sort()))];
 				}
 			},
 			size: {

@@ -755,7 +755,9 @@ class GUI_tools_class {
 						fontButton.textContent = value || 'Select font';
 						fontButton.style.fontFamily = value && !value.includes('...') ? `"${value}", sans-serif` : '';
 						if (value && !value.includes('...') && app.FontManager) {
-							const fontSource = (config.user_fonts && config.user_fonts[value]) ? config.user_fonts[value].source : 'google';
+							const fontSource = (config.user_fonts && config.user_fonts[value])
+								? config.user_fonts[value].source
+								: (app.FontManager.getCachedSystemFonts && app.FontManager.getCachedSystemFonts().includes(value) ? 'local' : 'google');
 							app.FontManager.loadFont(value, fontSource);
 						}
 					};
@@ -805,7 +807,9 @@ class GUI_tools_class {
 						if (value && !value.includes('...')) {
 							option.style.fontFamily = `"${value}", sans-serif`;
 							if (app.FontManager) {
-								const fontSource = (config.user_fonts && config.user_fonts[value]) ? config.user_fonts[value].source : 'google';
+								const fontSource = (config.user_fonts && config.user_fonts[value])
+									? config.user_fonts[value].source
+									: (app.FontManager.getCachedSystemFonts && app.FontManager.getCachedSystemFonts().includes(value) ? 'local' : 'google');
 								app.FontManager.loadFont(value, fontSource);
 							}
 						}
@@ -1011,11 +1015,22 @@ class GUI_tools_class {
 
 		const applyDimensions = (newW, newH) => {
 			if (!config.layer || newW <= 0 || newH <= 0) return;
+			const settings = { width: newW, height: newH };
+			if (config.layer.type === 'text' && config.layer.params && config.layer.params.boundary === 'dynamic') {
+				try {
+					const textTool = this.tools_modules['text'] && this.tools_modules['text'].object;
+					if (textTool && typeof textTool.begin_point_text_resize === 'function') {
+						textTool.begin_point_text_resize(config.layer);
+						const preParams = JSON.parse(JSON.stringify(config.layer.params));
+						textTool.apply_point_text_resize(config.layer, newW, newH);
+						settings.params = JSON.parse(JSON.stringify(config.layer.params));
+						config.layer.params = preParams;
+						textTool.end_point_text_resize();
+					}
+				} catch (e) { /* ignore */ }
+			}
 			app.State.do_action(
-				new app.Actions.Update_layer_action(config.layer.id, {
-					width: newW,
-					height: newH,
-				})
+				new app.Actions.Update_layer_action(config.layer.id, settings)
 			);
 		};
 

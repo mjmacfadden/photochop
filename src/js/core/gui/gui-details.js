@@ -98,6 +98,7 @@ var template = `
 				<option value="left">Left</option>
 				<option value="center">Center</option>
 				<option value="right">Right</option>
+				<option value="justify">Justify</option>
 			</select>
 		</div>
 		<div class="row" hidden> <!-- Future implementation -->
