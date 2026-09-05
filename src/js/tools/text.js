@@ -23,6 +23,7 @@ import googleFontsCache from './../libs/google-fonts-cache.json';
 export const metaDefaults = {
 	size: 38,
 	family: 'Roboto',
+	weight: 'Regular',
 	kerning: 0,
 	leading: 0,
 	bold: false,
@@ -33,6 +34,51 @@ export const metaDefaults = {
 	stroke_size: 0,
 	stroke_color: '#000000'
 };
+
+/** Build a canvas font string from span meta (supports numeric/named weights). */
+export function span_font_css(span, sizeOverride = null) {
+	const meta = (span && span.meta) ? span.meta : {};
+	const size = sizeOverride != null ? sizeOverride : (meta.size != null ? meta.size : metaDefaults.size);
+	const family = meta.family || metaDefaults.family;
+	const weightRaw = meta.weight != null ? meta.weight : null;
+	let italic = !!meta.italic;
+	let weightCss = meta.bold ? 'bold' : 'normal';
+	if (weightRaw != null && String(weightRaw).length) {
+		const w = String(weightRaw);
+		if (/italic/i.test(w)) italic = true;
+		const mapped = normalize_font_weight(w);
+		if (mapped) weightCss = mapped;
+	}
+	return (italic ? 'italic' : 'normal') + ' ' + weightCss + ' ' + Math.round(size) + 'px ' + family;
+}
+
+export function normalize_font_weight(weight) {
+	if (weight == null || weight === '') return null;
+	const w = String(weight).trim().toLowerCase().replace(/[_\s]+/g, '');
+	if (/^\d{2,4}$/.test(w)) return String(parseInt(w, 10));
+	if (w === 'regular' || w === 'normal' || w === 'book' || w === 'roman') return '400';
+	if (w === 'medium') return '500';
+	if (w === 'semibold' || w === 'demibold' || w === 'semi') return '600';
+	if (w === 'bold') return '700';
+	if (w === 'extrabold' || w === 'ultrabold' || w === 'heavy') return '800';
+	if (w === 'black' || w === 'heavyblack') return '900';
+	if (w === 'thin' || w === 'hairline') return '100';
+	if (w === 'extralight' || w === 'ultralight') return '200';
+	if (w === 'light') return '300';
+	// Local Font Access styles often look like "Bold Italic" — strip italic and retry
+	const noItalic = w.replace(/italic|oblique/g, '');
+	if (noItalic && noItalic !== w) return normalize_font_weight(noItalic) || '400';
+	if (w.includes('bold')) return '700';
+	if (w.includes('light')) return '300';
+	if (w.includes('medium')) return '500';
+	if (w.includes('black') || w.includes('heavy')) return '900';
+	return '400';
+}
+
+export function weight_implies_bold(weight) {
+	const n = parseInt(normalize_font_weight(weight) || '400', 10);
+	return n >= 600;
+}
 const LOREM_IPSUM = 'Lorem ipsum';
 const LOREM_PARAGRAPH = 'Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut labore et dolore magna aliqua. Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris nisi ut aliquip ex ea commodo consequat. Duis aute irure dolor in reprehenderit in voluptate velit esse cillum dolore eu fugiat nulla pariatur. Excepteur sint occaecat cupidatat non proident, sunt in culpa qui officia deserunt mollit anim id est laborum. Sed ut perspiciatis unde omnis iste natus error sit voluptatem accusantium doloremque laudantium, totam rem aperiam, eaque ipsa quae ab illo inventore veritatis et quasi architecto beatae vitae dicta sunt explicabo. Nemo enim ipsam voluptatem quia voluptas sit aspernatur aut odit aut fugit, sed quia consequuntur magni dolores eos qui ratione voluptatem sequi nesciunt. Neque porro quisquam est, qui dolorem ipsum quia dolor sit amet, consectetur, adipisci velit, sed quia non numquam eius modi tempora incidunt ut labore et dolore magnam aliquam quaerat voluptatem.';
 
@@ -1504,11 +1550,7 @@ class Text_editor_class {
 				const size = span.meta.size || metaDefaults.size;
 				fontMetrics = this.get_span_font_metrics(span, !fontLoadMap.get(family));
 				if (isHorizontalTextDirection) {
-					ctx.font =
-						' ' + (span.meta.italic ? 'italic' : '') +
-						' ' + (span.meta.bold ? 'bold' : '') +
-						' ' + size + 'px' +
-						' ' + family;
+					ctx.font = span_font_css(span, size);
 				}
 				for (let c = 0; c < span.text.length; c++) {
 					character = span.text[c];
@@ -1663,7 +1705,7 @@ class Text_editor_class {
 						const lastSpan = wrap.spans[wrap.spans.length - 1];
 						const wrapSize = wrap.characterOffsets[wrap.characterOffsets.length - 1 - (lastSpan.text[lastSpan.text.length - 1] === ' ' ? 1 : 0)];
 						const startOffset = (isCentered ? maxTextDirectionSize / 2 : maxTextDirectionSize) - (isCentered ? wrapSize / 2 : wrapSize);
-						if (startOffset > 0) {
+						if (Math.abs(startOffset) > 0.01) {
 							for (let oi = 0; oi < wrap.characterOffsets.length; oi++) {
 								wrap.characterOffsets[oi] += startOffset;
 							}
@@ -1688,11 +1730,7 @@ class Text_editor_class {
 					if (isHorizontalTextDirection) {
 						fontMetrics = this.get_span_font_metrics(span, !fontLoadMap.get(family));
 					} else {
-						ctx.font =
-							' ' + (span.meta.italic ? 'italic' : '') +
-							' ' + (span.meta.bold ? 'bold' : '') +
-							' ' + (span.meta.size || metaDefaults.size) + 'px' +
-							' ' + family;
+						ctx.font = span_font_css(span);
 					}
 					let spanAscenderSize = isHorizontalTextDirection ? fontMetrics.baseline : ctx.measureText(character).width;
 					let spanDescenderSize = isHorizontalTextDirection ? Math.abs(fontMetrics.baseline - fontMetrics.height) : ctx.measureText(character).width;
@@ -1810,11 +1848,7 @@ class Text_editor_class {
 						}
 
 						// Set styles for drawing
-						ctx.font =
-							' ' + (italic ? 'italic' : '') +
-							' ' + (bold ? 'bold' : '') +
-							' ' + Math.round(span.meta.size || metaDefaults.size) + 'px' +
-							' ' + family;
+						ctx.font = span_font_css(span);
 						const fill_color = span.meta.fill_color || config.COLOR || metaDefaults.fill_color;
 						let fillStyle;
 						if (fill_color.startsWith('#')) {
@@ -3268,6 +3302,9 @@ class Text_class extends Base_tools_class {
 		if (this.Base_selection.mouse_lock !== null) {
 			if (config.layer && config.layer.type === 'text') {
 				this.resizing = true;
+				if (config.layer.params && config.layer.params.boundary === 'dynamic') {
+					this.begin_point_text_resize(config.layer);
+				}
 				return;
 			} else {
 				this.Base_selection.mouse_lock = null;
@@ -3380,7 +3417,14 @@ class Text_class extends Base_tools_class {
 				config.layer.y = this.selection.y;
 				config.layer.width = this.selection.width;
 				config.layer.height = this.selection.height;
-				// Point (dynamic): keep dynamic — transform uses geometric scale_x/y.
+				const isPoint = config.layer.params && config.layer.params.boundary === 'dynamic';
+				if (isPoint) {
+					// Live preview: geometric scale; font sizes bake on mouseup.
+					if (!this._point_resize_snapshot) {
+						this.begin_point_text_resize(config.layer);
+					}
+					this.apply_point_text_resize(config.layer, this.selection.width, this.selection.height);
+				}
 				// Paragraph (box): only the frame changes; glyphs reflow / clip.
 			}
 		}
@@ -3433,10 +3477,10 @@ class Text_class extends Base_tools_class {
 		if (this.resizing) {
 			if (this.mousedownBounds && config.layer && config.layer.type === 'text' && config.layer.params) {
 				const wasDynamic = this.mousedownBounds.boundary === 'dynamic';
-				const nextX = this.selection.x;
-				const nextY = this.selection.y;
-				const nextW = this.selection.width;
-				const nextH = this.selection.height;
+				let nextX = this.selection.x;
+				let nextY = this.selection.y;
+				let nextW = this.selection.width;
+				let nextH = this.selection.height;
 				config.layer.x = this.mousedownBounds.x;
 				config.layer.y = this.mousedownBounds.y;
 				config.layer.width = this.mousedownBounds.width;
@@ -3472,11 +3516,32 @@ class Text_class extends Base_tools_class {
 						this.begin_point_text_resize(config.layer);
 					}
 					this.apply_point_text_resize(config.layer, nextW, nextH);
+					const baked = this.bake_point_text_resize_commit(config.layer);
 					if (config.layer.params) {
-						update.params.scale_x = (config.layer.params.scale_x != null) ? config.layer.params.scale_x : 1;
-						update.params.scale_y = (config.layer.params.scale_y != null) ? config.layer.params.scale_y : 1;
+						update.params.scale_x = 1;
+						update.params.scale_y = 1;
+					}
+					if (baked) {
+						update.data = JSON.parse(JSON.stringify(baked));
+						config.layer.data = update.data;
+						this.focusedValue = JSON.stringify(baked);
 					}
 					this.end_point_text_resize();
+					if (baked) {
+						const ed = this.get_editor(config.layer);
+						if (ed) {
+							this.resize_to_dynamic_bounds(config.layer, ed);
+							update.x = config.layer.x;
+							update.y = config.layer.y;
+							update.width = config.layer.width;
+							update.height = config.layer.height;
+							nextX = config.layer.x;
+							nextY = config.layer.y;
+							nextW = config.layer.width;
+							nextH = config.layer.height;
+						}
+					}
+					if (this.GUI_tools) this.GUI_tools.show_action_attributes();
 				}
 				this.focusedX = nextX;
 				this.focusedY = nextY;
@@ -3556,6 +3621,7 @@ class Text_class extends Base_tools_class {
 				this.focusedY = nextY;
 				this.focusedWidth = nextW;
 				this.focusedHeight = nextH;
+				this.sync_text_tool_attributes_from_layer(config.layer);
 				if (isBoxDrag) {
 					await app.State.do_action(
 						new app.Actions.Set_selection_action(nextX, nextY, nextW, nextH),
@@ -3786,13 +3852,45 @@ class Text_class extends Base_tools_class {
 				else if (value) {
 					this.ensure_font_registered(value);
 					meta.family = value;
+					try {
+						const toolAttributes = this.GUI_tools.action_data().attributes;
+						if (toolAttributes.weight) {
+							const variants = (typeof toolAttributes.weight.values === 'function')
+								? toolAttributes.weight.values()
+								: (toolAttributes.weight.values || ['Regular']);
+							const current = toolAttributes.weight.value;
+							if (!variants.includes(current)) {
+								toolAttributes.weight.value = variants[0] || 'Regular';
+							}
+							meta.weight = toolAttributes.weight.value;
+						}
+					} catch (e) { /* ignore */ }
 				}
 				break;
 			case 'size':
 				if (value) meta.size = value;
 				break;
+			case 'weight': {
+				const weight = (value && value.value != null) ? value.value : value;
+				if (weight != null && String(weight).length) {
+					meta.weight = String(weight);
+					meta.bold = weight_implies_bold(weight);
+					if (/italic|oblique/i.test(String(weight))) {
+						meta.italic = true;
+					}
+					const family = (this.GUI_tools && this.GUI_tools.action_data().attributes.font)
+						? this.GUI_tools.action_data().attributes.font.value
+						: null;
+					if (family && app.FontManager && typeof app.FontManager.loadSystemFontStyle === 'function') {
+						app.FontManager.loadSystemFontStyle(family, String(weight)).catch(() => {});
+					}
+				}
+				break;
+			}
 			case 'bold':
 				meta.bold = value;
+				if (value) meta.weight = 'Bold';
+				else meta.weight = 'Regular';
 				break;
 			case 'italic':
 				meta.italic = value;
@@ -3825,47 +3923,45 @@ class Text_class extends Base_tools_class {
 				const align = (value && value.value ? value.value : value) || 'Left';
 				if (config.layer && config.layer.type === 'text' && config.layer.params) {
 					const nextParams = JSON.parse(JSON.stringify(config.layer.params));
-					const oldAlign = (nextParams.halign || 'left').toLowerCase();
-					const newAlign = String(align).toLowerCase();
-					nextParams.halign = newAlign;
-
+					let newAlign = String(align).toLowerCase();
 					const isPoint = nextParams.boundary === 'dynamic';
+					if (isPoint && newAlign === 'justify') {
+						// Photoshop: justify is disabled for point text.
+						return returnValue;
+					}
+					nextParams.halign = newAlign;
 					const updates = { params: nextParams };
+
 					if (isPoint) {
-						let anchor_x = nextParams.anchor_x;
-						if (anchor_x == null) {
-							if (oldAlign === 'center') anchor_x = config.layer.x + config.layer.width / 2;
-							else if (oldAlign === 'right') anchor_x = config.layer.x + config.layer.width;
-							else anchor_x = config.layer.x;
+						// Photoshop point text: keep glyphs put, move the anchor to L/C/R.
+						// Later typing grows from that new point via resize_to_dynamic_bounds.
+						let visualW = Math.max(1, Number(config.layer.width) || 1);
+						const editorForAnchor = this.get_editor(config.layer);
+						if (editorForAnchor) {
+							let ctx = editorForAnchor.editingCtx;
+							if (!ctx && app.GUI && app.GUI.canvas_ctx) ctx = app.GUI.canvas_ctx;
+							if (!ctx) {
+								const c = document.getElementById('canvas_minipaint');
+								ctx = c ? c.getContext('2d') : document.createElement('canvas').getContext('2d');
+							}
+							if (!editorForAnchor.textBoundaryWidth) {
+								editorForAnchor.calculate_text_placement(ctx, config.layer);
+							}
+							const sx = (nextParams.scale_x != null) ? nextParams.scale_x : 1;
+							const layoutW = (editorForAnchor.textBoundaryWidth || 0) * sx + 1;
+							if (layoutW > visualW) visualW = layoutW;
 						}
-						nextParams.anchor_x = anchor_x;
-						if (newAlign === 'center') {
-							updates.x = Math.round(anchor_x - config.layer.width / 2);
-						} else if (newAlign === 'right') {
-							updates.x = Math.round(anchor_x - config.layer.width);
-						} else {
-							updates.x = Math.round(anchor_x);
-						}
-						config.layer.x = updates.x;
-						this.focusedX = updates.x;
+						const left = config.layer.x;
+						if (newAlign === 'center') nextParams.anchor_x = left + visualW / 2;
+						else if (newAlign === 'right') nextParams.anchor_x = left + visualW;
+						else nextParams.anchor_x = left;
+						if (nextParams.anchor_y == null) nextParams.anchor_y = config.layer.y;
 					}
-					config.layer.params.halign = newAlign;
-					if (nextParams.anchor_x != null) {
-						config.layer.params.anchor_x = nextParams.anchor_x;
-					}
-					this.focusedWidth = config.layer.width;
-					this.focusedHeight = config.layer.height;
+					// Paragraph (box): only halign changes. Never convert to point.
+
+					this.sync_text_tool_attributes_from_layer({ ...config.layer, params: nextParams });
 					const editor = this.get_editor(config.layer);
-					if (editor) {
-						editor.hasValueChanged = true;
-						let ctx = editor.editingCtx;
-						if (!ctx && app.GUI && app.GUI.canvas_ctx) ctx = app.GUI.canvas_ctx;
-						if (!ctx) {
-							const c = document.getElementById('canvas_minipaint');
-							ctx = c ? c.getContext('2d') : document.createElement('canvas').getContext('2d');
-						}
-						editor.calculate_text_placement(ctx, config.layer);
-					}
+					if (editor) editor.hasValueChanged = true;
 					config.need_render_changed_params = true;
 					app.State.do_action(
 						new app.Actions.Update_layer_action(config.layer.id, updates)
@@ -3876,9 +3972,11 @@ class Text_class extends Base_tools_class {
 				return returnValue;
 			}
 			case 'boundary': {
-				const mode = (value && value.value ? value.value : value) || 'Auto';
+				const mode = (value && value.value ? value.value : value) || '';
 				const normalized = String(mode).toLowerCase();
-				const targetBoundary = (normalized === 'box' || normalized === 'paragraph') ? 'box' : 'dynamic';
+				const boundaryMap = { point: 'dynamic', dynamic: 'dynamic', paragraph: 'box', box: 'box' };
+				const targetBoundary = boundaryMap[normalized];
+				if (!targetBoundary) return returnValue;
 				if (config.layer && config.layer.type === 'text' && config.layer.params) {
 					const currentBoundary = config.layer.params.boundary || 'dynamic';
 					if (currentBoundary === targetBoundary) return returnValue;
@@ -3890,6 +3988,9 @@ class Text_class extends Base_tools_class {
 
 					if (targetBoundary === 'dynamic') {
 						// Paragraph (box) -> Point (dynamic)
+						if ((nextParams.halign || '').toLowerCase() === 'justify') {
+							nextParams.halign = 'left';
+						}
 						// Convert visual wrap breaks into explicit lines so text does not collapse into a single line
 						if (editor) {
 							let ctx = editor.editingCtx;
@@ -3967,6 +4068,7 @@ class Text_class extends Base_tools_class {
 					}
 
 					config.layer.params = nextParams;
+					this.sync_text_tool_attributes_from_layer(config.layer);
 					app.State.do_action(
 						new app.Actions.Update_layer_action(config.layer.id, updates)
 					);
@@ -3982,6 +4084,45 @@ class Text_class extends Base_tools_class {
 		return returnValue;
 	}
 
+	sync_text_tool_attributes_from_layer(layer) {
+		if (!layer || layer.type !== 'text' || !layer.params) return;
+		try {
+			const toolAttributes = this.GUI_tools && this.GUI_tools.action_data
+				? this.GUI_tools.action_data().attributes
+				: null;
+			if (!toolAttributes) return;
+			const isPoint = layer.params.boundary !== 'box';
+			if (toolAttributes.halign) {
+				let h = (layer.params.halign || 'left').toLowerCase();
+				// Photoshop: justify is paragraph-only.
+				if (isPoint && h === 'justify') h = 'left';
+				toolAttributes.halign.value = h === 'center' ? 'Center' : (h === 'right' ? 'Right' : (h === 'justify' ? 'Justify' : 'Left'));
+			}
+			if (toolAttributes.boundary) {
+				toolAttributes.boundary.value = layer.params.boundary === 'box' ? 'Paragraph' : 'Point';
+			}
+			this.update_halign_justify_availability(isPoint);
+		} catch (e) { /* ignore */ }
+	}
+
+	update_halign_justify_availability(isPoint) {
+		const justifyBtn = document.getElementById('halign_justify');
+		if (!justifyBtn) return;
+		if (isPoint) {
+			justifyBtn.disabled = true;
+			justifyBtn.setAttribute('aria-disabled', 'true');
+			justifyBtn.title = 'Justify is only available for paragraph text';
+			justifyBtn.style.opacity = '0.35';
+			justifyBtn.style.pointerEvents = 'none';
+		} else {
+			justifyBtn.disabled = false;
+			justifyBtn.removeAttribute('aria-disabled');
+			justifyBtn.title = 'Justify Align';
+			justifyBtn.style.opacity = '';
+			justifyBtn.style.pointerEvents = '';
+		}
+	}
+
 	update_tool_attributes(layer, editor) {
 		if (layer && layer.params) {
 			const meta = editor.document.get_meta_range(editor.selection.start.line, editor.selection.start.character, editor.selection.end.line, editor.selection.end.character);
@@ -3993,6 +4134,11 @@ class Text_class extends Base_tools_class {
 			} else {
 				toolAttributes.size = sizeVal;
 			}
+			if (toolAttributes.weight) {
+				const weights = meta.weight && meta.weight.length === 1 ? meta.weight[0] : null;
+				if (weights != null) toolAttributes.weight.value = weights;
+				else if (meta.bold && !meta.bold.includes(false)) toolAttributes.weight.value = 'Bold';
+			}
 			toolAttributes.bold.value = meta.bold.includes(false) ? false : true;
 			toolAttributes.italic.value = meta.italic.includes(false) ? false : true;
 			toolAttributes.underline.value = meta.underline.includes(false) ? false : true;
@@ -4000,21 +4146,55 @@ class Text_class extends Base_tools_class {
 			toolAttributes.fill = meta.fill_color.length === 1 ? meta.fill_color[0] : (config.COLOR || '#000000');
 			toolAttributes.kerning.value = meta.kerning.length === 1 ? meta.kerning[0] : parseFloat(null);
 			toolAttributes.leading.value = meta.leading.length === 1 ? meta.leading[0] : parseFloat(null);
-			if (toolAttributes.halign) {
-				const h = (layer.params.halign || 'left').toLowerCase();
-				toolAttributes.halign.value = h === 'center' ? 'Center' : (h === 'right' ? 'Right' : (h === 'justify' ? 'Justify' : 'Left'));
-			}
-			if (toolAttributes.boundary) {
-				toolAttributes.boundary.value = layer.params.boundary === 'box' ? 'Paragraph' : 'Point';
-			}
+			this.sync_text_tool_attributes_from_layer(layer);
 			this.GUI_tools.show_action_attributes();
 		}
 	}
 
 
+	_scale_text_lines(lines, scale) {
+		const out = JSON.parse(JSON.stringify(lines || [[{ text: '', meta: {} }]]));
+		const maxSize = 999;
+		for (const line of out) {
+			for (const span of line) {
+				if (!span.meta) span.meta = {};
+				const size = (span.meta.size != null) ? span.meta.size : metaDefaults.size;
+				span.meta.size = Math.max(1, Math.min(maxSize, Math.round(size * scale * 100) / 100));
+				if (span.meta.stroke_size != null && span.meta.stroke_size > 0) {
+					span.meta.stroke_size = Math.max(0, Math.round(span.meta.stroke_size * scale * 10) / 10);
+				}
+				if (span.meta.leading != null) {
+					span.meta.leading = Math.max(0, Math.round(span.meta.leading * scale));
+				}
+			}
+		}
+		return out;
+	}
+
+	bake_point_text_scale(layer, scale, { commit = true } = {}) {
+		if (!layer || layer.type !== 'text' || !scale || !isFinite(scale) || Math.abs(scale - 1) < 1e-6) {
+			return null;
+		}
+		const editor = this.get_editor(layer);
+		const source = (this._point_resize_snapshot)
+			? this._point_resize_snapshot
+			: (editor ? editor.document.lines : (layer.data || [[{ text: '', meta: {} }]]));
+		const lines = this._scale_text_lines(source, scale);
+		if (commit) {
+			layer.data = JSON.parse(JSON.stringify(lines));
+			if (editor) {
+				editor.hasValueChanged = true;
+				editor.set_lines(JSON.parse(JSON.stringify(lines)), true);
+				editor.hasValueChanged = true;
+			}
+		}
+		return lines;
+	}
+
 	/**
-	 * Start a point-text transform: remember pre-drag box and scale so the ratio is
-	 * always relative to the drag start (not compounded each move).
+	 * Start a point-text transform: remember pre-drag fonts/box so scale is always
+	 * relative to the drag start (not compounded each move).
+	 * Uses layout bounds when the layer box is a stub (avoids the 999 size jump).
 	 */
 	begin_point_text_resize(layer) {
 		if (!layer || layer.type !== 'text') return;
@@ -4036,8 +4216,13 @@ class Text_class extends Base_tools_class {
 		const sy = (layer.params && layer.params.scale_y != null) ? layer.params.scale_y : 1;
 		const layoutW = (editor && editor.textBoundaryWidth) ? (editor.textBoundaryWidth * sx + 1) : 0;
 		const layoutH = (editor && editor.textBoundaryHeight) ? (editor.textBoundaryHeight * sy + 1) : 0;
-		let bw = Number(layer.width);
-		let bh = Number(layer.height);
+		// Prefer mousedownBounds (drag-start box). layer.width may already be mid-drag.
+		let bw = (this.mousedownBounds && this.mousedownBounds.width > 0)
+			? Number(this.mousedownBounds.width)
+			: Number(layer.width);
+		let bh = (this.mousedownBounds && this.mousedownBounds.height > 0)
+			? Number(this.mousedownBounds.height)
+			: Number(layer.height);
 		if (!isFinite(bw) || bw < 1) bw = 1;
 		if (!isFinite(bh) || bh < 1) bh = 1;
 		// Never use a stub 1×1 box as the scale base — that maps any drag to size 999.
@@ -4052,8 +4237,8 @@ class Text_class extends Base_tools_class {
 	}
 
 	/**
-	 * Scale point text with the transform box via geometric scale_x/y only.
-	 * Font sizes are NOT baked — baking from a tiny layer box jumps to 999 and clips.
+	 * Live preview: geometric scale_x/y (fast, no meta churn).
+	 * Commit path calls bake_point_text_resize_commit() to persist real font sizes.
 	 */
 	apply_point_text_resize(layer, currentWidth, currentHeight) {
 		if (!layer || layer.type !== 'text' || !this._point_resize_snapshot) return null;
@@ -4066,12 +4251,43 @@ class Text_class extends Base_tools_class {
 		const ry = h / baseH;
 		const baseScaleX = this._point_resize_base_scale_x != null ? this._point_resize_base_scale_x : 1;
 		const baseScaleY = this._point_resize_base_scale_y != null ? this._point_resize_base_scale_y : 1;
+		const uniform = Math.max(0.05, Math.sqrt(Math.abs(rx * ry)));
 
 		if (!layer.params) layer.params = {};
-		layer.params.scale_x = Math.max(0.01, baseScaleX * rx);
-		layer.params.scale_y = Math.max(0.01, baseScaleY * ry);
-		this._point_resize_last_scale = ry;
+		layer.params.scale_x = Math.max(0.01, baseScaleX * uniform);
+		layer.params.scale_y = Math.max(0.01, baseScaleY * uniform);
+		this._point_resize_last_scale = uniform;
 		return null;
+	}
+
+	/**
+	 * Bake live geometric scale into real span font sizes (Photoshop point text).
+	 * Resets scale_x/y to 1 so size persists after deselect without double-scaling.
+	 */
+	bake_point_text_resize_commit(layer) {
+		if (!layer || layer.type !== 'text' || !this._point_resize_snapshot) return null;
+		const sx = (layer.params && layer.params.scale_x != null) ? layer.params.scale_x : 1;
+		const sy = (layer.params && layer.params.scale_y != null) ? layer.params.scale_y : 1;
+		const baseScaleX = this._point_resize_base_scale_x != null ? this._point_resize_base_scale_x : 1;
+		const baseScaleY = this._point_resize_base_scale_y != null ? this._point_resize_base_scale_y : 1;
+		// Relative scale vs the snapshot fonts (snapshot was taken at baseScale).
+		const absolute = Math.max(0.05, Math.sqrt(Math.abs(sx * sy)));
+		const lines = this.bake_point_text_scale(layer, absolute, { commit: true });
+		if (!layer.params) layer.params = {};
+		layer.params.scale_x = 1;
+		layer.params.scale_y = 1;
+		if (lines && lines[0] && lines[0][0] && lines[0][0].meta && lines[0][0].meta.size != null) {
+			const size = lines[0][0].meta.size;
+			try {
+				for (const tool of (config.TOOLS || [])) {
+					if (tool.name === 'text' && tool.attributes && tool.attributes.size) {
+						if (typeof tool.attributes.size === 'object') tool.attributes.size.value = size;
+						else tool.attributes.size = size;
+					}
+				}
+			} catch (e) { /* ignore */ }
+		}
+		return lines;
 	}
 
 	end_point_text_resize() {
@@ -4084,10 +4300,11 @@ class Text_class extends Base_tools_class {
 	}
 
 	is_point_text_transform_active(layer) {
-		// Editor.render already applies params.scale_x/y. Returning true here would
-		// skip resize_to_dynamic_bounds after commit; snapshot already does that
-		// during the drag.
-		return false;
+		// Live preview uses params.scale_x/y; bake on mouseup clears them.
+		return !!(layer && layer.params && (
+			(layer.params.scale_x != null && Math.abs(layer.params.scale_x - 1) > 0.001) ||
+			(layer.params.scale_y != null && Math.abs(layer.params.scale_y - 1) > 0.001)
+		));
 	}
 
 	resize_to_dynamic_bounds(layer, editor) {

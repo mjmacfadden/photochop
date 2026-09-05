@@ -127,6 +127,12 @@ export class Update_layer_action extends Base_action {
 							textTool.focusedHeight = this.reference_layer.height;
 							textTool.focusedX = this.reference_layer.x;
 							textTool.focusedY = this.reference_layer.y;
+							if (typeof textTool.sync_text_tool_attributes_from_layer === 'function') {
+								textTool.sync_text_tool_attributes_from_layer(this.reference_layer);
+								if (!textTool._params_ui_active && app.GUI && app.GUI.GUI_tools && typeof app.GUI.GUI_tools.show_action_attributes === 'function') {
+									app.GUI.GUI_tools.show_action_attributes();
+								}
+							}
 						}
 					}
 				}
@@ -195,6 +201,12 @@ export class Update_layer_action extends Base_action {
 								textTool.focusedHeight = this.reference_layer.height;
 								textTool.focusedX = this.reference_layer.x;
 								textTool.focusedY = this.reference_layer.y;
+								if (typeof textTool.sync_text_tool_attributes_from_layer === 'function') {
+									textTool.sync_text_tool_attributes_from_layer(this.reference_layer);
+									if (!textTool._params_ui_active && app.GUI && app.GUI.GUI_tools && typeof app.GUI.GUI_tools.show_action_attributes === 'function') {
+										app.GUI.GUI_tools.show_action_attributes();
+									}
+								}
 							}
 						}
 					}

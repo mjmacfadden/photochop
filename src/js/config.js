@@ -526,6 +526,34 @@ config.TOOLS = [
 					inputStep: 0.01,
 					inputType: 'text'
 			},
+			weight: {
+				title: 'Weight',
+				value: 'Regular',
+				values() {
+					const textTool = (config.TOOLS || []).find((t) => t.name === 'text');
+					const family = textTool && textTool.attributes && textTool.attributes.font
+						? (textTool.attributes.font.value || 'Roboto')
+						: 'Roboto';
+					const variants = [];
+					if (typeof window !== 'undefined' && window.FontManager
+						&& typeof window.FontManager.getSystemFontVariants === 'function') {
+						const local = window.FontManager.getSystemFontVariants(family) || [];
+						for (const v of local) {
+							if (v && !variants.includes(v)) variants.push(v);
+						}
+					}
+					const userFont = config.user_fonts && config.user_fonts[family];
+					if (userFont && Array.isArray(userFont.variants)) {
+						for (const v of userFont.variants) {
+							if (v && !variants.includes(v)) variants.push(v);
+						}
+					}
+					if (variants.length === 0) {
+						return ['Regular', 'Bold'];
+					}
+					return variants;
+				}
+			},
 			bold: {
 				value: false,
 				icon: `bold.svg`

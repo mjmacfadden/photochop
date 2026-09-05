@@ -570,15 +570,18 @@ class GUI_tools_class {
 					elementValue.step = String(step || 1);
 					elementValue.value = String(value);
 					elementValue.id = 'attribute_value_' + attribute_key;
+					elementValue.name = 'attribute_value_' + attribute_key;
 					elementValue.className = 'attribute_value slider_value';
 					elementValue.setAttribute('aria-labelledby', 'attribute_label_' + attribute_key);
 					elementValue.title = title;
+					elementTitle.htmlFor = elementValue.id;
 
 					const elementInput = document.createElement('input');
 					elementInput.type = 'range';
 					elementInput.min = min;
 					elementInput.max = max;
 					elementInput.step = step || 1;
+					elementInput.name = attribute_key;
 					elementInput.className = 'precise';
 					itemDom.appendChild(elementInput);
 					const $range = $(elementInput)
@@ -629,12 +632,16 @@ class GUI_tools_class {
 				}
 				else {
 
+				elementTitle.htmlFor = k + '_input';
+
 				const elementInput = document.createElement('input');
 				elementInput.type = 'number';
 				elementInput.setAttribute('aria-labelledby', 'attribute_label_' + k);
 				const $numberInput = $(elementInput)
 					.uiNumberInput({
 						id: k,
+						inputId: k + '_input',
+						name: k,
 						min,
 						max,
 						value,
@@ -728,17 +735,30 @@ class GUI_tools_class {
 				}
 
 				itemDom.appendChild(buttonGroup);
+
+				// Photoshop: justify only for paragraph/box text
+				if (k === 'halign') {
+					try {
+						const textMod = this.tools_modules && this.tools_modules['text'] && this.tools_modules['text'].object;
+						const layer = (typeof config !== 'undefined') ? config.layer : null;
+						const isPoint = !(layer && layer.type === 'text' && layer.params && layer.params.boundary === 'box');
+						if (textMod && typeof textMod.update_halign_justify_availability === 'function') {
+							textMod.update_halign_justify_availability(isPoint);
+						}
+					} catch (e) { /* ignore */ }
+				}
 			}
 			else if (typeof item == 'object') {
 				//select
 
 				var elementTitle = document.createElement('label');
 				elementTitle.innerHTML = title + ':';
-				elementTitle.for = k;
+				elementTitle.htmlFor = k;
 				elementTitle.className = 'trn';
 
 				var selectList = document.createElement("select");
 				selectList.id = k;
+				selectList.name = k;
 				const values = typeof item.values === 'function' ? item.values() : item.values;
 				if (k === 'font') {
 					const fontPicker = document.createElement('div');
@@ -890,7 +910,7 @@ class GUI_tools_class {
 
 				var elementTitle = document.createElement('label');
 				elementTitle.innerHTML = title + ':';
-				elementTitle.for = k;
+				elementTitle.htmlFor = k + '_input';
 				elementTitle.className = 'trn';
 
 				var colorInput = document.createElement('input');
@@ -898,6 +918,8 @@ class GUI_tools_class {
 				const $colorInput = $(colorInput)
 					.uiColorInput({
 						id: k,
+						inputId: k + '_input',
+						name: k,
 						value: item
 					})
 					.on('change', () => {
@@ -960,6 +982,7 @@ class GUI_tools_class {
 		// W indicator / input
 		const wLabel = document.createElement('label');
 		wLabel.innerText = 'W:';
+		wLabel.htmlFor = 'select_transform_w';
 		wLabel.className = 'trn';
 		wLabel.style.fontWeight = 'bold';
 		wLabel.style.marginRight = '2px';
@@ -967,6 +990,7 @@ class GUI_tools_class {
 
 		const wInput = document.createElement('input');
 		wInput.id = 'select_transform_w';
+		wInput.name = 'select_transform_w';
 		wInput.type = 'number';
 		wInput.className = 'attribute_value';
 		wInput.style.width = '60px';
@@ -1000,6 +1024,7 @@ class GUI_tools_class {
 		// H indicator / input
 		const hLabel = document.createElement('label');
 		hLabel.innerText = 'H:';
+		hLabel.htmlFor = 'select_transform_h';
 		hLabel.className = 'trn';
 		hLabel.style.fontWeight = 'bold';
 		hLabel.style.marginRight = '2px';
@@ -1007,6 +1032,7 @@ class GUI_tools_class {
 
 		const hInput = document.createElement('input');
 		hInput.id = 'select_transform_h';
+		hInput.name = 'select_transform_h';
 		hInput.type = 'number';
 		hInput.className = 'attribute_value';
 		hInput.style.width = '60px';

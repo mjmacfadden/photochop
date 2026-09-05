@@ -11,8 +11,10 @@ class Font_manager_class {
 		this.cachedSystemFonts = [];
 		this.customFonts = new Map();
 		this.systemFontDataMap = new Map();
+		this.systemFontStyleDataMap = new Map(); // family -> Map(styleLower -> fontData)
 		this.systemFontVariantsMap = new Map();
 		this.loadedSystemFonts = new Set();
+		this.loadedSystemFontStyles = new Set(); // family||style keys
 	}
 
 	async openDB() {
@@ -266,6 +268,7 @@ class Font_manager_class {
 		const localFonts = await window.queryLocalFonts();
 		const familySet = new Set();
 		this.systemFontDataMap.clear();
+		this.systemFontStyleDataMap.clear();
 		this.systemFontVariantsMap.clear();
 		for (const font of localFonts) {
 			if (font && font.family) {
@@ -274,10 +277,13 @@ class Font_manager_class {
 				if (!this.systemFontVariantsMap.has(familyName)) {
 					this.systemFontVariantsMap.set(familyName, new Set());
 				}
-				if (font.style) {
-					this.systemFontVariantsMap.get(familyName).add(font.style);
+				if (!this.systemFontStyleDataMap.has(familyName)) {
+					this.systemFontStyleDataMap.set(familyName, new Map());
 				}
-				if (!this.systemFontDataMap.has(familyName) || (font.style && font.style.toLowerCase() === 'regular')) {
+				const styleName = (font.style && String(font.style).trim()) ? String(font.style).trim() : 'Regular';
+				this.systemFontVariantsMap.get(familyName).add(styleName);
+				this.systemFontStyleDataMap.get(familyName).set(styleName.toLowerCase(), font);
+				if (!this.systemFontDataMap.has(familyName) || styleName.toLowerCase() === 'regular') {
 					this.systemFontDataMap.set(familyName, font);
 				}
 			}
@@ -333,6 +339,61 @@ class Font_manager_class {
 		} catch (e) {
 			console.warn(`Could not load local font ${family}:`, e);
 			return false;
+		}
+	}
+
+
+	async loadSystemFontStyle(family, style = 'Regular') {
+		if (!family) return false;
+		const styleName = (style && String(style).trim()) ? String(style).trim() : 'Regular';
+		const key = family + '||' + styleName.toLowerCase();
+		if (this.loadedSystemFontStyles.has(key)) return true;
+
+		if (!this.systemFontStyleDataMap.has(family) && this.isLocalFontAccessSupported()) {
+			try {
+				await this.querySystemFonts();
+			} catch (e) {}
+		}
+
+		const styleMap = this.systemFontStyleDataMap.get(family);
+		let fontData = styleMap ? styleMap.get(styleName.toLowerCase()) : null;
+		if (!fontData && styleMap) {
+			// Fuzzy match: "Bold" vs "bold", "Bold Italic" contains, numeric weights
+			for (const [k, v] of styleMap.entries()) {
+				if (k === styleName.toLowerCase() || k.includes(styleName.toLowerCase()) || styleName.toLowerCase().includes(k)) {
+					fontData = v;
+					break;
+				}
+			}
+		}
+		if (!fontData) {
+			return this.loadSystemFont(family);
+		}
+		if (typeof fontData.blob !== 'function') {
+			return false;
+		}
+		try {
+			const blob = await fontData.blob();
+			const url = URL.createObjectURL(blob);
+			// Register under the family name so canvas font-family still matches;
+			// CSS font-weight/style on the canvas context selects the face when available.
+			const weightMatch = styleName.match(/(\d{3})/);
+			const weight = weightMatch ? weightMatch[1]
+				: /bold|black|heavy/i.test(styleName) ? '700'
+				: /medium/i.test(styleName) ? '500'
+				: /light|thin/i.test(styleName) ? '300'
+				: '400';
+			const fontStyle = /italic|oblique/i.test(styleName) ? 'italic' : 'normal';
+			const fontFace = new FontFace(family, `url(${url})`, { weight, style: fontStyle });
+			const loaded = await fontFace.load();
+			document.fonts.add(loaded);
+			URL.revokeObjectURL(url);
+			this.loadedSystemFontStyles.add(key);
+			this.loadedSystemFonts.add(family);
+			return true;
+		} catch (e) {
+			console.warn(`Could not load local font style ${family} / ${styleName}:`, e);
+			return this.loadSystemFont(family);
 		}
 	}
 

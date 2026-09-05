@@ -34,6 +34,9 @@ class Select_tool_class extends Base_tools_class {
 			enable_rotation: true,
 			enable_move: true,
 			data_function: function () {
+				const isParagraphText = config.layer && config.layer.type === 'text' && config.layer.params && config.layer.params.boundary === 'box';
+				sel_config.border_style = isParagraphText ? 'dashed_black' : null;
+				sel_config.handle_style = isParagraphText ? 'bw_square' : null;
 				if (config.mask_active === true && config.layer && config.layer.mask && config.layer.mask.linked === false) {
 					return config.layer.mask;
 				}

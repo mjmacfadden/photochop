@@ -362,10 +362,10 @@ class Base_selection_class {
 		//borders - always for crop (incl. full-canvas); otherwise skip full-doc match
 		if (settings.enable_borders == true && (is_crop_overlay || x != 0 || y != 0 || w != config.WIDTH || h != config.HEIGHT)) {
 			this.ctx.lineWidth = wholeLineWidth;
-			if (settings.border_style === 'dashed_light') {
-				// Type tool paragraph box: light dashed (not marching ants)
+			if (settings.border_style === 'dashed_black' || settings.border_style === 'dashed_light') {
+				// Text box / paragraph boundary: black dashed transform boundary
 				const dash = 4 / config.ZOOM;
-				this.ctx.strokeStyle = 'rgba(0, 0, 0, 0.35)';
+				this.ctx.strokeStyle = '#000000';
 				this.ctx.setLineDash([dash, dash]);
 				this.ctx.strokeRect(x, y, w, h);
 				this.ctx.setLineDash([]);
