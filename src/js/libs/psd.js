@@ -10,19 +10,28 @@ import app from './../app.js';
 import config from './../config.js';
 import alertify from './../../../node_modules/alertifyjs/build/alertify.min.js';
 import filesaver from './../../../node_modules/file-saver/dist/FileSaver.min.js';
-import { readPsd, writePsd, initializeCanvas } from 'ag-psd';
 import { is_group, get_children, get_parent_id, is_psd_group } from './layer-tree.js';
 
-// Ensure ag-psd can instantiate canvases in any environment
-try {
-	initializeCanvas((width, height) => {
-		const canvas = document.createElement('canvas');
-		canvas.width = Math.max(1, width || 1);
-		canvas.height = Math.max(1, height || 1);
-		return canvas;
-	});
-} catch (e) {
-	console.warn('[PSD] initializeCanvas warning:', e);
+// Lazy-load ag-psd on first open/save so the editor shell does not pay for it at boot.
+let agPsdModulePromise = null;
+
+function ensure_ag_psd() {
+	if (!agPsdModulePromise) {
+		agPsdModulePromise = import(/* webpackChunkName: "ag-psd" */ 'ag-psd').then((mod) => {
+			try {
+				mod.initializeCanvas((width, height) => {
+					const canvas = document.createElement('canvas');
+					canvas.width = Math.max(1, width || 1);
+					canvas.height = Math.max(1, height || 1);
+					return canvas;
+				});
+			} catch (e) {
+				console.warn('[PSD] initializeCanvas warning:', e);
+			}
+			return mod;
+		});
+	}
+	return agPsdModulePromise;
 }
 
 const PSD_TO_COMPOSITION = {
@@ -77,15 +86,8 @@ const COMPOSITION_TO_PSD = {
 	'source-atop': 'normal', // Handled via clipping: true
 };
 
-function safeToDataURL(canvas) {
-	if (!canvas) return null;
-	try {
-		return canvas.toDataURL();
-	} catch (e) {
-		console.warn('[PSD] toDataURL failed on canvas:', e);
-		return null;
-	}
-}
+// Raster import policy: keep `link` as the live canvas and `data: null`.
+// Do not call toDataURL during PSD open — dual bitmap + dataURL spikes memory on 2K/4K docs.
 
 /**
  * Parses and loads a PSD file into Vantage Point.
@@ -102,14 +104,24 @@ export async function load_psd(buffer, filename, options = {}) {
 		arrayBuffer = buffer.buffer.slice(buffer.byteOffset, buffer.byteOffset + buffer.byteLength);
 	}
 
+	const t0 = (typeof performance !== 'undefined' && performance.now) ? performance.now() : Date.now();
+	const { readPsd } = await ensure_ag_psd();
+	const tModule = (typeof performance !== 'undefined' && performance.now) ? performance.now() : Date.now();
+
 	let psd;
 	try {
 		psd = readPsd(arrayBuffer, { useImageData: false, skipThumbnail: true });
+		const tParse = (typeof performance !== 'undefined' && performance.now) ? performance.now() : Date.now();
 		console.log('[PSD] Parse successful:', {
 			width: psd.width,
 			height: psd.height,
 			childrenCount: psd.children ? psd.children.length : 0,
 			hasCompositeCanvas: Boolean(psd.canvas)
+		});
+		console.log('[PSD][perf]', {
+			agPsdLoadMs: Math.round(tModule - t0),
+			parseMs: Math.round(tParse - tModule),
+			bytes: arrayBuffer && arrayBuffer.byteLength,
 		});
 	} catch (err) {
 		console.error('[PSD] Failed to read PSD:', err);
@@ -922,6 +934,7 @@ function build_text_spans(rawText, styleRuns, globalStyle, defaultMeta, scale) {
  * @param {object} options - Export options { filename }
  */
 export async function export_psd(layers, docWidth, docHeight, options = {}) {
+	const { writePsd } = await ensure_ag_psd();
 	const w = docWidth || config.WIDTH || 800;
 	const h = docHeight || config.HEIGHT || 600;
 	let fname = options.filename || (config.SAVE_NAME ? config.SAVE_NAME + '.psd' : 'image.psd');
@@ -967,7 +980,10 @@ export async function export_psd(layers, docWidth, docHeight, options = {}) {
 	};
 
 	try {
+		const tWrite0 = (typeof performance !== 'undefined' && performance.now) ? performance.now() : Date.now();
 		const buffer = writePsd(psd, { generateThumbnail: true });
+		const tWrite1 = (typeof performance !== 'undefined' && performance.now) ? performance.now() : Date.now();
+		console.log('[PSD][perf]', { writeMs: Math.round(tWrite1 - tWrite0), bytes: buffer && buffer.byteLength });
 		const blob = new Blob([buffer], { type: 'image/vnd.adobe.photoshop' });
 		filesaver.saveAs(blob, fname);
 		alertify.success(`Exported "${fname}" successfully.`);

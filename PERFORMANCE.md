@@ -20,3 +20,7 @@
 - Defer additional optional feature code after replacing the eager dynamic module registry.
 - Consolidate pointer-event routing after behavior work is stable; every tool currently registers and self-gates document-level mouse/touch listeners.
 - Review the 16 dependency advisories reported by `npm install` before any version upgrades; they are not changed automatically by this work.
+
+## Perf spike (in progress)
+
+Foundation branch `feature/perf-spike`: measure-first plan in `docs/perf-spike.md`, harness `scripts/perf-baseline.mjs`, lazy `ag-psd` / `psd.js` on first PSD open/save. WebGL mask/blend slice and interactive quality tier are deferred until baselines exist.

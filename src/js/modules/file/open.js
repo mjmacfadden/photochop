@@ -10,7 +10,6 @@ import alertify from './../../../../node_modules/alertifyjs/build/alertify.min.j
 import EXIF from './../../../../node_modules/exif-js/exif.js';
 import GUI_tools_class from "../../core/gui/gui-tools";
 import semver_compare from './../../../../node_modules/semver-compare/';
-import { load_psd } from './../../libs/psd.js';
 
 var instance = null;
 
@@ -161,7 +160,8 @@ class File_open_class {
 			if (isPsd) {
 				try {
 					var readResult = await this.read_file_async(f, 'arrayBuffer');
-					await load_psd(readResult.result, f.name, { asLayers: true });
+					var psdMod = await import(/* webpackChunkName: "psd" */ './../../libs/psd.js');
+					await psdMod.load_psd(readResult.result, f.name, { asLayers: true });
 				} catch (err) {
 					console.error('[PSD] Error importing as layer:', err);
 					alertify.error('Failed to import PSD: ' + (err.message || err));
@@ -481,7 +481,8 @@ class File_open_class {
 						await _this.load_json(content, f.name);
 					}
 				} else if (isPsd) {
-					await load_psd(readResult.result, f.name);
+					var psdMod = await import(/* webpackChunkName: "psd" */ './../../libs/psd.js');
+					await psdMod.load_psd(readResult.result, f.name);
 				} else if (f.type.match('image.*') || (f.type == '' && f.name.match(/\.(png|jpg|jpeg|webp|gif|avif)/i))) {
 					if (app.Documents) {
 						await app.Documents.create_document_from_image({
