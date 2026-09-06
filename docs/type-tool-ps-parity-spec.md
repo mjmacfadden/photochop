@@ -89,7 +89,7 @@ Select tool and Type tool must share the same bake/commit contract (Select previ
 - [ ] Point proportional: font size grows/shrinks with the box; toolbar shows baked size (≤2 dp).
 - [ ] Point Shift-skew: non-uniform width; height drives size; residual horizontal scale retained.
 - [ ] Point after bake: bounds hug glyphs (no pad/clip).
-- [ ] Box resize: frame only; font size unchanged; text reflows.
+- [x] Box resize: frame only; font size unchanged; text reflows.
 
 ---
 
@@ -119,8 +119,8 @@ Select tool and Type tool must share the same bake/commit contract (Select previ
 - Local faces load via `FontManager.loadSystemFontStyle`.
 
 ### 5.1 Acceptance — Weights
-- [ ] Weight list populates for local fonts when permission granted.
-- [ ] Changing weight updates rendered glyphs without clearing align/mode.
+- [x] Weight list populates for local fonts when permission granted (Local faces + Google/user merge; empty local no longer blocks catalog).
+- [x] Changing weight updates rendered glyphs without clearing align/mode.
 
 ---
 

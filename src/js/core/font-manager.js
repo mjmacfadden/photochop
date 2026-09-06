@@ -320,25 +320,30 @@ class Font_manager_class {
 			seen.add(key);
 			labels.push(label);
 		};
-		for (const v of this.getSystemFontVariants(family)) push(v);
+		const pushVariant = (v) => {
+			if (v == null) return;
+			const s = String(v).trim();
+			if (!s) return;
+			// Italic is a separate options-bar toggle — fold italic faces into their weight base.
+			if (/^italic$/i.test(s) || /^oblique$/i.test(s)) return;
+			if (/italic|oblique/i.test(s)) {
+				const base = s.replace(/italic|oblique/ig, '').trim();
+				if (base) push(base);
+				return;
+			}
+			push(s);
+		};
+		for (const v of this.getSystemFontVariants(family)) pushVariant(v);
 		if (typeof config !== 'undefined' && config.user_fonts && config.user_fonts[family]
 			&& Array.isArray(config.user_fonts[family].variants)) {
-			for (const v of config.user_fonts[family].variants) push(v);
+			for (const v of config.user_fonts[family].variants) pushVariant(v);
 		}
-		const cache = googleFontsCache || (typeof window !== 'undefined' ? window.__googleFontsCache : null);
+		const cache = googleFontsCache
+			|| (typeof window !== 'undefined' ? (window.__googleFontsCache || window.googleFontsCache) : null);
 		if (Array.isArray(cache)) {
 			const entry = cache.find((f) => f && f.family === family);
 			if (entry && Array.isArray(entry.variants)) {
-				for (const v of entry.variants) {
-					// Skip italic-only entries for the weight dropdown (italic is a separate toggle).
-					if (/italic|oblique/i.test(String(v)) && !/^italic$/i.test(String(v).trim())) {
-						const base = String(v).replace(/italic|oblique/ig, '').trim();
-						if (base) push(base);
-						continue;
-					}
-					if (/^italic$/i.test(String(v).trim())) continue;
-					push(v);
-				}
+				for (const v of entry.variants) pushVariant(v);
 			}
 		}
 		if (labels.length === 0) {

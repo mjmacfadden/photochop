@@ -6,6 +6,7 @@ import Base_selection_class from './../core/base-selection.js';
 import Helper_class from './../libs/helpers.js';
 import Mask_class from './../modules/mask/mask.js';
 import Dialog_class from './../libs/popup.js';
+import { is_box_text, is_point_text } from './text.js';
 
 class Select_tool_class extends Base_tools_class {
 
@@ -34,7 +35,7 @@ class Select_tool_class extends Base_tools_class {
 			enable_rotation: true,
 			enable_move: true,
 			data_function: function () {
-				const isParagraphText = config.layer && config.layer.type === 'text' && config.layer.params && config.layer.params.boundary === 'box';
+				const isParagraphText = is_box_text(config.layer);
 				sel_config.border_style = isParagraphText ? 'dashed_black' : null;
 				sel_config.handle_style = isParagraphText ? 'bw_square' : null;
 				if (config.mask_active === true && config.layer && config.layer.mask && config.layer.mask.linked === false) {
@@ -171,8 +172,8 @@ class Select_tool_class extends Base_tools_class {
 			const aspect_lock = (config.aspect_lock !== undefined) ? config.aspect_lock : true;
 			this.Base_selection.find_settings().keep_ratio = aspect_lock;
 			// Point text stays dynamic — transform scales glyphs (Photoshop-like), not convert to box.
-			if (config.layer.type === 'text' && config.layer.params && config.layer.params.boundary !== 'box'
-				&& String(config.layer.params.boundary).toLowerCase() !== 'paragraph') {
+			// Box/paragraph: frame-only resize (never bake/scale fonts). Use shared is_box_text.
+			if (config.layer.type === 'text' && is_point_text(config.layer)) {
 				this._resizing_point_text = true;
 			} else {
 				this._resizing_point_text = false;
@@ -328,9 +329,10 @@ class Select_tool_class extends Base_tools_class {
 			let y = config.layer.y;
 			let width = config.layer.width;
 			let height = config.layer.height;
-			const resizingPointText = !!this._resizing_point_text
-				|| (config.layer.type === 'text' && config.layer.params && config.layer.params.boundary !== 'box'
-					&& config.layer.params.boundary !== 'Paragraph' && config.layer.params.boundary !== 'paragraph');
+			// Box/paragraph must never enter point-text bake (even if flag was stale).
+			const resizingPointText = config.layer.type === 'text'
+				&& !is_box_text(config.layer)
+				&& (!!this._resizing_point_text || is_point_text(config.layer));
 
 			//reset values
 			config.layer.x = this.mousedown_dimensions.x;
@@ -349,7 +351,7 @@ class Select_tool_class extends Base_tools_class {
 			) {
 				var layerUpdate = { x, y, width, height };
 				// Point text: bake font size (and residual horizontal scale on skew) into history
-				if (resizingPointText && this.mousedown_dimensions.width > 0) {
+				if (resizingPointText && this.mousedown_dimensions.width > 0 && !is_box_text(config.layer)) {
 					try {
 						const textTool = app.GUI && app.GUI.GUI_tools && app.GUI.GUI_tools.tools_modules
 							&& app.GUI.GUI_tools.tools_modules['text']

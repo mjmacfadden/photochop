@@ -3927,6 +3927,12 @@ class Text_class extends Base_tools_class {
 								toolAttributes.weight.value = variants[0] || 'Regular';
 							}
 							meta.weight = toolAttributes.weight.value;
+							meta.bold = weight_implies_bold(meta.weight);
+							if (toolAttributes.bold) toolAttributes.bold.value = !!meta.bold;
+						}
+						// Font remounts Weight dropdown — keep Mode/align from layer.
+						if (config.layer && config.layer.type === 'text') {
+							this.sync_text_tool_attributes_from_layer(config.layer);
 						}
 					} catch (e) { /* ignore */ }
 				}
@@ -3942,6 +3948,22 @@ class Text_class extends Base_tools_class {
 					if (/italic|oblique/i.test(String(weight))) {
 						meta.italic = true;
 					}
+					// Keep options-bar Bold + Mode/align in sync. Weight must NEVER clear
+					// halign or flip Point↔Paragraph (show_action_attributes rebuilds after change).
+					try {
+						const toolAttributes = this.GUI_tools && this.GUI_tools.action_data
+							? this.GUI_tools.action_data().attributes : null;
+						if (toolAttributes) {
+							if (toolAttributes.weight) toolAttributes.weight.value = String(weight);
+							if (toolAttributes.bold) toolAttributes.bold.value = !!meta.bold;
+							if (meta.italic != null && toolAttributes.italic) {
+								toolAttributes.italic.value = !!meta.italic;
+							}
+						}
+						if (config.layer && config.layer.type === 'text') {
+							this.sync_text_tool_attributes_from_layer(config.layer);
+						}
+					} catch (e) { /* ignore */ }
 					const family = (this.GUI_tools && this.GUI_tools.action_data().attributes.font)
 						? this.GUI_tools.action_data().attributes.font.value
 						: null;
