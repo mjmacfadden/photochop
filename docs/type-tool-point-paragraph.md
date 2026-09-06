@@ -24,6 +24,7 @@ The options bar **Weight** select lists variants exposed by Local Font Access (`
 ## Regression notes (PR #21 smoke)
 - **Align must never touch `boundary` / Mode.** L/C/R/J only updates `params.halign` (and point-text `x` around a fixed anchor). Options-bar rebuilds after align were flipping Paragraph → Point; align clicks no longer rebuild the bar.
 - **Root cause of point-align no-op (fixed):** `show_action_attributes` used `for (var k in attributes)` so L/C/R button click handlers closed over the final loop key (`boundary`) and called `on_params_update({ key: 'boundary', value: 'Center' })` instead of `halign`. Fixed with `const k` + per-button `attrKey` capture.
+- **Box align (L/C/R/J):** same attrKey closure fix unblocks paragraph buttons. Layout already offsets wraps inside `layer.width`; align updates **only** `params.halign` (frame W/H/Mode unchanged). Justify enabled for boxes. `normalize_text_boundary` / `is_box_text` keep UI “Paragraph” from being persisted; details panel + options-bar Mode sync use the same canonical `box`/`dynamic`.
 - **Weight list for multi-face families** must enumerate Local Font Access styles + Google/user catalog variants (e.g. Roboto Thin…Black), not a single Regular fallback.
 
 ## Select-transform Size sync

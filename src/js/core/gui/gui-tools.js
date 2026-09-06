@@ -14,7 +14,19 @@ import Dialog_class from './../../libs/popup.js';
 import GUI_brush_library_class from './gui-brush-library.js';
 
 var instance = null;
+
 var Helper = new Helper_class();
+
+/** Local copy — avoid importing text.js (circular with GUI_tools). */
+function layer_is_box_text(layer) {
+	if (!layer || layer.type !== 'text' || !layer.params) return false;
+	let b = layer.params.boundary;
+	if (b != null && typeof b === 'object') {
+		b = (b.value != null) ? b.value : (b.boundary != null ? b.boundary : '');
+	}
+	b = String(b == null ? '' : b).trim().toLowerCase();
+	return b === 'box' || b === 'paragraph' || b === 'fixed';
+}
 
 /**
  * GUI class responsible for rendering left sidebar tools
@@ -738,9 +750,7 @@ class GUI_tools_class {
 							try {
 								const textMod = this.tools_modules && this.tools_modules['text'] && this.tools_modules['text'].object;
 								const layer = (typeof config !== 'undefined') ? config.layer : null;
-								const isPoint = !(layer && layer.type === 'text' && layer.params
-									&& (layer.params.boundary === 'box'
-										|| String(layer.params.boundary).toLowerCase() === 'paragraph'));
+								const isPoint = !(layer && layer.type === 'text' && layer_is_box_text(layer));
 								if (textMod && typeof textMod.update_halign_justify_availability === 'function') {
 									textMod.update_halign_justify_availability(isPoint);
 								}
@@ -766,7 +776,7 @@ class GUI_tools_class {
 					try {
 						const textMod = this.tools_modules && this.tools_modules['text'] && this.tools_modules['text'].object;
 						const layer = (typeof config !== 'undefined') ? config.layer : null;
-						const isPoint = !(layer && layer.type === 'text' && layer.params && (layer.params.boundary === 'box' || String(layer.params.boundary).toLowerCase() === 'paragraph'));
+						const isPoint = !(layer && layer.type === 'text' && layer_is_box_text(layer));
 						if (textMod && typeof textMod.update_halign_justify_availability === 'function') {
 							textMod.update_halign_justify_availability(isPoint);
 						}

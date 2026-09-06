@@ -6,7 +6,7 @@
 import app from './../../app.js';
 import config from './../../config.js';
 import Dialog_class from './../../libs/popup.js';
-import Text_class from './../../tools/text.js';
+import Text_class, { normalize_text_boundary, normalize_halign } from './../../tools/text.js';
 import Base_layers_class from "../base-layers";
 import Tools_settings_class from './../../modules/tools/settings.js';
 import Helper_class from './../../libs/helpers.js';
@@ -375,10 +375,16 @@ class GUI_details_class {
 				target.disabled = true;
 			}
 			else {
-				if(typeof layer.params[key] == 'object')
-					target.value = layer.params[key].value; //legacy
-				else
-					target.value = layer.params[key];
+				let v = (typeof layer.params[key] == 'object') ? layer.params[key].value : layer.params[key];
+				// Canonicalize so UI labels (Paragraph/Point) never appear in the details select.
+				if (key === 'boundary') {
+					v = normalize_text_boundary(v);
+					layer.params.boundary = v;
+				} else if (key === 'halign') {
+					v = normalize_halign(v);
+					layer.params.halign = v;
+				}
+				target.value = v;
 				target.disabled = false;
 			}
 		}
@@ -394,10 +400,15 @@ class GUI_details_class {
 			target.addEventListener('blur', function (e) {
 				if (!config.layer || !config.layer.params) return;
 				var value = this.value;
-				config.layer.params[key] = focus_value;
+				if (key === 'boundary') value = normalize_text_boundary(value);
+				else if (key === 'halign') value = normalize_halign(value);
+				let prev = focus_value;
+				if (key === 'boundary') prev = normalize_text_boundary(focus_value);
+				else if (key === 'halign') prev = normalize_halign(focus_value);
+				config.layer.params[key] = prev;
 				let params_copy = JSON.parse(JSON.stringify(config.layer.params));
 				params_copy[key] = value;
-				if (focus_value !== value) {
+				if (prev !== value) {
 					app.State.do_action(
 						new app.Actions.Bundle_action('change_layer_details', 'Change Layer Details', [
 							new app.Actions.Update_layer_action(config.layer.id, {
@@ -410,6 +421,8 @@ class GUI_details_class {
 			target.addEventListener('change', function (e) {
 				if (!config.layer || !config.layer.params) return;
 				var value = this.value;
+				if (key === 'boundary') value = normalize_text_boundary(value);
+				else if (key === 'halign') value = normalize_halign(value);
 				config.layer.params[key] = value;
 				config.need_render = true;
 				config.need_render_changed_params = true;

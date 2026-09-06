@@ -3401,7 +3401,11 @@ class Text_class extends Base_tools_class {
 			await this.commit_text_changes();
 			// Create a new text layer (point by default; drag past threshold => paragraph/box)
 			this.creating = true;
-			const initialHalign = (this.GUI_tools && this.GUI_tools.action_data().attributes.halign && this.GUI_tools.action_data().attributes.halign.value) ? String(this.GUI_tools.action_data().attributes.halign.value).toLowerCase() : 'left';
+			const initialHalign = normalize_halign(
+				(this.GUI_tools && this.GUI_tools.action_data().attributes.halign && this.GUI_tools.action_data().attributes.halign.value)
+					? this.GUI_tools.action_data().attributes.halign.value
+					: 'left'
+			);
 			const layer = {
 				type: this.name,
 				params: {
@@ -3676,6 +3680,10 @@ class Text_class extends Base_tools_class {
 				this.focusedWidth = nextW;
 				this.focusedHeight = nextH;
 				this.sync_text_tool_attributes_from_layer(config.layer);
+				// Remount options bar so Mode flips to Paragraph and Justify enables.
+				if (this.GUI_tools && typeof this.GUI_tools.show_action_attributes === 'function') {
+					this.GUI_tools.show_action_attributes();
+				}
 				if (isBoxDrag) {
 					await app.State.do_action(
 						new app.Actions.Set_selection_action(nextX, nextY, nextW, nextH),
@@ -3999,6 +4007,7 @@ class Text_class extends Base_tools_class {
 				if (config.layer && config.layer.type === 'text' && config.layer.params) {
 					const nextParams = JSON.parse(JSON.stringify(config.layer.params));
 					// CRITICAL: align must NEVER change boundary / text mode.
+					// Always persist canonical 'box'|'dynamic' (never UI labels Point/Paragraph).
 					const lockedBoundary = normalize_text_boundary(config.layer.params.boundary);
 					nextParams.boundary = lockedBoundary;
 					const newAlign = normalize_halign(align);
