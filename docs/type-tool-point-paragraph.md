@@ -23,3 +23,9 @@ The options bar **Weight** select lists variants exposed by Local Font Access (`
 ## Regression notes (PR #21 smoke)
 - **Align must never touch `boundary` / Mode.** L/C/R/J only updates `params.halign` (and point-text `x` around a fixed anchor). Options-bar rebuilds after align were flipping Paragraph → Point; align clicks no longer rebuild the bar.
 - **Weight list for multi-face families** must enumerate Local Font Access styles + Google/user catalog variants (e.g. Roboto Thin…Black), not a single Regular fallback.
+
+## Select-transform Size sync
+- Select options bar shows **Size** when a text layer is selected (same `.item.size` control Text uses).
+- Point-text transform drag calls `_sync_size_attribute` so Size updates live (~2 dp) and after bake.
+- `config.TOOLS` text `attributes.size` is always updated, so switching to the Text tool shows the baked size immediately.
+

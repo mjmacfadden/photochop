@@ -4172,9 +4172,14 @@ class Text_class extends Base_tools_class {
 	sync_text_tool_attributes_from_layer(layer) {
 		if (!layer || layer.type !== 'text' || !layer.params) return;
 		try {
-			const toolAttributes = this.GUI_tools && this.GUI_tools.action_data
-				? this.GUI_tools.action_data().attributes
-				: null;
+			// Prefer the Text tool entry in config.TOOLS — action_data() is the *active* tool
+			// (Select while transforming), which has no size/halign/boundary attrs.
+			const textToolCfg = (config.TOOLS || []).find((t) => t && t.name === 'text');
+			const toolAttributes = (textToolCfg && textToolCfg.attributes)
+				? textToolCfg.attributes
+				: (this.GUI_tools && this.GUI_tools.action_data
+					? this.GUI_tools.action_data().attributes
+					: null);
 			if (!toolAttributes) return;
 			const isPoint = normalize_text_boundary(layer.params.boundary) !== 'box';
 			if (toolAttributes.halign) {
@@ -4186,6 +4191,19 @@ class Text_class extends Base_tools_class {
 			if (toolAttributes.boundary) {
 				// Always drive Mode from layer params — never leave a stale Point default.
 				toolAttributes.boundary.value = isPoint ? 'Point' : 'Paragraph';
+			}
+			// When Select (or any non-Text tool) is active, push baked span size into
+			// TOOLS + the visible Size control. Skip while Text is active so we do not
+			// clobber editor-driven Size (update_tool_attributes owns that path).
+			const activeIsText = config.TOOL && config.TOOL.name === 'text';
+			if (!activeIsText) {
+				try {
+					const span0 = layer.data && layer.data[0] && layer.data[0][0] ? layer.data[0][0] : null;
+					const size = (span0 && span0.meta && span0.meta.size != null) ? Number(span0.meta.size) : null;
+					if (size != null && isFinite(size)) {
+						this._sync_size_attribute(size);
+					}
+				} catch (e2) { /* ignore */ }
 			}
 			this.update_halign_justify_availability(isPoint);
 		} catch (e) { /* ignore */ }
@@ -4373,18 +4391,23 @@ class Text_class extends Base_tools_class {
 		if (size == null || !isFinite(size)) return;
 		const rounded = Math.round(Number(size) * 100) / 100;
 		try {
+			// Always update Text tool attrs in config.TOOLS (even when Select is active)
 			for (const tool of (config.TOOLS || [])) {
 				if (tool.name === 'text' && tool.attributes && tool.attributes.size) {
 					if (typeof tool.attributes.size === 'object') tool.attributes.size.value = rounded;
 					else tool.attributes.size = rounded;
 				}
 			}
-			// Live-update the options-bar Size field without rebuilding the whole bar
-			const $size = (typeof $ !== 'undefined') ? $('#action_attributes .item.size .ui_number_input') : null;
+			// Live-update any visible options-bar Size field (Text tool bar OR Select+text Size)
+			const $size = (typeof $ !== 'undefined')
+				? $('#action_attributes .item.size .ui_number_input, #action_attributes #size.ui_number_input')
+				: null;
 			if ($size && $size.length && typeof $size.uiNumberInput === 'function') {
 				try { $size.uiNumberInput('set_value', rounded); } catch (e) { /* ignore */ }
 			} else {
-				const input = document.querySelector('#action_attributes .item.size input, #action_attributes #size');
+				const input = document.querySelector(
+					'#action_attributes .item.size input, #action_attributes #size_input, #action_attributes #size'
+				);
 				if (input) {
 					input.value = String(rounded);
 					input.setAttribute('value', String(rounded));
