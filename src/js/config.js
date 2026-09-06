@@ -1,3 +1,4 @@
+import googleFontsCache from './libs/google-fonts-cache.json';
 //main config file
 
 var config = {};
@@ -505,19 +506,70 @@ config.TOOLS = [
 	{
 		name: 'text',
 		on_update: 'on_params_update',
+		on_activate: 'on_activate',
+		on_leave: 'on_leave',
 		attributes: {
 			font: {
 				value: 'Roboto',
 				values() {
 					const user_font_names = Object.keys(config.user_fonts);
-					return ['', '[Add Font...]', ...Array.from(new Set([...config.FONTS, ...user_font_names].sort()))];
+					const systemFonts = (typeof window !== 'undefined' && window.FontManager
+						&& typeof window.FontManager.getCachedSystemFonts === 'function')
+						? window.FontManager.getCachedSystemFonts()
+						: [];
+					return ['[Add Font...]', ...Array.from(new Set([...config.FONTS, ...user_font_names, ...systemFonts].sort()))];
 				}
 			},
 			size: {
 				value: 38,
 				min: 1,
 				max: 999,
-				step: 0.01
+				step: 1,
+					inputStep: 0.01,
+					inputType: 'text'
+			},
+			weight: {
+				title: 'Weight',
+				value: 'Regular (400)',
+				values() {
+					const textTool = (config.TOOLS || []).find((t) => t.name === 'text');
+					const family = textTool && textTool.attributes && textTool.attributes.font
+						? (textTool.attributes.font.value || 'Roboto')
+						: 'Roboto';
+					if (typeof window !== 'undefined' && window.FontManager
+						&& typeof window.FontManager.getFontWeightList === 'function') {
+						return window.FontManager.getFontWeightList(family, googleFontsCache);
+					}
+					// Fallback before FontManager init: Google cache + defaults
+					const variants = [];
+					const userFont = config.user_fonts && config.user_fonts[family];
+					if (userFont && Array.isArray(userFont.variants)) {
+						for (const v of userFont.variants) {
+							if (v && !variants.includes(v)) variants.push(v);
+						}
+					}
+					if (Array.isArray(googleFontsCache)) {
+						const entry = googleFontsCache.find((f) => f && f.family === family);
+						if (entry && Array.isArray(entry.variants)) {
+							for (const v of entry.variants) {
+								if (!v || /italic/i.test(String(v))) continue;
+								const map = {
+									'regular': 'Regular (400)', '400': 'Regular (400)',
+									'100': 'Thin (100)', '200': 'ExtraLight (200)', '300': 'Light (300)',
+									'500': 'Medium (500)', '600': 'SemiBold (600)',
+									'700': 'Bold (700)', '800': 'ExtraBold (800)', '900': 'Black (900)',
+									'thin': 'Thin (100)', 'light': 'Light (300)', 'medium': 'Medium (500)',
+									'semibold': 'SemiBold (600)', 'bold': 'Bold (700)', 'black': 'Black (900)',
+								};
+								const key = String(v).toLowerCase();
+								const label = map[key] || String(v);
+								if (!variants.includes(label)) variants.push(label);
+							}
+						}
+					}
+					if (variants.length === 0) return ['Regular (400)', 'Bold (700)'];
+					return variants;
+				}
 			},
 			bold: {
 				value: false,
@@ -536,11 +588,16 @@ config.TOOLS = [
 				icon: `strikethrough.svg`
 			},
 			fill: '#008000',
-			stroke: '#000000',
-			stroke_size: {
-				value: 0,
-				min: 0,
-				step: 0.1
+			halign: {
+				type: 'button_group',
+				value: 'Left',
+				values: ['Left', 'Center', 'Right', 'Justify'],
+				icons: {
+					Left: 'align-left.svg',
+					Center: 'align-center.svg',
+					Right: 'align-right.svg',
+					Justify: 'align-justify.svg',
+				}
 			},
 			kerning: {
 				value: 0,
@@ -553,10 +610,6 @@ config.TOOLS = [
 				min: -999,
 				max: 999,
 				step: 1
-			},
-			halign: {
-				value: 'Left',
-				values: ['Left', 'Center', 'Right'],
 			},
 			boundary: {
 				title: 'Mode',

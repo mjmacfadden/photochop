@@ -105,6 +105,27 @@ export class Delete_layer_action extends Base_action {
 			}
 		}
 
+		// Clean up text tool state if text tool is referencing a doomed layer
+		const textTool = (app.GUI && app.GUI.GUI_tools && app.GUI.GUI_tools.tools_modules['text'])
+			? app.GUI.GUI_tools.tools_modules['text'].object
+			: null;
+		if (textTool && textTool.layer && doomed.has(parseInt(textTool.layer.id, 10))) {
+			textTool.focused = false;
+			textTool.selecting = false;
+			textTool.creating = false;
+			textTool.layer = null;
+			textTool.focusedValue = null;
+			textTool.focusedX = null;
+			textTool.focusedY = null;
+			textTool.focusedWidth = null;
+			textTool.focusedHeight = null;
+			if (textTool.textarea) {
+				textTool._ignore_textarea_blur = true;
+				textTool.textarea.blur();
+				textTool._ignore_textarea_blur = false;
+			}
+		}
+
 		// Remove layer from list
 		this.deleted_layer = config.layers.splice(this.delete_index, 1)[0];
 
@@ -117,7 +138,7 @@ export class Delete_layer_action extends Base_action {
 		}
 
 		// Final safety: never leave config.layer pointing at a removed object.
-		if (!config.layer || !app.Layers.get_layer(config.layer.id)) {
+		if (!config.layer || !config.layers.some((l) => l.id === config.layer.id)) {
 			const survivor = config.layers.length ? (app.Layers.get_sorted_layers()[0] || config.layers[0]) : null;
 			config.layer = survivor;
 			config.selected_layer_ids = survivor ? [survivor.id] : [];

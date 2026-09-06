@@ -6,7 +6,7 @@
 import app from './../../app.js';
 import config from './../../config.js';
 import Dialog_class from './../../libs/popup.js';
-import Text_class from './../../tools/text.js';
+import Text_class, { normalize_text_boundary, normalize_halign } from './../../tools/text.js';
 import Base_layers_class from "../base-layers";
 import Tools_settings_class from './../../modules/tools/settings.js';
 import Helper_class from './../../libs/helpers.js';
@@ -14,38 +14,38 @@ import Tools_translate_class from './../../modules/tools/translate.js';
 
 var template = `
 	<div class="row">
-		<span class="trn label">X</span>
-		<input type="number" id="detail_x" step="any" />
+		<label class="trn label" for="detail_x">X</label>
+		<input type="number" id="detail_x" name="detail_x" step="any" />
 		<button class="extra reset trn" type="button" id="reset_x" title="Reset">Reset</button>
 	</div>
 	<div class="row">
-		<span class="trn label">Y:</span>
-		<input type="number" id="detail_y" step="any" />
+		<label class="trn label" for="detail_y">Y:</label>
+		<input type="number" id="detail_y" name="detail_y" step="any" />
 		<button class="extra reset trn" type="button" id="reset_y" title="Reset">Reset</button>
 	</div>
 	<div class="row">
-		<span class="trn label">Width:</span>
-		<input type="number" id="detail_width" step="any" />
+		<label class="trn label" for="detail_width">Width:</label>
+		<input type="number" id="detail_width" name="detail_width" step="any" />
 		<button class="extra reset trn" type="button" id="reset_size" title="Reset">Reset</button>
 	</div>
 	<div class="row">
-		<span class="trn label">Height:</span>
-		<input type="number" id="detail_height" step="any" />
+		<label class="trn label" for="detail_height">Height:</label>
+		<input type="number" id="detail_height" name="detail_height" step="any" />
 	</div>
 	<hr />
 	<div class="row">
-		<span class="trn label">Rotate:</span>
-		<input type="number" min="-360" max="360" id="detail_rotate" />
+		<label class="trn label" for="detail_rotate">Rotate:</label>
+		<input type="number" min="-360" max="360" id="detail_rotate" name="detail_rotate" />
 		<button class="extra reset trn" type="button" id="reset_rotate" title="Reset">Reset</button>
 	</div>
 	<div class="row">
-		<span class="trn label">Opacity:</span>
-		<input type="number" min="0" max="100" id="detail_opacity" />
+		<label class="trn label" for="detail_opacity">Opacity:</label>
+		<input type="number" min="0" max="100" id="detail_opacity" name="detail_opacity" />
 		<button class="extra reset trn" type="button" id="reset_opacity" title="Reset">Reset</button>
 	</div>
 	<div class="row">
-		<span class="trn label">Color:</span>
-		<input style="padding: 0px;" type="color" id="detail_color" />
+		<label class="trn label" for="detail_color_input">Color:</label>
+		<input style="padding: 0px;" type="color" id="detail_color" name="detail_color" />
 	</div>
 	<div id="parameters_container"></div>
 	<div id="text_detail_params">
@@ -54,22 +54,22 @@ var template = `
 			<button type="button" class="trn dots" id="detail_param_text">Edit text...</button>
 		</div>
 		<div class="row">
-			<span class="trn label" title="Resize Boundary">Bounds:</span>
-			<select id="detail_param_boundary">
+			<label class="trn label" for="detail_param_boundary" title="Resize Boundary">Bounds:</label>
+			<select id="detail_param_boundary" name="detail_param_boundary">
 				<option value="box">Box</option>
 				<option value="dynamic">Dynamic</option>
 			</select>
 		</div>
 		<div class="row">
-			<span class="trn label" title="Auto Kerning">Kerning:</span>
-			<select id="detail_param_kerning">
+			<label class="trn label" for="detail_param_kerning" title="Auto Kerning">Kerning:</label>
+			<select id="detail_param_kerning" name="detail_param_kerning">
 				<option value="none">None</option>
 				<option value="metrics">Metrics</option>
 			</select>
 		</div>
 		<div class="row" hidden> <!-- Future implementation -->
-			<span class="trn label">Direction:</span>
-			<select id="detail_param_text_direction">
+			<label class="trn label" for="detail_param_text_direction">Direction:</label>
+			<select id="detail_param_text_direction" name="detail_param_text_direction">
 				<option value="ltr">Left to Right</option>
 				<option value="rtl">Right to Left</option>
 				<option value="ttb">Top to Bottom</option>
@@ -77,8 +77,8 @@ var template = `
 			</select>
 		</div>
 		<div class="row" hidden> <!-- Future implementation -->
-			<span class="trn label">Wrap:</span>
-			<select id="detail_param_wrap_direction">
+			<label class="trn label" for="detail_param_wrap_direction">Wrap:</label>
+			<select id="detail_param_wrap_direction" name="detail_param_wrap_direction">
 				<option value="ltr">Left to Right</option>
 				<option value="rtl">Right to Left</option>
 				<option value="ttb">Top to Bottom</option>
@@ -86,23 +86,24 @@ var template = `
 			</select>
 		</div>
 		<div class="row">
-			<span class="trn label">Wrap At:</span>
-			<select id="detail_param_wrap">
+			<label class="trn label" for="detail_param_wrap">Wrap At:</label>
+			<select id="detail_param_wrap" name="detail_param_wrap">
 				<option value="letter">Word + Letter</option>
 				<option value="word">Word</option>
 			</select>
 		</div>
 		<div class="row">
-			<span class="trn label" title="Horizontal Alignment">H. Align:</span>
-			<select id="detail_param_halign">
+			<label class="trn label" for="detail_param_halign" title="Horizontal Alignment">H. Align:</label>
+			<select id="detail_param_halign" name="detail_param_halign">
 				<option value="left">Left</option>
 				<option value="center">Center</option>
 				<option value="right">Right</option>
+				<option value="justify">Justify</option>
 			</select>
 		</div>
 		<div class="row" hidden> <!-- Future implementation -->
-			<span class="trn label" title="Vertical Alignment">V. Align:</span>
-			<select id="detail_param_valign">
+			<label class="trn label" for="detail_param_valign" title="Vertical Alignment">V. Align:</label>
+			<select id="detail_param_valign" name="detail_param_valign">
 				<option value="top">Top</option>
 				<option value="middle">Middle</option>
 				<option value="bottom">Bottom</option>
@@ -374,10 +375,16 @@ class GUI_details_class {
 				target.disabled = true;
 			}
 			else {
-				if(typeof layer.params[key] == 'object')
-					target.value = layer.params[key].value; //legacy
-				else
-					target.value = layer.params[key];
+				let v = (typeof layer.params[key] == 'object') ? layer.params[key].value : layer.params[key];
+				// Canonicalize so UI labels (Paragraph/Point) never appear in the details select.
+				if (key === 'boundary') {
+					v = normalize_text_boundary(v);
+					layer.params.boundary = v;
+				} else if (key === 'halign') {
+					v = normalize_halign(v);
+					layer.params.halign = v;
+				}
+				target.value = v;
 				target.disabled = false;
 			}
 		}
@@ -393,10 +400,15 @@ class GUI_details_class {
 			target.addEventListener('blur', function (e) {
 				if (!config.layer || !config.layer.params) return;
 				var value = this.value;
-				config.layer.params[key] = focus_value;
+				if (key === 'boundary') value = normalize_text_boundary(value);
+				else if (key === 'halign') value = normalize_halign(value);
+				let prev = focus_value;
+				if (key === 'boundary') prev = normalize_text_boundary(focus_value);
+				else if (key === 'halign') prev = normalize_halign(focus_value);
+				config.layer.params[key] = prev;
 				let params_copy = JSON.parse(JSON.stringify(config.layer.params));
 				params_copy[key] = value;
-				if (focus_value !== value) {
+				if (prev !== value) {
 					app.State.do_action(
 						new app.Actions.Bundle_action('change_layer_details', 'Change Layer Details', [
 							new app.Actions.Update_layer_action(config.layer.id, {
@@ -409,6 +421,8 @@ class GUI_details_class {
 			target.addEventListener('change', function (e) {
 				if (!config.layer || !config.layer.params) return;
 				var value = this.value;
+				if (key === 'boundary') value = normalize_text_boundary(value);
+				else if (key === 'halign') value = normalize_halign(value);
 				config.layer.params[key] = value;
 				config.need_render = true;
 				config.need_render_changed_params = true;
@@ -592,7 +606,7 @@ class GUI_details_class {
 			//title
 			var title = k[0].toUpperCase() + k.slice(1);
 			title = title.replace("_", " ");
-			let item_title = document.createElement('span');
+			let item_title = document.createElement('label');
 			item_title.className = 'trn label';
 			item_title.innerHTML = title;
 			item_row.appendChild(item_title);
@@ -633,7 +647,10 @@ class GUI_details_class {
 
 				const elementInput = document.createElement('input');
 				elementInput.type = 'number';
+				elementInput.id = 'detail_param_more_' + k;
+				elementInput.name = 'detail_param_more_' + k;
 				elementInput.dataset.key = k;
+				item_title.htmlFor = elementInput.id;
 				item_row.appendChild(elementInput);
 
 				let min = 1;
@@ -696,17 +713,19 @@ class GUI_details_class {
 
 				var elementInput = document.createElement('input');
 				elementInput.type = 'color';
+				item_title.htmlFor = 'detail_param_more_' + k + '_input';
 				let focus_value = null;
 				const $colorInput = $(elementInput).uiColorInput({
-						id: k,
+						id: 'detail_param_more_' + k,
+						inputId: 'detail_param_more_' + k + '_input',
+						name: 'detail_param_more_' + k,
 						value: item
 					})
 					.on('change', () => {
 						let layer = config.layer;
-						let key = $colorInput.uiColorInput('get_id');
 						let new_value = $colorInput.uiColorInput('get_value');
 						let params = JSON.parse(JSON.stringify(config.layer.params));
-						params[key] = new_value;
+						params[k] = new_value;
 
 						app.State.do_action(
 							new app.Actions.Update_layer_action(layer.id, {

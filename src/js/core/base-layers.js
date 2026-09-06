@@ -428,8 +428,10 @@ class Base_layers_class {
 				// ---- Canvas 2D document cache ----
 				let interactive_rendered = false;
 				if (cache.pendingInteractiveLayerId != null) {
-					const layer = this.get_layer(cache.pendingInteractiveLayerId);
-					interactive_rendered = this.render_interactive_layer_cache(layer, layers_sorted);
+					const layer = this.get_layer(cache.pendingInteractiveLayerId, true);
+					if (layer) {
+						interactive_rendered = this.render_interactive_layer_cache(layer, layers_sorted);
+					}
 					cache.pendingInteractiveLayerId = null;
 					if (!interactive_rendered)
 						cache.invalidate_document();
@@ -1160,19 +1162,45 @@ class Base_layers_class {
 	 * returns layer
 	 *
 	 * @param {int} id
+	 * @param {boolean} [quiet=false]
 	 * @returns {object}
 	 */
-	get_layer(id) {
+	get_layer(id, quiet = false) {
 		if (id == undefined) {
-			id = config.layer.id;
+			id = config.layer ? config.layer.id : null;
+		}
+		if (id == null) {
+			return null;
 		}
 		for (var i in config.layers) {
 			if (config.layers[i].id == id) {
 				return config.layers[i];
 			}
 		}
-		alertify.error("Error: can not find layer with id:" + id);
+		if (!quiet) {
+			alertify.error("Error: can not find layer with id:" + id);
+		}
 		return null;
+	}
+
+	/**
+	 * Safe layer lookup that never triggers an alertify error.
+	 *
+	 * @param {int} id
+	 * @returns {object|null}
+	 */
+	find_layer(id) {
+		return this.get_layer(id, true);
+	}
+
+	/**
+	 * Checks whether a layer exists without side effects.
+	 *
+	 * @param {int} id
+	 * @returns {boolean}
+	 */
+	has_layer(id) {
+		return this.find_layer(id) !== null;
 	}
 
 	/**
@@ -1575,7 +1603,7 @@ class Base_layers_class {
 	 * @param {number} layerId
 	 */
 	notify_mask_changed(layerId) {
-		var layer = layerId != null ? this.get_layer(layerId) : config.layer;
+		var layer = layerId != null ? this.get_layer(layerId, true) : config.layer;
 		if (layer && layer.mask) {
 			delete layer.mask._alpha_canvas;
 			delete layer.mask._alpha_source;

@@ -11,6 +11,14 @@ class Edit_selection_class {
 	}
 
 	select_all() {
+		const textTool = (window.app && window.app.GUI && window.app.GUI.GUI_tools && window.app.GUI.GUI_tools.tools_modules['text'])
+			? window.app.GUI.GUI_tools.tools_modules['text'].object
+			: null;
+		const isTextEditing = textTool && (textTool.focused || (typeof textTool.is_cursor_active === 'function' ? textTool.is_cursor_active() : false));
+		if (isTextEditing && config.layer && config.layer.type === 'text') {
+			textTool.select_all_text();
+			return;
+		}
 		this.Selection.select_all();
 	}
 

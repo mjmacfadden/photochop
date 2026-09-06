@@ -106,24 +106,50 @@ class GUI_shortcuts_class {
 		});
 
 		document.addEventListener('keydown', (event) => {
-			if (this.Helper.is_input(event.target)) return;
-
-			// If Text Tool is active and a text layer is selected, disable tool keybindings
 			const isTextToolActive = config.TOOL && config.TOOL.name === 'text';
 			const isTextLayer = config.layer && config.layer.type === 'text';
+			const textTool = (isTextToolActive && isTextLayer && app.GUI && app.GUI.GUI_tools && app.GUI.GUI_tools.tools_modules['text'])
+				? app.GUI.GUI_tools.tools_modules['text'].object
+				: null;
+			const isTextEditing = textTool && (textTool.focused || (typeof textTool.is_cursor_active === 'function' ? textTool.is_cursor_active() : false));
+
+			if ((event.ctrlKey || event.metaKey) && (event.key === 'a' || event.key === 'A' || event.code === 'KeyA' || event.keyCode === 65)) {
+				if (isTextEditing) {
+					event.preventDefault();
+					event.stopImmediatePropagation();
+					textTool.select_all_text();
+					return;
+				}
+			}
+
+			if (this.Helper.is_input(event.target)) return;
+
+			// If Text Tool is active and a text layer is selected, handle text editing shortcuts
 			if (isTextToolActive && isTextLayer) {
-				if (!event.ctrlKey && !event.metaKey) {
-					const textTool = (app.GUI && app.GUI.GUI_tools && app.GUI.GUI_tools.tools_modules['text'])
-						? app.GUI.GUI_tools.tools_modules['text'].object
-						: null;
-					if (textTool) {
+				if (isTextEditing) {
+					if ((event.ctrlKey || event.metaKey) && event.key === 'Enter') {
+						event.preventDefault();
+						event.stopImmediatePropagation();
+						(async () => {
+							await textTool.commit_text_changes();
+							textTool.focused = false;
+							if (textTool.textarea) textTool.textarea.blur();
+							textTool.Base_layers.render();
+						})();
+						return;
+					}
+					if (!event.ctrlKey && !event.metaKey) {
 						if (event.key === 'Escape') {
 							event.preventDefault();
 							event.stopImmediatePropagation();
-							if (textTool.textarea) textTool.textarea.blur();
-							if (app.GUI && app.GUI.GUI_tools) {
-								app.GUI.GUI_tools.activate_tool('select');
-							}
+							(async () => {
+								await textTool.commit_text_changes();
+								textTool.focused = false;
+								if (textTool.textarea) textTool.textarea.blur();
+								if (app.GUI && app.GUI.GUI_tools) {
+									await app.GUI.GUI_tools.activate_tool('select');
+								}
+							})();
 							return;
 						}
 						if (textTool.focus_textarea) {
@@ -158,9 +184,9 @@ class GUI_shortcuts_class {
 								}
 							}
 						}
+						// Return early to ensure single-key tool shortcuts (B, V, E, C, etc.) are completely disabled while editing!
+						return;
 					}
-					// Return early to ensure single-key tool shortcuts (B, V, E, C, etc.) are completely disabled!
-					return;
 				}
 			}
 
