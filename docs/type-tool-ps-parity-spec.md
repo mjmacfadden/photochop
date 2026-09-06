@@ -101,13 +101,14 @@ Select tool and Type tool must share the same bake/commit contract (Select previ
 | Manual typed value            | Free decimals allowed (snap to `inputStep` 0.01) |
 | Transform bake                | Up to **2 decimal places**                    |
 
-- Options-bar size edits are visual font size; clear leftover geometric scale when an explicit size is applied.
+- Options-bar size edits update `meta.size` / `params.size` only; **preserve** residual `scale_x` from Shift-skew bake (do not reset horizontal scale to 1). Proportional bake already reset both scales.
 - Do not rebuild the options bar while the size spinner is actively repeating (avoids stuck timers).
 
 ### 4.1 Acceptance — Size UI
 - [ ] +/− moves size by 1 each click/tick.
 - [ ] Typing `12.5` applies 12.5.
 - [ ] After transform, size field shows baked value; +/− still steps by 1 from there.
+- [ ] After Shift-widen/condense, changing Size (typed or +/−) keeps horizontal scale (`scale_x`); glyphs stay wide/condensed.
 
 ---
 

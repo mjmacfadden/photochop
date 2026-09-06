@@ -3813,14 +3813,16 @@ class Text_class extends Base_tools_class {
 
 		const oldData = JSON.parse(JSON.stringify(editor.document.lines));
 		let nextParams = null;
-		// An explicit size from the options bar is visual — drop leftover geometric scale.
-		if (meta.size != null && layer.params && (
-			(layer.params.scale_x != null && Math.abs(layer.params.scale_x - 1) > 0.001) ||
-			(layer.params.scale_y != null && Math.abs(layer.params.scale_y - 1) > 0.001)
-		)) {
+		// Size UI updates visual font size (meta.size / params.size). Preserve residual
+		// horizontal scale from Shift-skew bake (params.scale_x); do not reset to 1.
+		// Proportional bake already left scale_x = scale_y = 1 — nothing to clear.
+		if (meta.size != null && layer.params) {
 			nextParams = JSON.parse(JSON.stringify(layer.params));
-			nextParams.scale_x = 1;
-			nextParams.scale_y = 1;
+			const sizeNum = Number(meta.size);
+			if (isFinite(sizeNum)) {
+				nextParams.size = Math.round(sizeNum * 100) / 100;
+			}
+			// Intentionally leave scale_x / scale_y untouched.
 		}
 		if (hadSelection) {
 			editor.document.queuedMetaChanges = null;

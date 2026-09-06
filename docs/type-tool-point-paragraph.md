@@ -13,6 +13,7 @@ The options bar **Weight** select lists variants exposed by Local Font Access (`
 - Toolbar **+/-**: integer steps of 1
 - Typed size: decimals allowed
 - Transform bake: up to 2 decimal places
+- After Shift-skew, Size edits change font size but **keep** residual `params.scale_x` (wide/condensed)
 
 ## Known differences vs Photoshop
 - No type-on-path / warp.
