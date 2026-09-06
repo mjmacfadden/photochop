@@ -80,7 +80,7 @@ class Spot_heal_class extends Base_tools_class {
 			return;
 		}
 
-		var layer = ensure_paint_layer({ verb: 'heal' });
+		var layer = ensure_paint_layer({ verb: 'heal', onText: 'block', toolName: 'Spot Healing Brush' });
 		if (!layer || layer.type !== 'image') {
 			return;
 		}

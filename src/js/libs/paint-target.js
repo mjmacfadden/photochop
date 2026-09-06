@@ -31,15 +31,23 @@ function insert_blank_image_layer() {
 /**
  * Ensure the active layer can accept pixel painting (brush, pencil, eraser, clone, heal).
  *
- * Photoshop-like: if the active layer is text, do NOT rasterize it — insert a blank
- * image layer above and paint there instead. Other non-image types still rasterize.
+ * Text layers:
+ * - onText 'new-layer' (brush/pencil): do NOT rasterize — insert a blank image
+ *   layer above and paint there instead.
+ * - onText 'block' (eraser/clone/spot heal): do NOT create a layer and do NOT
+ *   rasterize — show a toast and return null so the stroke is blocked.
+ * Other non-image types still rasterize.
  *
  * @param {object} [options]
  * @param {string} [options.verb='paint'] - verb used in adjustment-layer error copy
+ * @param {'new-layer'|'block'} [options.onText='new-layer'] - text-layer policy
+ * @param {string} [options.toolName] - display name for block toast
  * @returns {object|null} image layer to paint on, or null if painting is blocked
  */
 export function ensure_paint_layer(options = {}) {
 	const verb = options.verb || 'paint';
+	const onText = options.onText || 'new-layer';
+	const toolName = options.toolName || 'this tool';
 
 	if (config.layer == null || !config.layers || config.layers.length === 0) {
 		return insert_blank_image_layer();
@@ -52,8 +60,12 @@ export function ensure_paint_layer(options = {}) {
 		return null;
 	}
 
-	// Keep editable text intact; paint on a new blank layer above (full document size).
 	if (config.layer.type === 'text') {
+		if (onText === 'block') {
+			alertify.error('Rasterize layer to use ' + toolName);
+			return null;
+		}
+		// Keep editable text intact; paint on a new blank layer above (full document size).
 		return insert_blank_image_layer();
 	}
 

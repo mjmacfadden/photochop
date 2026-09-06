@@ -122,7 +122,7 @@ class Clone_class extends Base_tools_class {
 			return;
 		}
 
-		var layer = ensure_paint_layer({ verb: 'paint' });
+		var layer = ensure_paint_layer({ verb: 'paint', onText: 'block', toolName: 'Clone Stamp' });
 		if (!layer || layer.type !== 'image') {
 			return;
 		}

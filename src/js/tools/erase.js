@@ -44,7 +44,7 @@ class Erase_class extends Base_tools_class {
 	}
 
 	ensure_raster_layer() {
-		return ensure_paint_layer({ verb: 'erase' });
+		return ensure_paint_layer({ verb: 'erase', onText: 'block', toolName: 'Eraser' });
 	}
 
 	get_layer_local_coords(world_x, world_y, layer) {
