@@ -86,8 +86,16 @@
 			</div>
 
 			<div class="adjustments block" id="adjustments_base">
-				<h2 class="trn toggle" data-target="toggle_adjustments">Adjustments</h2>
-				<div class="content" id="toggle_adjustments"></div>
+				<h2 class="trn toggle panel_tabs_header" data-target="toggle_adjustments_wrapper">
+					<span class="panel_tabs">
+						<button type="button" class="panel_tab_btn active" id="tab_btn_adjustments">Adjustments</button>
+						<button type="button" class="panel_tab_btn" id="tab_btn_properties">Properties</button>
+					</span>
+				</h2>
+				<div class="content panel_tabs_content" id="toggle_adjustments_wrapper">
+					<div id="toggle_adjustments" class="panel_tab_pane"></div>
+					<div id="toggle_properties" class="panel_tab_pane hidden"></div>
+				</div>
 			</div>
 			
 			<div class="layers block">

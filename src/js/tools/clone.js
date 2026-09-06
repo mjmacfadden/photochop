@@ -2,15 +2,14 @@ import app from './../app.js';
 import config from './../config.js';
 import Base_tools_class from './../core/base-tools.js';
 import Base_layers_class from './../core/base-layers.js';
-import Layer_raster_class from './../modules/layer/raster.js';
 import alertify from './../../../node_modules/alertifyjs/build/alertify.min.js';
+import { ensure_paint_layer } from './../libs/paint-target.js';
 
 class Clone_class extends Base_tools_class {
 
 	constructor(ctx) {
 		super();
 		this.Base_layers = new Base_layers_class();
-		this.Layer_raster = new Layer_raster_class();
 		this.ctx = ctx;
 		this.name = 'clone';
 		this.tmpCanvas = null;
@@ -123,21 +122,10 @@ class Clone_class extends Base_tools_class {
 			return;
 		}
 
-		if (!config.layer) {
-			alertify.error('Please select a layer to paint on.');
+		var layer = ensure_paint_layer({ verb: 'paint', onText: 'block', toolName: 'Clone Stamp' });
+		if (!layer || layer.type !== 'image') {
 			return;
 		}
-
-		if (config.layer.type === 'adjustment') {
-			alertify.error('Cannot paint directly on an adjustment layer.');
-			return;
-		}
-
-		if (config.layer.type !== 'image') {
-			this.Layer_raster.raster();
-		}
-
-		var layer = config.layer;
 		var src = layer.link_canvas || layer.link;
 		if (!src) {
 			alertify.error('Layer image is not ready.');

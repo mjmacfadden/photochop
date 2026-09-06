@@ -466,6 +466,9 @@ class Base_layers_class {
 
 			if (cache.detailsDirty) {
 				this.Base_gui.GUI_details.render_details();
+				if (this.Base_gui.GUI_properties && typeof this.Base_gui.GUI_properties.render_properties === 'function') {
+					this.Base_gui.GUI_properties.render_properties();
+				}
 				cache.detailsDirty = false;
 			}
 			if (cache.rulerDirty || zoom_changed) {

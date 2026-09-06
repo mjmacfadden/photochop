@@ -4,7 +4,7 @@ import Base_tools_class from './../core/base-tools.js';
 import Base_layers_class from './../core/base-layers.js';
 import Helper_class from './../libs/helpers.js';
 import Mask_class from './../modules/mask/mask.js';
-import Layer_raster_class from './../modules/layer/raster.js';
+import { ensure_paint_layer } from './../libs/paint-target.js';
 
 class Pencil_class extends Base_tools_class {
 
@@ -13,7 +13,6 @@ class Pencil_class extends Base_tools_class {
 		this.Base_layers = new Base_layers_class();
 		this.Helper = new Helper_class();
 		this.Mask = new Mask_class();
-		this.Layer_raster = new Layer_raster_class();
 		this.name = 'pencil';
 		this.pressure_supported = false;
 		this.pointer_pressure = 0; // range [0 - 1]
@@ -31,35 +30,7 @@ class Pencil_class extends Base_tools_class {
 	}
 
 	ensure_raster_layer() {
-		if (config.layer == null || config.layers.length === 0) {
-			var new_layer = {
-				name: 'Layer ' + (app.Layers ? app.Layers.auto_increment : 1),
-				type: 'image',
-				link: document.createElement('canvas'),
-				data: null,
-				width: config.WIDTH,
-				height: config.HEIGHT,
-				width_original: config.WIDTH,
-				height_original: config.HEIGHT,
-				x: 0,
-				y: 0,
-			};
-			new_layer.link.width = config.WIDTH;
-			new_layer.link.height = config.HEIGHT;
-			app.State.do_action(new app.Actions.Insert_layer_action(new_layer, false));
-			return config.layer;
-		}
-
-		if (config.layer.type === 'adjustment') {
-			alertify.error('Cannot paint directly on an adjustment layer. Create a new layer or edit the layer mask.');
-			return null;
-		}
-
-		if (config.layer.type !== 'image') {
-			this.Layer_raster.raster();
-		}
-
-		return config.layer;
+		return ensure_paint_layer({ verb: 'paint' });
 	}
 
 	get_layer_local_coords(world_x, world_y, layer) {

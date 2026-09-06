@@ -998,6 +998,12 @@ class GUI_tools_class {
 			//retranslate
 			this.Tools_translate.translate(config.LANG);
 		}
+
+		// Two-way bind: keep Properties Type controls in sync with options bar
+		if (app.GUI && app.GUI.GUI_properties
+			&& typeof app.GUI.GUI_properties.on_text_attributes_changed === 'function') {
+			try { app.GUI.GUI_properties.on_text_attributes_changed(); } catch (e) { /* ignore */ }
+		}
 	}
 
 	render_transform_attributes(container) {

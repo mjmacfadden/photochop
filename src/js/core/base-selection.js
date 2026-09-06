@@ -1525,7 +1525,7 @@ class Base_selection_class {
 						if (keep_ratio) {
 							settings.data.x = Math.round(this.click_details.x - (width - this.click_details.width) / 2);
 						} else {
-							settings.data.y = this.click_details.y;
+							settings.data.x = this.click_details.x;
 						}
 					} else {
 						settings.data.x = this.click_details.x;
@@ -1633,7 +1633,7 @@ class Base_selection_class {
 				? (testX > -w / 2 && testX < w / 2 && testY > -h / 2 && testY < h / 2)
 				: (mouse.x > x && mouse.x < x + w && mouse.y > y && mouse.y < y + h);
 
-			if (settings.enable_move && inBody) {
+			if ((settings.enable_move || settings.crop_shield === true) && inBody) {
 				mainWrapper.style.cursor = "move";
 			}
 
