@@ -1,3 +1,4 @@
+import googleFontsCache from './libs/google-fonts-cache.json';
 //main config file
 
 var config = {};
@@ -534,23 +535,36 @@ config.TOOLS = [
 					const family = textTool && textTool.attributes && textTool.attributes.font
 						? (textTool.attributes.font.value || 'Roboto')
 						: 'Roboto';
-					const variants = [];
 					if (typeof window !== 'undefined' && window.FontManager
-						&& typeof window.FontManager.getSystemFontVariants === 'function') {
-						const local = window.FontManager.getSystemFontVariants(family) || [];
-						for (const v of local) {
-							if (v && !variants.includes(v)) variants.push(v);
-						}
+						&& typeof window.FontManager.getFontWeightList === 'function') {
+						return window.FontManager.getFontWeightList(family, googleFontsCache);
 					}
+					// Fallback before FontManager init: Google cache + defaults
+					const variants = [];
 					const userFont = config.user_fonts && config.user_fonts[family];
 					if (userFont && Array.isArray(userFont.variants)) {
 						for (const v of userFont.variants) {
 							if (v && !variants.includes(v)) variants.push(v);
 						}
 					}
-					if (variants.length === 0) {
-						return ['Regular', 'Bold'];
+					if (Array.isArray(googleFontsCache)) {
+						const entry = googleFontsCache.find((f) => f && f.family === family);
+						if (entry && Array.isArray(entry.variants)) {
+							for (const v of entry.variants) {
+								if (!v || /italic/i.test(String(v))) continue;
+								const label = String(v) === 'regular' ? 'Regular'
+									: String(v) === '700' ? 'Bold'
+									: String(v) === '300' ? 'Light'
+									: String(v) === '100' ? 'Thin'
+									: String(v) === '500' ? 'Medium'
+									: String(v) === '600' ? 'SemiBold'
+									: String(v) === '900' ? 'Black'
+									: String(v);
+								if (!variants.includes(label)) variants.push(label);
+							}
+						}
 					}
+					if (variants.length === 0) return ['Regular', 'Bold'];
 					return variants;
 				}
 			},

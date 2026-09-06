@@ -81,11 +81,25 @@ export function weight_implies_bold(weight) {
 	return n >= 600;
 }
 
-/** Canonical boundary: only exact 'box' is paragraph; everything else is point/dynamic. */
+/** Unwrap UI attribute objects ({ value }) then canonicalize boundary. */
 export function normalize_text_boundary(boundary) {
+	if (boundary != null && typeof boundary === 'object') {
+		boundary = (boundary.value != null) ? boundary.value
+			: (boundary.boundary != null ? boundary.boundary : '');
+	}
 	const b = String(boundary == null ? '' : boundary).trim().toLowerCase();
 	if (b === 'box' || b === 'paragraph' || b === 'fixed') return 'box';
 	return 'dynamic';
+}
+
+/** Unwrap UI attribute objects; return left|center|right|justify. */
+export function normalize_halign(halign) {
+	if (halign != null && typeof halign === 'object') {
+		halign = (halign.value != null) ? halign.value : 'left';
+	}
+	const h = String(halign == null ? 'left' : halign).trim().toLowerCase();
+	if (h === 'center' || h === 'right' || h === 'justify') return h;
+	return 'left';
 }
 
 export function is_box_text(layer) {
@@ -1536,7 +1550,7 @@ class Text_editor_class {
 		const boundary = normalize_text_boundary(layer.params && layer.params.boundary);
 		const textDirection = (layer.params && layer.params.text_direction) || 'ltr';
 		const wrapDirection = (layer.params && layer.params.wrap_direction) || 'ttb';
-		const halign = (layer.params.halign || 'left').toLowerCase();
+		const halign = normalize_halign(layer.params.halign);
 		const valign = layer.params.valign || 'top';
 		const isHorizontalTextDirection = ['ltr', 'rtl'].includes(textDirection);
 		const isNegativeTextDirection = ['rtl', 'btt'].includes(textDirection);
@@ -3257,7 +3271,10 @@ class Text_class extends Base_tools_class {
 		if (config.user_fonts[family]) return;
 		if (app.FontManager && typeof app.FontManager.getCachedSystemFonts === 'function'
 			&& app.FontManager.getCachedSystemFonts().includes(family)) {
-			config.user_fonts[family] = { family, source: 'local' };
+			const variants = (typeof app.FontManager.getSystemFontVariants === 'function')
+				? app.FontManager.getSystemFontVariants(family)
+				: [];
+			config.user_fonts[family] = { family, source: 'local', variants };
 			if (typeof app.FontManager.persistSelectedLocalFonts === 'function') {
 				app.FontManager.persistSelectedLocalFonts();
 			}
@@ -3343,7 +3360,7 @@ class Text_class extends Base_tools_class {
 			if (editor) {
 				if (this.layer.params && this.layer.params.boundary === 'dynamic') {
 					if (this.layer.params.anchor_x == null) {
-						const halign = (this.layer.params.halign || 'left').toLowerCase();
+						const halign = normalize_halign(this.layer.params.halign);
 						if (halign === 'center') {
 							this.layer.params.anchor_x = this.layer.x + this.layer.width / 2;
 						} else if (halign === 'right') {
@@ -3506,7 +3523,7 @@ class Text_class extends Base_tools_class {
 				new_params.boundary = this.mousedownBounds.boundary;
 				config.layer.params.boundary = this.mousedownBounds.boundary;
 				if (wasDynamic) {
-					const halign = (new_params.halign || 'left').toLowerCase();
+					const halign = normalize_halign(new_params.halign);
 					if (halign === 'center') {
 						new_params.anchor_x = nextX + nextW / 2;
 					} else if (halign === 'right') {
@@ -3902,8 +3919,27 @@ class Text_class extends Base_tools_class {
 					const family = (this.GUI_tools && this.GUI_tools.action_data().attributes.font)
 						? this.GUI_tools.action_data().attributes.font.value
 						: null;
-					if (family && app.FontManager && typeof app.FontManager.loadSystemFontStyle === 'function') {
-						app.FontManager.loadSystemFontStyle(family, String(weight)).catch(() => {});
+					if (family) {
+						const isLocal = app.FontManager && typeof app.FontManager.getCachedSystemFonts === 'function'
+							&& app.FontManager.getCachedSystemFonts().includes(family);
+						if (isLocal && typeof app.FontManager.loadSystemFontStyle === 'function') {
+							app.FontManager.loadSystemFontStyle(family, String(weight)).then(() => {
+								config.need_render_changed_params = true;
+								if (this.Base_layers) this.Base_layers.render();
+							}).catch(() => {});
+						} else {
+							// Google / web font: request the specific variant
+							const variantKey = (() => {
+								const n = normalize_font_weight(weight);
+								if (n === '400' || n === 'normal') return /italic/i.test(String(weight)) ? 'italic' : 'regular';
+								if (n && /^\d+$/.test(n)) return /italic/i.test(String(weight)) ? (n + 'italic') : n;
+								return String(weight).toLowerCase().replace(/\s+/g, '');
+							})();
+							load_font_family({ family, variants: [variantKey], source: 'google' }, () => {
+								config.need_render_changed_params = true;
+								if (this.Base_layers) this.Base_layers.render();
+							});
+						}
 					}
 				}
 				break;
@@ -3944,10 +3980,11 @@ class Text_class extends Base_tools_class {
 				const align = (value && value.value ? value.value : value) || 'Left';
 				if (config.layer && config.layer.type === 'text' && config.layer.params) {
 					const nextParams = JSON.parse(JSON.stringify(config.layer.params));
-					// Harden: never let UI labels leak into stored boundary.
-					nextParams.boundary = normalize_text_boundary(nextParams.boundary);
-					let newAlign = String(align).toLowerCase();
-					const isPoint = nextParams.boundary !== 'box';
+					// CRITICAL: align must NEVER change boundary / text mode.
+					const lockedBoundary = normalize_text_boundary(config.layer.params.boundary);
+					nextParams.boundary = lockedBoundary;
+					const newAlign = normalize_halign(align);
+					const isPoint = lockedBoundary !== 'box';
 					if (isPoint && newAlign === 'justify') {
 						// Photoshop: justify is disabled for point text.
 						return returnValue;
@@ -3967,7 +4004,10 @@ class Text_class extends Base_tools_class {
 						// PS point text: keep the anchor fixed; move glyphs so L/C/R sits on it.
 						if (editor) {
 							editor.hasValueChanged = true;
-							editor.calculate_text_placement(ctx, config.layer);
+							const measureLayer = Object.assign({}, config.layer, {
+								params: Object.assign({}, config.layer.params, { halign: newAlign, boundary: lockedBoundary })
+							});
+							editor.calculate_text_placement(ctx, measureLayer);
 						}
 						const sx = (nextParams.scale_x != null) ? nextParams.scale_x : 1;
 						const layoutW = editor && editor.textBoundaryWidth
@@ -3975,7 +4015,7 @@ class Text_class extends Base_tools_class {
 							: Math.max(1, Number(config.layer.width) || 1);
 						const visualW = Math.max(1, layoutW);
 						if (nextParams.anchor_x == null) {
-							const prev = (config.layer.params.halign || 'left').toLowerCase();
+							const prev = normalize_halign(config.layer.params.halign);
 							if (prev === 'center') nextParams.anchor_x = config.layer.x + (Number(config.layer.width) || visualW) / 2;
 							else if (prev === 'right') nextParams.anchor_x = config.layer.x + (Number(config.layer.width) || visualW);
 							else nextParams.anchor_x = config.layer.x;
@@ -3994,9 +4034,20 @@ class Text_class extends Base_tools_class {
 						}
 					}
 					// Paragraph (box): ONLY halign changes. Never convert to point / never touch frame.
+					nextParams.boundary = lockedBoundary;
 
-					this.sync_text_tool_attributes_from_layer({ ...config.layer, params: nextParams, ...(updates.x != null ? { x: updates.x, width: updates.width, height: updates.height || config.layer.height } : {}) });
-					if (editor) editor.hasValueChanged = true;
+					// Apply immediately so render sees new halign before history settles.
+					config.layer.params = nextParams;
+					if (updates.x != null) {
+						config.layer.x = updates.x;
+						if (updates.width != null) config.layer.width = updates.width;
+						if (updates.height != null) config.layer.height = updates.height;
+					}
+					this.sync_text_tool_attributes_from_layer(config.layer);
+					if (editor) {
+						editor.hasValueChanged = true;
+						editor.calculate_text_placement(ctx, config.layer);
+					}
 					config.need_render_changed_params = true;
 					app.State.do_action(
 						new app.Actions.Update_layer_action(config.layer.id, updates)
@@ -4022,7 +4073,7 @@ class Text_class extends Base_tools_class {
 
 					if (targetBoundary === 'dynamic') {
 						// Paragraph (box) -> Point (dynamic)
-						if ((nextParams.halign || '').toLowerCase() === 'justify') {
+						if (normalize_halign(nextParams.halign) === 'justify') {
 							nextParams.halign = 'left';
 						}
 						// Convert visual wrap breaks into explicit lines so text does not collapse into a single line
@@ -4057,7 +4108,7 @@ class Text_class extends Base_tools_class {
 							}
 						}
 						nextParams.wrap = 'letter';
-						const halign = (nextParams.halign || 'left').toLowerCase();
+						const halign = normalize_halign(nextParams.halign);
 						if (halign === 'center') {
 							nextParams.anchor_x = config.layer.x + config.layer.width / 2;
 						} else if (halign === 'right') {
@@ -4127,13 +4178,14 @@ class Text_class extends Base_tools_class {
 			if (!toolAttributes) return;
 			const isPoint = normalize_text_boundary(layer.params.boundary) !== 'box';
 			if (toolAttributes.halign) {
-				let h = (layer.params.halign || 'left').toLowerCase();
+				let h = normalize_halign(layer.params.halign);
 				// Photoshop: justify is paragraph-only.
 				if (isPoint && h === 'justify') h = 'left';
 				toolAttributes.halign.value = h === 'center' ? 'Center' : (h === 'right' ? 'Right' : (h === 'justify' ? 'Justify' : 'Left'));
 			}
 			if (toolAttributes.boundary) {
-				toolAttributes.boundary.value = normalize_text_boundary(layer.params.boundary) === 'box' ? 'Paragraph' : 'Point';
+				// Always drive Mode from layer params — never leave a stale Point default.
+				toolAttributes.boundary.value = isPoint ? 'Point' : 'Paragraph';
 			}
 			this.update_halign_justify_availability(isPoint);
 		} catch (e) { /* ignore */ }
@@ -4305,16 +4357,37 @@ class Text_class extends Base_tools_class {
 			layer.params.scale_y = Math.max(0.01, baseScaleY * uniform);
 			this._point_resize_last_scale = uniform;
 		}
+		// Live-update Size control (~2 dp) from snapshot × vertical/uniform scale
+		try {
+			const snap = this._point_resize_snapshot;
+			const span0 = snap && snap[0] && snap[0][0] ? snap[0][0] : null;
+			const baseSize = (span0 && span0.meta && span0.meta.size != null) ? Number(span0.meta.size) : null;
+			if (baseSize != null && isFinite(baseSize)) {
+				this._sync_size_attribute(baseSize * this._point_resize_last_scale);
+			}
+		} catch (e) { /* ignore */ }
 		return null;
 	}
 
 	_sync_size_attribute(size) {
 		if (size == null || !isFinite(size)) return;
+		const rounded = Math.round(Number(size) * 100) / 100;
 		try {
 			for (const tool of (config.TOOLS || [])) {
 				if (tool.name === 'text' && tool.attributes && tool.attributes.size) {
-					if (typeof tool.attributes.size === 'object') tool.attributes.size.value = size;
-					else tool.attributes.size = size;
+					if (typeof tool.attributes.size === 'object') tool.attributes.size.value = rounded;
+					else tool.attributes.size = rounded;
+				}
+			}
+			// Live-update the options-bar Size field without rebuilding the whole bar
+			const $size = (typeof $ !== 'undefined') ? $('#action_attributes .item.size .ui_number_input') : null;
+			if ($size && $size.length && typeof $size.uiNumberInput === 'function') {
+				try { $size.uiNumberInput('set_value', rounded); } catch (e) { /* ignore */ }
+			} else {
+				const input = document.querySelector('#action_attributes .item.size input, #action_attributes #size');
+				if (input) {
+					input.value = String(rounded);
+					input.setAttribute('value', String(rounded));
 				}
 			}
 		} catch (e) { /* ignore */ }
@@ -4439,7 +4512,7 @@ class Text_class extends Base_tools_class {
 			const sy = (layer.params.scale_y != null) ? layer.params.scale_y : 1;
 			const new_width = Math.max(1, Math.ceil(editor.textBoundaryWidth * sx + 1));
 			const new_height = Math.max(1, Math.ceil(editor.textBoundaryHeight * sy + 1));
-			const halign = (layer.params.halign || 'left').toLowerCase();
+			const halign = normalize_halign(layer.params.halign);
 			if (layer.params.anchor_x == null) {
 				if (halign === 'center') {
 					layer.params.anchor_x = layer.x + layer.width / 2;
@@ -4700,7 +4773,7 @@ class Text_class extends Base_tools_class {
 		const sy = (layer.params.scale_y != null) ? layer.params.scale_y : 1;
 		const offsets = line0 && line0.wraps && line0.wraps[0] ? line0.wraps[0].characterOffsets : [0, 0];
 		const textWidth = Math.max(0, (offsets[offsets.length - 1] || 0) * sx);
-		const halign = (layer.params.halign || 'left').toLowerCase();
+		const halign = normalize_halign(layer.params.halign);
 		let ax = layer.x + 1;
 		if (layer.params.anchor_x != null) {
 			ax = layer.params.anchor_x + 1;
@@ -4806,7 +4879,7 @@ class Text_class extends Base_tools_class {
 				layer.params.boundary = normalize_text_boundary(layer.params.boundary);
 				if (!layer.params.text_direction) layer.params.text_direction = 'ltr';
 				if (!layer.params.wrap_direction) layer.params.wrap_direction = 'ttb';
-				if (layer.params.halign) layer.params.halign = String(layer.params.halign).toLowerCase();
+				if (layer.params.halign) layer.params.halign = normalize_halign(layer.params.halign);
 			}
 
 			editor.set_lines(layer.data);
@@ -4911,7 +4984,7 @@ class Text_class extends Base_tools_class {
 		if (editor) {
 			if (is_point_text(layer)) {
 				if (layer.params.anchor_x == null) {
-					const halign = (layer.params.halign || 'left').toLowerCase();
+					const halign = normalize_halign(layer.params.halign);
 					if (halign === 'center') {
 						layer.params.anchor_x = layer.x + layer.width / 2;
 					} else if (halign === 'right') {

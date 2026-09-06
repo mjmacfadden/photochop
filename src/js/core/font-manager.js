@@ -300,7 +300,84 @@ class Font_manager_class {
 		if (this.systemFontVariantsMap && this.systemFontVariantsMap.has(family)) {
 			return Array.from(this.systemFontVariantsMap.get(family));
 		}
-		return ['regular'];
+		// Empty (not ['regular']) so callers can fall through to Google/user catalogs.
+		return [];
+	}
+
+	/**
+	 * Friendly weight/style labels for the options-bar Weight select.
+	 * Merges Local Font Access faces, Google cache variants, and user_fonts metadata.
+	 */
+	getFontWeightList(family, googleFontsCache = null) {
+		const labels = [];
+		const seen = new Set();
+		const push = (raw) => {
+			if (raw == null) return;
+			const label = this.formatWeightLabel(raw);
+			if (!label) return;
+			const key = label.toLowerCase();
+			if (seen.has(key)) return;
+			seen.add(key);
+			labels.push(label);
+		};
+		for (const v of this.getSystemFontVariants(family)) push(v);
+		if (typeof config !== 'undefined' && config.user_fonts && config.user_fonts[family]
+			&& Array.isArray(config.user_fonts[family].variants)) {
+			for (const v of config.user_fonts[family].variants) push(v);
+		}
+		const cache = googleFontsCache || (typeof window !== 'undefined' ? window.__googleFontsCache : null);
+		if (Array.isArray(cache)) {
+			const entry = cache.find((f) => f && f.family === family);
+			if (entry && Array.isArray(entry.variants)) {
+				for (const v of entry.variants) {
+					// Skip italic-only entries for the weight dropdown (italic is a separate toggle).
+					if (/italic|oblique/i.test(String(v)) && !/^italic$/i.test(String(v).trim())) {
+						const base = String(v).replace(/italic|oblique/ig, '').trim();
+						if (base) push(base);
+						continue;
+					}
+					if (/^italic$/i.test(String(v).trim())) continue;
+					push(v);
+				}
+			}
+		}
+		if (labels.length === 0) {
+			return ['Regular', 'Bold'];
+		}
+		const order = ['thin','extralight','ultralight','light','regular','normal','medium','semibold','demibold','bold','extrabold','ultrabold','black','heavy'];
+		labels.sort((a, b) => {
+			const ka = a.toLowerCase().replace(/[\s_-]+/g, '');
+			const kb = b.toLowerCase().replace(/[\s_-]+/g, '');
+			const ia = order.findIndex((o) => ka === o || ka.startsWith(o));
+			const ib = order.findIndex((o) => kb === o || kb.startsWith(o));
+			const na = parseInt(a, 10);
+			const nb = parseInt(b, 10);
+			if (!isNaN(na) && !isNaN(nb)) return na - nb;
+			if (ia >= 0 && ib >= 0) return ia - ib;
+			if (ia >= 0) return -1;
+			if (ib >= 0) return 1;
+			return a.localeCompare(b);
+		});
+		return labels;
+	}
+
+	formatWeightLabel(raw) {
+		const s = String(raw == null ? '' : raw).trim();
+		if (!s) return null;
+		const map = {
+			'100': 'Thin', '200': 'ExtraLight', '300': 'Light', '400': 'Regular',
+			'500': 'Medium', '600': 'SemiBold', '700': 'Bold', '800': 'ExtraBold', '900': 'Black',
+			'regular': 'Regular', 'normal': 'Regular', 'italic': 'Italic',
+			'thin': 'Thin', 'extralight': 'ExtraLight', 'ultralight': 'ExtraLight',
+			'light': 'Light', 'medium': 'Medium', 'semibold': 'SemiBold', 'demibold': 'SemiBold',
+			'bold': 'Bold', 'extrabold': 'ExtraBold', 'ultrabold': 'ExtraBold',
+			'black': 'Black', 'heavy': 'Black',
+		};
+		const key = s.toLowerCase().replace(/[\s_-]+/g, '');
+		if (map[key]) return map[key];
+		if (map[s]) return map[s];
+		// Preserve Local Font Access style names like "Bold Italic", "SemiBold"
+		return s.replace(/\b\w/g, (c) => c.toUpperCase()).replace(/\bItalic\b/i, 'Italic');
 	}
 
 	async loadSystemFont(family) {

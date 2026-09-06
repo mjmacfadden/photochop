@@ -728,7 +728,27 @@ class GUI_tools_class {
 							}
 						}
 
-						this.show_action_attributes();
+						// Align must not rebuild the options bar (rebuilding Mode from a stale
+						// default was flipping Paragraph → Point). Button pressed state is enough.
+						if (k !== 'halign') {
+							this.show_action_attributes();
+						} else {
+							try {
+								const textMod = this.tools_modules && this.tools_modules['text'] && this.tools_modules['text'].object;
+								const layer = (typeof config !== 'undefined') ? config.layer : null;
+								const isPoint = !(layer && layer.type === 'text' && layer.params
+									&& (layer.params.boundary === 'box'
+										|| String(layer.params.boundary).toLowerCase() === 'paragraph'));
+								if (textMod && typeof textMod.update_halign_justify_availability === 'function') {
+									textMod.update_halign_justify_availability(isPoint);
+								}
+								// Keep Mode select label in sync without a full rebuild
+								const modeSelect = document.getElementById('boundary');
+								if (modeSelect && actionData.attributes.boundary) {
+									modeSelect.value = actionData.attributes.boundary.value;
+								}
+							} catch (e) { /* ignore */ }
+						}
 					});
 
 					buttonGroup.appendChild(btn);
