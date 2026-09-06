@@ -26,6 +26,7 @@ The options bar **Weight** select lists variants exposed by Local Font Access (`
 
 ## Select-transform Size sync
 - **Size UI lives only on the Type/Text tool options bar** — do not add Size to the Select/transform bar.
-- Point-text transform via Select still calls `_sync_size_attribute`, which always writes `config.TOOLS` text `attributes.size` (lookup by tool name `text`, not the active Select tool).
-- Live DOM update of `#action_attributes .item.size` only when that node exists (Type tool active). When Type is not active, TOOLS is still updated so the next Type options-bar mount shows the baked/current size.
+- **Contract:** after point-text resize bake, `span meta.size` === `layer.params.size` === `config.TOOLS` text `attributes.size` (≤2 dp).
+- Point-text transform via Select calls `_sync_size_attribute` / `sync_size_from_layer` (lookup tool name `text`, not the active Select tool).
+- Live DOM update uses `uiNumberInput('set_value')` on `#action_attributes .item.size` only when Type bar is mounted. When Type is not active, TOOLS + `params.size` are still updated so Select→Type shows the baked size with no extra click.
 

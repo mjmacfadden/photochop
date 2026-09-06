@@ -411,6 +411,17 @@ class Select_tool_class extends Base_tools_class {
 				await app.State.do_action(
 					new app.Actions.Bundle_action('resize_layer', 'Resize Layer', resize_actions)
 				);
+				// Ensure Type TOOLS + params.size match baked spans (Size UI only on Type).
+				if (resizingPointText && config.layer && config.layer.type === 'text') {
+					try {
+						const textTool = app.GUI && app.GUI.GUI_tools && app.GUI.GUI_tools.tools_modules
+							&& app.GUI.GUI_tools.tools_modules['text']
+							&& app.GUI.GUI_tools.tools_modules['text'].object;
+						if (textTool && typeof textTool.sync_size_from_layer === 'function') {
+							textTool.sync_size_from_layer(config.layer);
+						}
+					} catch (e) { /* ignore */ }
+				}
 			} else if (resizingPointText) {
 				// No net size change — still clear the drag snapshot
 				try {

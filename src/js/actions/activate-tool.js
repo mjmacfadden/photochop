@@ -111,9 +111,18 @@ export class Activate_tool_action extends Base_action {
 					}
 					textTool.focused = false;
 					if (config.layer && config.layer.type === 'text') {
+						// After Select point-text resize, Size must come from baked span meta
+						// (not a stale TOOLS default) before/after the options bar rebuild.
+						if (typeof textTool.sync_size_from_layer === 'function') {
+							textTool.sync_size_from_layer(config.layer);
+						}
 						const editor = textTool.get_editor(config.layer);
 						if (editor) {
 							textTool.update_tool_attributes(config.layer, editor);
+						}
+						// Re-assert Size after update_tool_attributes (selection meta can miss).
+						if (typeof textTool.sync_size_from_layer === 'function') {
+							textTool.sync_size_from_layer(config.layer);
 						}
 					}
 				}

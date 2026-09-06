@@ -128,7 +128,9 @@ export class Update_layer_action extends Base_action {
 							textTool.focusedX = this.reference_layer.x;
 							textTool.focusedY = this.reference_layer.y;
 							if (typeof textTool.sync_text_tool_attributes_from_layer === 'function') {
-								textTool.sync_text_tool_attributes_from_layer(this.reference_layer);
+								// forceSize when span data changed (point-text bake) so Type Size updates too.
+								const dataChanged = ('data' in (this.settings || {})) || ('data' in (this.old_settings || {}));
+								textTool.sync_text_tool_attributes_from_layer(this.reference_layer, { forceSize: dataChanged });
 								if (!textTool._params_ui_active && app.GUI && app.GUI.GUI_tools && typeof app.GUI.GUI_tools.show_action_attributes === 'function') {
 									app.GUI.GUI_tools.show_action_attributes();
 								}
@@ -202,7 +204,8 @@ export class Update_layer_action extends Base_action {
 								textTool.focusedX = this.reference_layer.x;
 								textTool.focusedY = this.reference_layer.y;
 								if (typeof textTool.sync_text_tool_attributes_from_layer === 'function') {
-									textTool.sync_text_tool_attributes_from_layer(this.reference_layer);
+									const dataChanged = ('data' in (this.settings || {})) || ('data' in (this.old_settings || {}));
+									textTool.sync_text_tool_attributes_from_layer(this.reference_layer, { forceSize: dataChanged });
 									if (!textTool._params_ui_active && app.GUI && app.GUI.GUI_tools && typeof app.GUI.GUI_tools.show_action_attributes === 'function') {
 										app.GUI.GUI_tools.show_action_attributes();
 									}

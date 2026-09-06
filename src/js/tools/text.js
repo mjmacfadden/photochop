@@ -3591,6 +3591,11 @@ class Text_class extends Base_tools_class {
 						...(wasDynamic ? [] : [new app.Actions.Set_selection_action(nextX, nextY, nextW, nextH)])
 					])
 				);
+				// Update_layer skips Size sync while Type is active — re-assert from baked spans.
+				if (wasDynamic && config.layer) {
+					this.sync_size_from_layer(config.layer);
+					if (this.GUI_tools) this.GUI_tools.show_action_attributes();
+				}
 			}
 		}
 		else if (this.creating) {
@@ -4169,7 +4174,7 @@ class Text_class extends Base_tools_class {
 		return returnValue;
 	}
 
-	sync_text_tool_attributes_from_layer(layer) {
+	sync_text_tool_attributes_from_layer(layer, options = {}) {
 		if (!layer || layer.type !== 'text' || !layer.params) return;
 		try {
 			// Prefer the Text tool entry in config.TOOLS — action_data() is the *active* tool
@@ -4192,21 +4197,44 @@ class Text_class extends Base_tools_class {
 				// Always drive Mode from layer params — never leave a stale Point default.
 				toolAttributes.boundary.value = isPoint ? 'Point' : 'Paragraph';
 			}
-			// When Select (or any non-Text tool) is active, push baked span size into
-			// Text tool TOOLS attributes.size (DOM Size only updates if Type bar is up).
-			// Skip while Text is active so we do not clobber editor-driven Size
-			// (update_tool_attributes owns that path).
+			// Size contract: after point-text resize, span meta.size, layer.params.size, and
+			// Text-tool attributes.size must all match (≤2 dp). Size UI lives only on Type.
+			// When Select (or any non-Text tool) is active — or forceSize — push baked span
+			// size into TOOLS (+ DOM if Type bar is mounted). Skip while Text is actively
+			// driving Size from the editor selection unless forceSize (activate / post-bake).
 			const activeIsText = config.TOOL && config.TOOL.name === 'text';
-			if (!activeIsText) {
+			if (!activeIsText || options.forceSize) {
+				this.sync_size_from_layer(layer);
+			} else {
+				// Still keep params.size mirrored for the next Select→Type switch.
 				try {
 					const span0 = layer.data && layer.data[0] && layer.data[0][0] ? layer.data[0][0] : null;
 					const size = (span0 && span0.meta && span0.meta.size != null) ? Number(span0.meta.size) : null;
 					if (size != null && isFinite(size)) {
-						this._sync_size_attribute(size);
+						layer.params.size = Math.round(size * 100) / 100;
 					}
 				} catch (e2) { /* ignore */ }
 			}
 			this.update_halign_justify_availability(isPoint);
+		} catch (e) { /* ignore */ }
+	}
+
+	/**
+	 * Push baked/current font size from the layer into params + Type TOOLS attrs + Size DOM.
+	 * Contract: span meta.size === layer.params.size === TOOLS text attributes.size (≤2 dp).
+	 * Size control lives only on the Type tool; Select transform must still update these so
+	 * switching to Type (or a live Type bar) shows the post-resize size without an extra click.
+	 */
+	sync_size_from_layer(layer) {
+		if (!layer || layer.type !== 'text') return;
+		try {
+			const span0 = layer.data && layer.data[0] && layer.data[0][0] ? layer.data[0][0] : null;
+			let size = (span0 && span0.meta && span0.meta.size != null) ? Number(span0.meta.size) : null;
+			if ((size == null || !isFinite(size)) && layer.params && layer.params.size != null) {
+				size = typeof layer.params.size === 'object' ? Number(layer.params.size.value) : Number(layer.params.size);
+			}
+			if (size == null || !isFinite(size)) return;
+			this._sync_size_attribute(size, layer);
 		} catch (e) { /* ignore */ }
 	}
 
@@ -4233,7 +4261,19 @@ class Text_class extends Base_tools_class {
 			const meta = editor.document.get_meta_range(editor.selection.start.line, editor.selection.start.character, editor.selection.end.line, editor.selection.end.character);
 			const toolAttributes = this.GUI_tools.action_data().attributes;
 			toolAttributes.font.value = meta.family.length === 1 ? meta.family[0] : '';
-			const sizeVal = meta.size.length === 1 ? meta.size[0] : parseFloat(null);
+			let sizeVal = meta.size.length === 1 ? meta.size[0] : parseFloat(null);
+			// Selection meta can miss after Select point-text bake; fall back to span / params.
+			if (sizeVal == null || !isFinite(Number(sizeVal))) {
+				const span0 = layer.data && layer.data[0] && layer.data[0][0] ? layer.data[0][0] : null;
+				if (span0 && span0.meta && span0.meta.size != null) sizeVal = Number(span0.meta.size);
+				else if (layer.params.size != null) {
+					sizeVal = typeof layer.params.size === 'object' ? Number(layer.params.size.value) : Number(layer.params.size);
+				}
+			}
+			if (sizeVal != null && isFinite(Number(sizeVal))) {
+				sizeVal = Math.round(Number(sizeVal) * 100) / 100;
+				layer.params.size = sizeVal;
+			}
 			if (toolAttributes.size && typeof toolAttributes.size === 'object') {
 				toolAttributes.size.value = sizeVal;
 			} else {
@@ -4382,31 +4422,41 @@ class Text_class extends Base_tools_class {
 			const span0 = snap && snap[0] && snap[0][0] ? snap[0][0] : null;
 			const baseSize = (span0 && span0.meta && span0.meta.size != null) ? Number(span0.meta.size) : null;
 			if (baseSize != null && isFinite(baseSize)) {
-				this._sync_size_attribute(baseSize * this._point_resize_last_scale);
+				this._sync_size_attribute(baseSize * this._point_resize_last_scale, layer);
 			}
 		} catch (e) { /* ignore */ }
 		return null;
 	}
 
-	_sync_size_attribute(size) {
+	_sync_size_attribute(size, layer = null) {
 		if (size == null || !isFinite(size)) return;
 		const rounded = Math.round(Number(size) * 100) / 100;
 		try {
-			// Always update Text/Type tool attrs in config.TOOLS — never the active Select tool.
-			// Select options bar must not gain a Size control; Size lives only on the Type tool bar.
-			// Writing TOOLS here means Select→Type switch mounts Size with the baked/current value.
+			// CONTRACT (point-text resize / Type Size):
+			//   span meta.size === layer.params.size === config.TOOLS[text].attributes.size
+			//   (rounded ≤2 dp). Size UI is ONLY on the Type tool options bar — never Select.
+			//   Select/any transform must still write TOOLS (+ params) so Select→Type mounts
+			//   the baked size; when Type bar is up, also push uiNumberInput set_value.
+			if (layer) {
+				if (!layer.params) layer.params = {};
+				layer.params.size = rounded;
+			}
 			for (const tool of (config.TOOLS || [])) {
-				if (tool.name === 'text' && tool.attributes && tool.attributes.size) {
+				if (tool.name === 'text' && tool.attributes && tool.attributes.size != null) {
 					if (typeof tool.attributes.size === 'object') tool.attributes.size.value = rounded;
 					else tool.attributes.size = rounded;
 				}
 			}
-			// Live DOM update only when Type tool options bar is mounted (.item.size exists)
-			const $size = (typeof $ !== 'undefined') ? $('#action_attributes .item.size .ui_number_input') : null;
+			// Live DOM: prefer uiNumberInput API (widget holds internal state; attr alone is ignored)
+			const $size = (typeof $ !== 'undefined')
+				? $('#action_attributes .item.size .ui_number_input, #action_attributes #size.ui_number_input')
+				: null;
 			if ($size && $size.length && typeof $size.uiNumberInput === 'function') {
 				try { $size.uiNumberInput('set_value', rounded); } catch (e) { /* ignore */ }
 			} else {
-				const input = document.querySelector('#action_attributes .item.size input, #action_attributes #size');
+				const input = document.querySelector(
+					'#action_attributes .item.size input, #action_attributes #size_input, #action_attributes #size input'
+				);
 				if (input) {
 					input.value = String(rounded);
 					input.setAttribute('value', String(rounded));
@@ -4447,7 +4497,8 @@ class Text_class extends Base_tools_class {
 		}
 
 		if (lines && lines[0] && lines[0][0] && lines[0][0].meta && lines[0][0].meta.size != null) {
-			this._sync_size_attribute(lines[0][0].meta.size);
+			// Mirror into params + TOOLS + Type Size DOM (contract in _sync_size_attribute).
+			this._sync_size_attribute(lines[0][0].meta.size, layer);
 		}
 
 		// Fit bounds to glyphs so transform does not leave pad or clip.
