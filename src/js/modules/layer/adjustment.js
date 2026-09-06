@@ -1,6 +1,5 @@
 import app from './../../app.js';
 import config from './../../config.js';
-import Dialog_class from './../../libs/popup.js';
 import Base_layers_class from './../../core/base-layers.js';
 import Helper_class from './../../libs/helpers.js';
 import alertify from './../../../../node_modules/alertifyjs/build/alertify.min.js';
@@ -8,7 +7,6 @@ import alertify from './../../../../node_modules/alertifyjs/build/alertify.min.j
 class Layer_adjustment_class {
 
 	constructor() {
-		this.POP = new Dialog_class();
 		this.Base_layers = new Base_layers_class();
 		this.Helper = new Helper_class();
 
@@ -256,51 +254,22 @@ class Layer_adjustment_class {
 			this.Base_layers.select(layer.id);
 		}
 
-		// Properties panel is the source of truth when available.
-		// Modal is only used when explicitly requested (force_modal) or if the
-		// Properties GUI is not mounted.
-		const prefer_properties = options.force_modal !== true;
-		if (prefer_properties && app.GUI && app.GUI.GUI_properties
+		// Properties panel is the only UI for adjustment settings (create + edit).
+		// No modal/popup for adjustments. `force_modal` is accepted for API
+		// compatibility but ignored — popups for adjustments are retired.
+		void options.force_modal;
+
+		if (app.GUI && app.GUI.GUI_properties
 			&& typeof app.GUI.GUI_properties.show_for_layer === 'function') {
 			app.GUI.GUI_properties.show_for_layer(layer.id);
 			return;
 		}
 
-		const normType = this.normalize_type(layer.adjustment_type);
-		const conf = this.get_config(normType);
-		const initialParams = JSON.parse(JSON.stringify(layer.params || conf.default_params));
-
-		const dialogParams = conf.params.map(p => ({
-			...p,
-			value: (initialParams && initialParams[p.name] !== undefined) ? initialParams[p.name] : p.value
-		}));
-
-		const _this = this;
-		const settings = {
-			title: conf.title,
-			preview: false,
-			params: dialogParams,
-			on_change: function (params) {
-				layer.params = { ...params };
-				_this.Base_layers.invalidate({ document: true });
-				_this.Base_layers.render(true);
-			},
-			on_finish: function (params) {
-				layer.params = initialParams;
-				app.State.do_action(
-					new app.Actions.Update_layer_action(layer.id, {
-						params: { ...params }
-					})
-				);
-			},
-			on_cancel: function () {
-				layer.params = initialParams;
-				_this.Base_layers.invalidate({ document: true });
-				_this.Base_layers.render(true);
-			}
-		};
-
-		this.POP.show(settings);
+		// Properties GUI not mounted yet — still ensure the Adjustments block
+		// / Properties tab is visible if the GUI helpers exist.
+		if (app.GUI && typeof app.GUI.activate_adjustments_tab === 'function') {
+			app.GUI.activate_adjustments_tab('properties');
+		}
 	}
 
 }

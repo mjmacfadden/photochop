@@ -235,6 +235,8 @@ class GUI_properties_class {
 
 	/**
 	 * Focus Properties tab and refresh controls for the given (or current) layer.
+	 * Also unhides the Adjustments sidebar block / wrapper if collapsed.
+	 * This is the only UI path for adjustment create + edit/select.
 	 */
 	show_for_layer(layer_id) {
 		if (layer_id != null && (!config.layer || config.layer.id !== layer_id)) {
