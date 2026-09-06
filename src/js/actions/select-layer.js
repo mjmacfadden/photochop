@@ -109,7 +109,9 @@ export class Select_layer_action extends Base_action {
 
 	/**
 	 * Selecting an adjustment focuses Properties (auto-shows panel if hidden).
-	 * Non-adjustments only refresh the panel content (placeholder).
+	 * Text layers only refresh Properties content (Type controls if that tab is
+	 * already open / later opened) — do NOT auto-show for Type tool / text select.
+	 * Other layers refresh to the placeholder.
 	 */
 	_sync_properties_panel() {
 		const layer = config.layer;
