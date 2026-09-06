@@ -3511,10 +3511,9 @@ class Text_class extends Base_tools_class {
 
 	async mouseup(e) {
 		var mouse = this.get_mouse_info(e);
-		if (mouse.click_valid == false) {
-			this.resizing = false;
-			this.selecting = false;
-			this.creating = false;
+		// pointerup clears click_valid before mouseup; do not drop in-progress resize
+		// (would leave geometric scale_x/y unbaked and Size stuck at the old value).
+		if (mouse.click_valid == false && !this.resizing && !this.selecting && !this.creating) {
 			return;
 		}
 		const editor = this.get_editor(this.layer);

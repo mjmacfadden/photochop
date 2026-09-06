@@ -145,7 +145,8 @@ class Select_tool_class extends Base_tools_class {
 		var mouse = this.get_mouse_info(event);
 		if (config.TOOL.name != this.name)
 			return;
-		if (mouse.click_valid == false) {
+		// Same pointerup click_valid trap as mouseup — allow in-progress resize/move.
+		if (mouse.click_valid == false && !this.resizing && !this.moving) {
 			return;
 		}
 
@@ -312,7 +313,11 @@ class Select_tool_class extends Base_tools_class {
 
 	async mouseup(e) {
 		var mouse = this.get_mouse_info(e);
-		if (mouse.click_valid == false || config.mouse_lock === true) {
+		// Base_tools set_mouse_info() clears config.mouse.click_valid on pointerup *before*
+		// tools see mouseup. An in-progress Move resize/move was already validated on
+		// mousedown — must still run commit (point-text bake via commit_point_text_resize).
+		const in_progress = this.resizing || this.moving;
+		if ((!in_progress && mouse.click_valid == false) || config.mouse_lock === true) {
 			return;
 		}
 
