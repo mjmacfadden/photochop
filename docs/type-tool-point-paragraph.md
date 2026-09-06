@@ -25,7 +25,7 @@ The options bar **Weight** select lists variants exposed by Local Font Access (`
 - **Weight list for multi-face families** must enumerate Local Font Access styles + Google/user catalog variants (e.g. Roboto Thin…Black), not a single Regular fallback.
 
 ## Select-transform Size sync
-- Select options bar shows **Size** when a text layer is selected (same `.item.size` control Text uses).
-- Point-text transform drag calls `_sync_size_attribute` so Size updates live (~2 dp) and after bake.
-- `config.TOOLS` text `attributes.size` is always updated, so switching to the Text tool shows the baked size immediately.
+- **Size UI lives only on the Type/Text tool options bar** — do not add Size to the Select/transform bar.
+- Point-text transform via Select still calls `_sync_size_attribute`, which always writes `config.TOOLS` text `attributes.size` (lookup by tool name `text`, not the active Select tool).
+- Live DOM update of `#action_attributes .item.size` only when that node exists (Type tool active). When Type is not active, TOOLS is still updated so the next Type options-bar mount shows the baked/current size.
 

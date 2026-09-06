@@ -4193,8 +4193,9 @@ class Text_class extends Base_tools_class {
 				toolAttributes.boundary.value = isPoint ? 'Point' : 'Paragraph';
 			}
 			// When Select (or any non-Text tool) is active, push baked span size into
-			// TOOLS + the visible Size control. Skip while Text is active so we do not
-			// clobber editor-driven Size (update_tool_attributes owns that path).
+			// Text tool TOOLS attributes.size (DOM Size only updates if Type bar is up).
+			// Skip while Text is active so we do not clobber editor-driven Size
+			// (update_tool_attributes owns that path).
 			const activeIsText = config.TOOL && config.TOOL.name === 'text';
 			if (!activeIsText) {
 				try {
@@ -4391,23 +4392,21 @@ class Text_class extends Base_tools_class {
 		if (size == null || !isFinite(size)) return;
 		const rounded = Math.round(Number(size) * 100) / 100;
 		try {
-			// Always update Text tool attrs in config.TOOLS (even when Select is active)
+			// Always update Text/Type tool attrs in config.TOOLS — never the active Select tool.
+			// Select options bar must not gain a Size control; Size lives only on the Type tool bar.
+			// Writing TOOLS here means Select→Type switch mounts Size with the baked/current value.
 			for (const tool of (config.TOOLS || [])) {
 				if (tool.name === 'text' && tool.attributes && tool.attributes.size) {
 					if (typeof tool.attributes.size === 'object') tool.attributes.size.value = rounded;
 					else tool.attributes.size = rounded;
 				}
 			}
-			// Live-update any visible options-bar Size field (Text tool bar OR Select+text Size)
-			const $size = (typeof $ !== 'undefined')
-				? $('#action_attributes .item.size .ui_number_input, #action_attributes #size.ui_number_input')
-				: null;
+			// Live DOM update only when Type tool options bar is mounted (.item.size exists)
+			const $size = (typeof $ !== 'undefined') ? $('#action_attributes .item.size .ui_number_input') : null;
 			if ($size && $size.length && typeof $size.uiNumberInput === 'function') {
 				try { $size.uiNumberInput('set_value', rounded); } catch (e) { /* ignore */ }
 			} else {
-				const input = document.querySelector(
-					'#action_attributes .item.size input, #action_attributes #size_input, #action_attributes #size'
-				);
+				const input = document.querySelector('#action_attributes .item.size input, #action_attributes #size');
 				if (input) {
 					input.value = String(rounded);
 					input.setAttribute('value', String(rounded));
