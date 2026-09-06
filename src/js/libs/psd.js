@@ -1314,7 +1314,7 @@ function build_psd_text_from_layer(layer) {
 	let justification = 'left';
 	if (halign === 'center') justification = 'center';
 	else if (halign === 'right') justification = 'right';
-	else if (halign === 'justify') justification = 'justifyLeft';
+	else if (halign === 'justify') justification = 'justify-left';
 
 	const w = Math.max(1, Math.round(layer.width || 1));
 	const h = Math.max(1, Math.round(layer.height || 1));
