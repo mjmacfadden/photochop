@@ -741,7 +741,7 @@ class GUI_tools_class {
 					try {
 						const textMod = this.tools_modules && this.tools_modules['text'] && this.tools_modules['text'].object;
 						const layer = (typeof config !== 'undefined') ? config.layer : null;
-						const isPoint = !(layer && layer.type === 'text' && layer.params && layer.params.boundary === 'box');
+						const isPoint = !(layer && layer.type === 'text' && layer.params && (layer.params.boundary === 'box' || String(layer.params.boundary).toLowerCase() === 'paragraph'));
 						if (textMod && typeof textMod.update_halign_justify_availability === 'function') {
 							textMod.update_halign_justify_availability(isPoint);
 						}
@@ -1042,16 +1042,40 @@ class GUI_tools_class {
 		const applyDimensions = (newW, newH) => {
 			if (!config.layer || newW <= 0 || newH <= 0) return;
 			const settings = { width: newW, height: newH };
-			if (config.layer.type === 'text' && config.layer.params && config.layer.params.boundary === 'dynamic') {
+			if (config.layer.type === 'text' && config.layer.params && config.layer.params.boundary !== 'box'
+				&& String(config.layer.params.boundary).toLowerCase() !== 'paragraph') {
 				try {
 					const textTool = this.tools_modules['text'] && this.tools_modules['text'].object;
-					if (textTool && typeof textTool.begin_point_text_resize === 'function') {
-						textTool.begin_point_text_resize(config.layer);
+					if (textTool && typeof textTool.commit_point_text_resize === 'function') {
+						const preData = config.layer.data ? JSON.parse(JSON.stringify(config.layer.data)) : null;
 						const preParams = JSON.parse(JSON.stringify(config.layer.params));
-						textTool.apply_point_text_resize(config.layer, newW, newH);
-						settings.params = JSON.parse(JSON.stringify(config.layer.params));
+						const preX = config.layer.x, preY = config.layer.y, preW = config.layer.width, preH = config.layer.height;
+						textTool.mousedownBounds = {
+							x: preX, y: preY, width: preW, height: preH,
+							boundary: config.layer.params.boundary || 'dynamic'
+						};
+						const committed = textTool.commit_point_text_resize(config.layer, newW, newH);
+						if (committed) {
+							settings.x = committed.x;
+							settings.y = committed.y;
+							settings.width = committed.width;
+							settings.height = committed.height;
+							settings.params = committed.params;
+							settings.data = committed.data;
+						}
+						// Restore pre-edit state for correct history old_settings
+						config.layer.x = preX;
+						config.layer.y = preY;
+						config.layer.width = preW;
+						config.layer.height = preH;
 						config.layer.params = preParams;
-						textTool.end_point_text_resize();
+						if (preData) {
+							config.layer.data = preData;
+							if (typeof textTool.get_editor === 'function') {
+								const ed = textTool.get_editor(config.layer);
+								if (ed && ed.set_lines) ed.set_lines(JSON.parse(JSON.stringify(preData)), true);
+							}
+						}
 					}
 				} catch (e) { /* ignore */ }
 			}
