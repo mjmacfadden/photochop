@@ -25,6 +25,12 @@ class Crop_class extends Base_tools_class {
 		};
 		this.is_moving_selection = false;
 		this.move_start = null;
+		// Straighten (Photoshop-like reference line while Crop is active)
+		this.straighten_mode = false;
+		this.straighten_line = null; // {x1,y1,x2,y2} while dragging
+		this.session_angle = 0; // cumulative degrees applied since activate
+		this.ui_angle = 0; // value shown in the Angle options-bar field
+		this._applying_angle_ui = false;
 		var sel_config = {
 			enable_background: false,
 			crop_shield: true,
@@ -40,6 +46,9 @@ class Crop_class extends Base_tools_class {
 			fixed_ratio: null,
 			data_function: function () {
 				return _this.selection;
+			},
+			after_draw: function (ctx) {
+				_this.draw_straighten_overlay(ctx);
 			},
 		};
 		this.mousedown_selection = null;
@@ -97,6 +106,40 @@ class Crop_class extends Base_tools_class {
 			return 'none';
 		}
 		return 'thirds';
+	}
+
+	is_straighten_armed() {
+		var params = this.getParams();
+		if (params.straighten && typeof params.straighten === 'object') {
+			return params.straighten.value === true;
+		}
+		return params.straighten === true || this.straighten_mode === true;
+	}
+
+	set_straighten_armed(armed) {
+		this.straighten_mode = !!armed;
+		var params = this.getParams();
+		if (params.straighten && typeof params.straighten === 'object') {
+			params.straighten.value = !!armed;
+		}
+		else if (params.straighten !== undefined) {
+			params.straighten = !!armed;
+		}
+		this.GUI_tools.show_action_attributes();
+	}
+
+	sync_angle_attribute(degrees) {
+		var params = this.getParams();
+		var rounded = Math.round(degrees * 10) / 10;
+		if (params.angle && typeof params.angle === 'object') {
+			params.angle.value = rounded;
+		}
+		else if (params.angle !== undefined) {
+			params.angle = rounded;
+		}
+		this._applying_angle_ui = true;
+		this.GUI_tools.show_action_attributes();
+		this._applying_angle_ui = false;
 	}
 
 	/**
@@ -157,6 +200,8 @@ class Crop_class extends Base_tools_class {
 		settings.crop_shield = true;
 		settings.border_style = 'crop_ps';
 		settings.handle_style = 'crop_ps';
+		// While drawing a straighten line, hide resize handles so they don't steal hits
+		settings.enable_controls = !this.is_straighten_armed();
 		config.need_render = true;
 	}
 
@@ -246,6 +291,248 @@ class Crop_class extends Base_tools_class {
 		return mx >= x && mx <= x + w && my >= y && my <= y + h;
 	}
 
+	/**
+	 * Correction angle (degrees) so the drawn line lands on the nearest axis
+	 * (horizontal or vertical) — Photoshop Crop Straighten behavior.
+	 */
+	line_to_straighten_angle(x1, y1, x2, y2) {
+		var dx = x2 - x1;
+		var dy = y2 - y1;
+		if (Math.abs(dx) < 0.0001 && Math.abs(dy) < 0.0001) {
+			return 0;
+		}
+		var a = Math.atan2(dy, dx) * 180 / Math.PI;
+		// Bring into (-90, 90]
+		while (a > 90) {
+			a -= 180;
+		}
+		while (a <= -90) {
+			a += 180;
+		}
+		if (Math.abs(a) > 45) {
+			// Closer to vertical
+			return (a > 0 ? 90 : -90) - a;
+		}
+		// Closer to horizontal
+		return -a;
+	}
+
+	draw_straighten_overlay(ctx) {
+		var line = this.straighten_line;
+		if (!line) {
+			return;
+		}
+		var zoom = config.ZOOM || 1;
+		ctx.save();
+		ctx.lineWidth = 1 / zoom;
+		ctx.strokeStyle = 'rgba(0, 0, 0, 0.55)';
+		ctx.beginPath();
+		ctx.moveTo(line.x1, line.y1);
+		ctx.lineTo(line.x2, line.y2);
+		ctx.stroke();
+		ctx.strokeStyle = 'rgba(255, 255, 255, 0.95)';
+		ctx.setLineDash([4 / zoom, 4 / zoom]);
+		ctx.beginPath();
+		ctx.moveTo(line.x1, line.y1);
+		ctx.lineTo(line.x2, line.y2);
+		ctx.stroke();
+		ctx.setLineDash([]);
+
+		// Endpoints
+		var r = 3 / zoom;
+		ctx.fillStyle = 'rgba(255, 255, 255, 0.95)';
+		ctx.strokeStyle = 'rgba(40, 40, 40, 0.85)';
+		ctx.beginPath();
+		ctx.arc(line.x1, line.y1, r, 0, Math.PI * 2);
+		ctx.fill();
+		ctx.stroke();
+		ctx.beginPath();
+		ctx.arc(line.x2, line.y2, r, 0, Math.PI * 2);
+		ctx.fill();
+		ctx.stroke();
+		ctx.restore();
+	}
+
+	/**
+	 * Trim fully transparent edges from a canvas. Returns {canvas, x, y}.
+	 */
+	trim_canvas_alpha(src) {
+		var ctx = src.getContext('2d');
+		var img = ctx.getImageData(0, 0, src.width, src.height);
+		var data = img.data;
+		var top = 0;
+		var left = 0;
+		var bottom = 0;
+		var right = 0;
+		var y;
+		var x;
+		var k;
+
+		main1:
+		for (y = 0; y < img.height; y++) {
+			for (x = 0; x < img.width; x++) {
+				k = (y * img.width + x) * 4;
+				if (data[k + 3] > 0) {
+					break main1;
+				}
+			}
+			top++;
+		}
+		main2:
+		for (x = 0; x < img.width; x++) {
+			for (y = 0; y < img.height; y++) {
+				k = (y * img.width + x) * 4;
+				if (data[k + 3] > 0) {
+					break main2;
+				}
+			}
+			left++;
+		}
+		main3:
+		for (y = img.height - 1; y >= 0; y--) {
+			for (x = img.width - 1; x >= 0; x--) {
+				k = (y * img.width + x) * 4;
+				if (data[k + 3] > 0) {
+					break main3;
+				}
+			}
+			bottom++;
+		}
+		main4:
+		for (x = img.width - 1; x >= 0; x--) {
+			for (y = img.height - 1; y >= 0; y--) {
+				k = (y * img.width + x) * 4;
+				if (data[k + 3] > 0) {
+					break main4;
+				}
+			}
+			right++;
+		}
+
+		var w = src.width - left - right;
+		var h = src.height - top - bottom;
+		if (w < 1 || h < 1 || (left === 0 && top === 0 && right === 0 && bottom === 0)) {
+			return { canvas: src, x: 0, y: 0 };
+		}
+		var out = document.createElement('canvas');
+		out.width = w;
+		out.height = h;
+		out.getContext('2d').drawImage(src, left, top, w, h, 0, 0, w, h);
+		return { canvas: out, x: left, y: top };
+	}
+
+	normalize_angle(deg) {
+		var a = deg % 360;
+		if (a < 0) {
+			a += 360;
+		}
+		return a;
+	}
+
+	/**
+	 * Rotate the whole document by angle_deg around the canvas center,
+	 * expand canvas to fit, bake image-layer pixels, re-fit crop.
+	 */
+	async apply_document_straighten(angle_deg, opts) {
+		opts = opts || {};
+		var angle = Number(angle_deg);
+		if (!isFinite(angle) || Math.abs(angle) < 0.001) {
+			return false;
+		}
+
+		var W = config.WIDTH;
+		var H = config.HEIGHT;
+		var rad = angle * Math.PI / 180;
+		var cos = Math.cos(rad);
+		var sin = Math.sin(rad);
+		var new_W = Math.max(1, Math.ceil(Math.abs(W * cos) + Math.abs(H * sin)));
+		var new_H = Math.max(1, Math.ceil(Math.abs(W * sin) + Math.abs(H * cos)));
+
+		var actions = [];
+		actions.push(new app.Actions.Prepare_canvas_action('undo'));
+
+		for (var i in config.layers) {
+			var layer = config.layers[i];
+			if (layer.type == null) {
+				continue;
+			}
+
+			if (layer.type === 'image' && layer.link) {
+				var canvas = document.createElement('canvas');
+				canvas.width = new_W;
+				canvas.height = new_H;
+				var ctx = canvas.getContext('2d');
+				ctx.translate(new_W / 2, new_H / 2);
+				ctx.rotate(rad);
+				ctx.translate(-W / 2, -H / 2);
+				// Draw current visual (position + existing layer.rotate)
+				this.Base_layers.render_object(ctx, layer);
+
+				var trimmed = this.trim_canvas_alpha(canvas);
+				actions.push(
+					new app.Actions.Update_layer_image_action(trimmed.canvas, layer.id)
+				);
+				actions.push(
+					new app.Actions.Update_layer_action(layer.id, {
+						x: trimmed.x,
+						y: trimmed.y,
+						width: trimmed.canvas.width,
+						height: trimmed.canvas.height,
+						width_original: trimmed.canvas.width,
+						height_original: trimmed.canvas.height,
+						rotate: 0,
+					})
+				);
+				continue;
+			}
+
+			// Vector / text / shapes: rotate around document center + add angle
+			if (layer.x != null && layer.y != null && layer.width != null && layer.height != null) {
+				var lcx = layer.x + layer.width / 2;
+				var lcy = layer.y + layer.height / 2;
+				var nlx = (lcx - W / 2) * cos - (lcy - H / 2) * sin + new_W / 2;
+				var nly = (lcx - W / 2) * sin + (lcy - H / 2) * cos + new_H / 2;
+				var update = {
+					x: Math.round(nlx - layer.width / 2),
+					y: Math.round(nly - layer.height / 2),
+				};
+				if (layer.rotate != null) {
+					update.rotate = this.normalize_angle((layer.rotate || 0) + angle);
+				}
+				actions.push(new app.Actions.Update_layer_action(layer.id, update));
+			}
+		}
+
+		actions.push(
+			new app.Actions.Update_config_action({
+				WIDTH: new_W,
+				HEIGHT: new_H,
+			})
+		);
+		actions.push(new app.Actions.Prepare_canvas_action('do'));
+
+		await app.State.do_action(
+			new app.Actions.Bundle_action('crop_straighten', 'Crop Straighten', actions)
+		);
+
+		this.session_angle = Math.round((this.session_angle + angle) * 10) / 10;
+		// Options bar: explicit ui_angle (manual field) or last delta (line straighten)
+		var display;
+		if (opts.ui_angle != null && isFinite(opts.ui_angle)) {
+			display = Math.round(Number(opts.ui_angle) * 10) / 10;
+		}
+		else {
+			display = Math.round(angle * 10) / 10;
+		}
+		display = Math.max(-45, Math.min(45, display));
+		this.ui_angle = display;
+		this.sync_angle_attribute(display);
+
+		this.sync_selection_settings();
+		this.apply_initial_crop();
+		return true;
+	}
+
 	mousedown(e) {
 		var mouse = this.get_mouse_info(e);
 		if (mouse.click_valid == false)
@@ -255,6 +542,18 @@ class Crop_class extends Base_tools_class {
 		this.mousedown_selection = JSON.parse(JSON.stringify(this.selection));
 		this.is_moving_selection = false;
 		this.move_start = null;
+
+		// Straighten: draw a reference line instead of creating/moving crop
+		if (this.is_straighten_armed()) {
+			this.straighten_line = {
+				x1: mouse.x,
+				y1: mouse.y,
+				x2: mouse.x,
+				y2: mouse.y,
+			};
+			config.need_render = true;
+			return;
+		}
 
 		// Hit test resize handles first (forces the lock synchronously - the
 		// global document pointerdown listener that normally does this runs
@@ -289,6 +588,14 @@ class Crop_class extends Base_tools_class {
 		if (e.type == 'mousedown' && mouse.click_valid == false) {
 			return;
 		}
+
+		if (this.straighten_line) {
+			this.straighten_line.x2 = mouse.x;
+			this.straighten_line.y2 = mouse.y;
+			config.need_render = true;
+			return;
+		}
+
 		if (this.Base_selection.mouse_lock !== null) {
 			return;
 		}
@@ -325,8 +632,34 @@ class Crop_class extends Base_tools_class {
 		this.Base_selection.set_selection(null, null, width, height);
 	}
 
-	mouseup(e) {
+	async mouseup(e) {
 		var mouse = this.get_mouse_info(e);
+
+		if (this.straighten_line) {
+			var line = this.straighten_line;
+			this.straighten_line = null;
+			if (mouse.click_valid == false) {
+				config.need_render = true;
+				return;
+			}
+			var len = Math.hypot(line.x2 - line.x1, line.y2 - line.y1);
+			if (len < 4) {
+				// Too short — cancel line, stay armed
+				config.need_render = true;
+				return;
+			}
+			var correction = this.line_to_straighten_angle(line.x1, line.y1, line.x2, line.y2);
+			// Disarm straighten mode after a successful line (PS-like one-shot)
+			this.set_straighten_armed(false);
+			this.sync_selection_settings();
+			if (Math.abs(correction) < 0.05) {
+				alertify.success('Already straight');
+				config.need_render = true;
+				return;
+			}
+			await this.apply_document_straighten(correction);
+			return;
+		}
 
 		if (mouse.click_valid == false) {
 			this.is_moving_selection = false;
@@ -415,12 +748,25 @@ class Crop_class extends Base_tools_class {
 		}
 		if (key === 'Escape') {
 			event.preventDefault();
+			if (this.straighten_line) {
+				this.straighten_line = null;
+				config.need_render = true;
+				return;
+			}
+			if (this.is_straighten_armed()) {
+				this.set_straighten_armed(false);
+				this.sync_selection_settings();
+				return;
+			}
 			this.cancel_selection();
 		}
 	}
 
 	dblclick(e) {
 		if (config.TOOL.name != this.name) {
+			return;
+		}
+		if (this.is_straighten_armed()) {
 			return;
 		}
 		var mouse = this.get_mouse_info(e);
@@ -444,7 +790,7 @@ class Crop_class extends Base_tools_class {
 	}
 
 	/**
-	 * Attribute changes: aspect / guides update settings; Commit Crop runs crop.
+	 * Attribute changes: aspect / guides / straighten / angle; Commit Crop runs crop.
 	 */
 	async on_params_update(data) {
 		var key = data && data.key;
@@ -458,13 +804,40 @@ class Crop_class extends Base_tools_class {
 			this.sync_selection_settings();
 			return;
 		}
+		if (key === 'straighten') {
+			this.straighten_mode = this.is_straighten_armed();
+			this.straighten_line = null;
+			this.sync_selection_settings();
+			if (this.straighten_mode) {
+				alertify.message('Draw a line along the horizon or edge to straighten');
+			}
+			return;
+		}
+		if (key === 'angle') {
+			if (this._applying_angle_ui) {
+				return;
+			}
+			var params = this.getParams();
+			var target = (params.angle && typeof params.angle === 'object')
+				? Number(params.angle.value)
+				: Number(params.angle);
+			if (!isFinite(target)) {
+				return;
+			}
+			var delta = target - this.ui_angle;
+			if (Math.abs(delta) < 0.001) {
+				return;
+			}
+			await this.apply_document_straighten(delta, { ui_angle: target });
+			return;
+		}
 
 		// Commit Crop button (or legacy crop toggle)
 		if (key && key !== 'commit_crop' && key !== 'crop') {
 			return;
 		}
 
-		var params = this.getParams();
+		params = this.getParams();
 		if (params.commit_crop !== undefined) {
 			params.commit_crop = true;
 		}
@@ -598,17 +971,33 @@ class Crop_class extends Base_tools_class {
 		);
 
 		// Stay on Crop with a fresh full-document rect ready to adjust
+		this.session_angle = 0;
+		this.ui_angle = 0;
+		this.sync_angle_attribute(0);
 		this.sync_selection_settings();
 		this.apply_initial_crop();
 	}
 
 	on_activate() {
+		this.straighten_line = null;
+		this.straighten_mode = false;
+		this.session_angle = 0;
+		this.ui_angle = 0;
+		var params = this.getParams();
+		if (params.straighten && typeof params.straighten === 'object') {
+			params.straighten.value = false;
+		}
+		if (params.angle && typeof params.angle === 'object') {
+			params.angle.value = 0;
+		}
 		this.sync_selection_settings();
 		this.apply_initial_crop();
 		return [];
 	}
 
 	on_leave() {
+		this.straighten_line = null;
+		this.straighten_mode = false;
 		return [
 			new app.Actions.Reset_selection_action(this.selection)
 		];

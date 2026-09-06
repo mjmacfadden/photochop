@@ -479,6 +479,11 @@ class Base_selection_class {
 			}
 		}
 
+		// Optional tool overlay (e.g. crop straighten reference line) in doc space
+		if (typeof settings.after_draw === 'function') {
+			settings.after_draw(this.ctx, settings);
+		}
+
 		//restore
 		this.ctx.restore();
 		if (this.ctx != main_ctx) {

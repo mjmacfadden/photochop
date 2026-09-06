@@ -683,6 +683,16 @@ config.TOOLS = [
 				value: 'Rule of Thirds',
 				values: ['Rule of Thirds', 'Grid', 'Diagonal', 'None'],
 			},
+			straighten: {
+				value: false,
+				icon: 'rotate.svg',
+			},
+			angle: {
+				value: 0,
+				min: -45,
+				max: 45,
+				step: 0.1,
+			},
 			commit_crop: true,
 		},
 	},
