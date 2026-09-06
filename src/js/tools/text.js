@@ -4027,15 +4027,19 @@ class Text_class extends Base_tools_class {
 							});
 							editor.calculate_text_placement(ctx, measureLayer);
 						}
-						const sx = (nextParams.scale_x != null) ? nextParams.scale_x : 1;
-						const layoutW = editor && editor.textBoundaryWidth
-							? (editor.textBoundaryWidth * sx + 1)
-							: Math.max(1, Number(config.layer.width) || 1);
-						const visualW = Math.max(1, layoutW);
+						const sx = (nextParams.scale_x != null) ? Number(nextParams.scale_x) : 1;
+						const sy = (nextParams.scale_y != null) ? Number(nextParams.scale_y) : 1;
+						// Prefer live layout width; fall back to layer box so unloaded fonts
+						// don't under-shift (tiny measured width → almost no glyph move).
+						const measuredW = (editor && editor.textBoundaryWidth)
+							? (editor.textBoundaryWidth * (isFinite(sx) ? sx : 1) + 1)
+							: 0;
+						const layerW = Math.max(1, Number(config.layer.width) || 1);
+						const visualW = Math.max(1, measuredW || layerW, layerW);
 						if (nextParams.anchor_x == null) {
 							const prev = normalize_halign(config.layer.params.halign);
-							if (prev === 'center') nextParams.anchor_x = config.layer.x + (Number(config.layer.width) || visualW) / 2;
-							else if (prev === 'right') nextParams.anchor_x = config.layer.x + (Number(config.layer.width) || visualW);
+							if (prev === 'center') nextParams.anchor_x = config.layer.x + layerW / 2;
+							else if (prev === 'right') nextParams.anchor_x = config.layer.x + layerW;
 							else nextParams.anchor_x = config.layer.x;
 						}
 						if (nextParams.anchor_y == null) nextParams.anchor_y = config.layer.y;
@@ -4047,14 +4051,19 @@ class Text_class extends Base_tools_class {
 						updates.x = newX;
 						updates.width = Math.max(1, Math.ceil(visualW));
 						if (editor && editor.textBoundaryHeight) {
-							const sy = (nextParams.scale_y != null) ? nextParams.scale_y : 1;
-							updates.height = Math.max(1, Math.ceil(editor.textBoundaryHeight * sy + 1));
+							updates.height = Math.max(1, Math.ceil(editor.textBoundaryHeight * (isFinite(sy) ? sy : 1) + 1));
 						}
 					}
 					// Paragraph (box): ONLY halign changes. Never convert to point / never touch frame.
 					nextParams.boundary = lockedBoundary;
 
-					// Apply immediately so render sees new halign before history settles.
+					// Snapshot pre-update state so Update_layer records correct history old_settings.
+					const preParams = JSON.parse(JSON.stringify(config.layer.params));
+					const preX = config.layer.x;
+					const preW = config.layer.width;
+					const preH = config.layer.height;
+
+					// Apply for immediate paint, then revert for history capture.
 					config.layer.params = nextParams;
 					if (updates.x != null) {
 						config.layer.x = updates.x;
@@ -4067,9 +4076,24 @@ class Text_class extends Base_tools_class {
 						editor.calculate_text_placement(ctx, config.layer);
 					}
 					config.need_render_changed_params = true;
-					app.State.do_action(
-						new app.Actions.Update_layer_action(config.layer.id, updates)
-					);
+
+					// Revert so Update_layer_action stores true previous values, then re-apply via action.
+					config.layer.params = preParams;
+					config.layer.x = preX;
+					config.layer.width = preW;
+					config.layer.height = preH;
+
+					// Prevent Update_layer from rebuilding the options bar (Mode flip risk).
+					const prevParamsUi = this._params_ui_active;
+					this._params_ui_active = true;
+					try {
+						app.State.do_action(
+							new app.Actions.Update_layer_action(config.layer.id, updates)
+						);
+					} finally {
+						this._params_ui_active = prevParamsUi;
+					}
+					this.sync_text_tool_attributes_from_layer(config.layer);
 					this.Base_layers.render();
 					if (this.focused) this.focus_textarea();
 				}

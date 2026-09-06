@@ -432,8 +432,8 @@ class GUI_tools_class {
 
 		let itemDom;
 		let currentButtonGroup = null;
-		for (var k in attributes) {
-			var item = attributes[k];
+		for (const k in attributes) {
+			const item = attributes[k];
 
 			var title = k[0].toUpperCase() + k.slice(1);
 			title = title.replace("_", " ");
@@ -704,12 +704,14 @@ class GUI_tools_class {
 						btn.textContent = valStr;
 					}
 
+					// Capture per-iteration key (avoid var-k loop closure sending wrong attr key)
+					const attrKey = k;
 					btn.addEventListener('click', () => {
 						const actionData = this.action_data();
-						if (typeof actionData.attributes[k] === 'object') {
-							actionData.attributes[k].value = val;
+						if (typeof actionData.attributes[attrKey] === 'object') {
+							actionData.attributes[attrKey].value = val;
 						} else {
-							actionData.attributes[k] = val;
+							actionData.attributes[attrKey] = val;
 						}
 
 						const groupButtons = buttonGroup.querySelectorAll('button');
@@ -720,7 +722,7 @@ class GUI_tools_class {
 						if (actionData.on_update != undefined) {
 							var moduleKey = actionData.name;
 							var functionName = actionData.on_update;
-							const result = this.tools_modules[moduleKey].object[functionName]({ key: k, value: val });
+							const result = this.tools_modules[moduleKey].object[functionName]({ key: attrKey, value: val });
 							if (result && result.new_values) {
 								for (let key in result.new_values) {
 									actionData.attributes[key].value = result.new_values[key];
@@ -730,7 +732,7 @@ class GUI_tools_class {
 
 						// Align must not rebuild the options bar (rebuilding Mode from a stale
 						// default was flipping Paragraph → Point). Button pressed state is enough.
-						if (k !== 'halign') {
+						if (attrKey !== 'halign') {
 							this.show_action_attributes();
 						} else {
 							try {
@@ -742,7 +744,10 @@ class GUI_tools_class {
 								if (textMod && typeof textMod.update_halign_justify_availability === 'function') {
 									textMod.update_halign_justify_availability(isPoint);
 								}
-								// Keep Mode select label in sync without a full rebuild
+								// Drive Mode from the layer, never from a corrupted attribute
+								if (actionData.attributes.boundary && layer && layer.type === 'text' && layer.params) {
+									actionData.attributes.boundary.value = isPoint ? 'Point' : 'Paragraph';
+								}
 								const modeSelect = document.getElementById('boundary');
 								if (modeSelect && actionData.attributes.boundary) {
 									modeSelect.value = actionData.attributes.boundary.value;

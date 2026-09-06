@@ -55,9 +55,9 @@ Photoshop rule: **anchor stays fixed; glyphs move** so the left / center / right
 - Align must produce a **visible** change whenever the line is narrower than the box.
 
 ### 2.3 Acceptance — Align
-- [ ] Point: L/C/R visibly repositions text around a fixed anchor; Mode stays Point.
-- [ ] Box: L/C/R/J visibly changes in-box layout; Mode stays Paragraph; frame size unchanged.
-- [ ] Justify control disabled (and ignored) for point text; enabled for boxes.
+- [x] Point: L/C/R visibly repositions text around a fixed anchor; Mode stays Point.
+- [x] Box: L/C/R/J visibly changes in-box layout; Mode stays Paragraph; frame size unchanged.
+- [x] Justify control disabled (and ignored) for point text; enabled for boxes.
 
 ---
 
