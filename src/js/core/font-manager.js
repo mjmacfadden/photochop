@@ -315,7 +315,7 @@ class Font_manager_class {
 			if (raw == null) return;
 			const label = this.formatWeightLabel(raw);
 			if (!label) return;
-			const key = label.toLowerCase();
+			const key = this.weightLabelBase(label).toLowerCase().replace(/[\s_-]+/g, '');
 			if (seen.has(key)) return;
 			seen.add(key);
 			labels.push(label);
@@ -347,17 +347,24 @@ class Font_manager_class {
 			}
 		}
 		if (labels.length === 0) {
-			return ['Regular', 'Bold'];
+			return ['Regular (400)', 'Bold (700)'];
 		}
 		const order = ['thin','extralight','ultralight','light','regular','normal','medium','semibold','demibold','bold','extrabold','ultrabold','black','heavy'];
 		labels.sort((a, b) => {
-			const ka = a.toLowerCase().replace(/[\s_-]+/g, '');
-			const kb = b.toLowerCase().replace(/[\s_-]+/g, '');
+			const strip = (x) => String(x).replace(/\s*\(\d{2,4}\)\s*$/, '').toLowerCase().replace(/[\s_-]+/g, '');
+			const ka = strip(a);
+			const kb = strip(b);
 			const ia = order.findIndex((o) => ka === o || ka.startsWith(o));
 			const ib = order.findIndex((o) => kb === o || kb.startsWith(o));
-			const na = parseInt(a, 10);
-			const nb = parseInt(b, 10);
-			if (!isNaN(na) && !isNaN(nb)) return na - nb;
+			const numOf = (x) => {
+				const m = String(x).match(/\((\d{2,4})\)/);
+				if (m) return parseInt(m[1], 10);
+				const n = parseInt(x, 10);
+				return isNaN(n) ? null : n;
+			};
+			const na = numOf(a);
+			const nb = numOf(b);
+			if (na != null && nb != null) return na - nb;
 			if (ia >= 0 && ib >= 0) return ia - ib;
 			if (ia >= 0) return -1;
 			if (ib >= 0) return 1;
@@ -366,23 +373,57 @@ class Font_manager_class {
 		return labels;
 	}
 
+	/**
+		 * Friendly Weight dropdown label with CSS numeric weight, e.g. "Light (300)".
+		 * Light is 300 (not 100); Thin=100, ExtraLight=200, Regular=400, Medium=500,
+		 * SemiBold=600, Bold=700, ExtraBold=800, Black=900.
+		 */
 	formatWeightLabel(raw) {
 		const s = String(raw == null ? '' : raw).trim();
 		if (!s) return null;
-		const map = {
+		// Already formatted
+		if (/^.+\s\(\d{2,4}\)$/.test(s)) return s;
+		const nameMap = {
 			'100': 'Thin', '200': 'ExtraLight', '300': 'Light', '400': 'Regular',
 			'500': 'Medium', '600': 'SemiBold', '700': 'Bold', '800': 'ExtraBold', '900': 'Black',
-			'regular': 'Regular', 'normal': 'Regular', 'italic': 'Italic',
-			'thin': 'Thin', 'extralight': 'ExtraLight', 'ultralight': 'ExtraLight',
-			'light': 'Light', 'medium': 'Medium', 'semibold': 'SemiBold', 'demibold': 'SemiBold',
-			'bold': 'Bold', 'extrabold': 'ExtraBold', 'ultrabold': 'ExtraBold',
+			'regular': 'Regular', 'normal': 'Regular',
+			'thin': 'Thin', 'hairline': 'Thin',
+			'extralight': 'ExtraLight', 'ultralight': 'ExtraLight',
+			'light': 'Light', 'medium': 'Medium',
+			'semibold': 'SemiBold', 'demibold': 'SemiBold', 'semi': 'SemiBold',
+			'bold': 'Bold',
+			'extrabold': 'ExtraBold', 'ultrabold': 'ExtraBold',
 			'black': 'Black', 'heavy': 'Black',
 		};
-		const key = s.toLowerCase().replace(/[\s_-]+/g, '');
-		if (map[key]) return map[key];
-		if (map[s]) return map[s];
-		// Preserve Local Font Access style names like "Bold Italic", "SemiBold"
-		return s.replace(/\b\w/g, (c) => c.toUpperCase()).replace(/\bItalic\b/i, 'Italic');
+		const cssMap = {
+			'Thin': '100', 'ExtraLight': '200', 'Light': '300', 'Regular': '400',
+			'Medium': '500', 'SemiBold': '600', 'Bold': '700', 'ExtraBold': '800', 'Black': '900',
+		};
+		// Strip trailing (nnn) if re-formatting, and italic (Weight dropdown is upright-only)
+		let base = s.replace(/\s*\(\d{2,4}\)\s*$/, '').trim();
+		base = base.replace(/italic|oblique/ig, '').trim() || base;
+		const key = base.toLowerCase().replace(/[\s_-]+/g, '');
+		let name = nameMap[key] || nameMap[base];
+		if (!name && /^\d{2,4}$/.test(key)) name = nameMap[key];
+		if (!name) {
+			name = base.replace(/\b\w/g, (c) => c.toUpperCase()).replace(/\bItalic\b/i, '').trim();
+		}
+		if (!name) return null;
+		// Resolve CSS number: prefer explicit digits in raw, else canonical map, else styleNameToCssWeight
+		let num = null;
+		const paren = s.match(/\((\d{2,4})\)/);
+		const leading = base.match(/^(\d{2,4})$/);
+		if (paren) num = paren[1];
+		else if (leading) num = String(parseInt(leading[1], 10));
+		else if (cssMap[name]) num = cssMap[name];
+		else num = this.styleNameToCssWeight(name);
+		return name + ' (' + num + ')';
+	}
+
+	/** Strip " (400)" display suffix → "Regular" for Local Font Access matching. */
+	weightLabelBase(label) {
+		if (label == null) return '';
+		return String(label).replace(/\s*\(\d{2,4}\)\s*$/, '').trim();
 	}
 
 	async loadSystemFont(family) {
@@ -425,9 +466,44 @@ class Font_manager_class {
 	}
 
 
+
+	/** Map Local Font Access / dropdown style labels to CSS numeric font-weight (100–900). */
+	styleNameToCssWeight(styleName) {
+		if (styleName == null || styleName === '') return '400';
+		const s = String(styleName).trim();
+		const paren = s.match(/\((\d{2,4})\)/);
+		if (paren) return String(parseInt(paren[1], 10));
+		const base = s.replace(/\s*\(\d{2,4}\)\s*$/, '').trim();
+		const bareNum = base.match(/^(\d{2,4})$/);
+		if (bareNum) return String(parseInt(bareNum[1], 10));
+		const w = base.toLowerCase().replace(/[\s_-]+/g, '').replace(/italic|oblique/g, '');
+		if (!w || w === 'regular' || w === 'normal' || w === 'book' || w === 'roman') return '400';
+		if (w === 'thin' || w === 'hairline') return '100';
+		if (w === 'extralight' || w === 'ultralight') return '200';
+		if (w === 'light') return '300';
+		if (w === 'medium') return '500';
+		if (w === 'semibold' || w === 'demibold' || w === 'semi') return '600';
+		if (w === 'extrabold' || w === 'ultrabold') return '800';
+		if (w === 'black' || w === 'heavy' || w === 'heavyblack') return '900';
+		if (w === 'bold') return '700';
+		if (w.includes('extralight') || w.includes('ultralight')) return '200';
+		if (w.includes('thin') || w.includes('hairline')) return '100';
+		if (w.includes('light')) return '300';
+		if (w.includes('medium')) return '500';
+		if (w.includes('semibold') || w.includes('demibold')) return '600';
+		if (w.includes('extrabold') || w.includes('ultrabold')) return '800';
+		if (w.includes('black') || w.includes('heavy')) return '900';
+		if (w.includes('bold')) return '700';
+		const embedded = base.match(/(\d{2,4})/);
+		if (embedded) return String(parseInt(embedded[1], 10));
+		return '400';
+	}
+
 	async loadSystemFontStyle(family, style = 'Regular') {
 		if (!family) return false;
-		const styleName = (style && String(style).trim()) ? String(style).trim() : 'Regular';
+		// Accept dropdown labels like "Medium (500)" — match Local Font Access "Medium"
+		let styleName = (style && String(style).trim()) ? String(style).trim() : 'Regular';
+		styleName = this.weightLabelBase(styleName) || styleName;
 		const key = family + '||' + styleName.toLowerCase();
 		if (this.loadedSystemFontStyles.has(key)) return true;
 
@@ -440,13 +516,21 @@ class Font_manager_class {
 		const styleMap = this.systemFontStyleDataMap.get(family);
 		let fontData = styleMap ? styleMap.get(styleName.toLowerCase()) : null;
 		if (!fontData && styleMap) {
-			// Fuzzy match: "Bold" vs "bold", "Bold Italic" contains, numeric weights
+			// Fuzzy match: prefer exact / prefix, then weight-equivalent labels
+			const want = styleName.toLowerCase();
+			const wantWeight = this.styleNameToCssWeight(styleName);
+			let fallback = null;
 			for (const [k, v] of styleMap.entries()) {
-				if (k === styleName.toLowerCase() || k.includes(styleName.toLowerCase()) || styleName.toLowerCase().includes(k)) {
+				if (k === want || k.replace(/\s+/g, '') === want.replace(/\s+/g, '')) {
 					fontData = v;
 					break;
 				}
+				if (!fallback && this.styleNameToCssWeight(k) === wantWeight
+					&& (/italic|oblique/i.test(k) === /italic|oblique/i.test(styleName))) {
+					fallback = v;
+				}
 			}
+			if (!fontData) fontData = fallback;
 		}
 		if (!fontData) {
 			return this.loadSystemFont(family);
@@ -459,12 +543,10 @@ class Font_manager_class {
 			const url = URL.createObjectURL(blob);
 			// Register under the family name so canvas font-family still matches;
 			// CSS font-weight/style on the canvas context selects the face when available.
-			const weightMatch = styleName.match(/(\d{3})/);
-			const weight = weightMatch ? weightMatch[1]
-				: /bold|black|heavy/i.test(styleName) ? '700'
-				: /medium/i.test(styleName) ? '500'
-				: /light|thin/i.test(styleName) ? '300'
-				: '400';
+			// IMPORTANT: map Thin→100, ExtraLight→200, Light→300, … Black→900.
+			// Prior bug: /light|thin/ collapsed Thin+ExtraLight+Light all to 300, so
+			// canvas font-weight 100/200 fell back to Regular and looked identical.
+			const weight = this.styleNameToCssWeight(styleName);
 			const fontStyle = /italic|oblique/i.test(styleName) ? 'italic' : 'normal';
 			const fontFace = new FontFace(family, `url(${url})`, { weight, style: fontStyle });
 			const loaded = await fontFace.load();

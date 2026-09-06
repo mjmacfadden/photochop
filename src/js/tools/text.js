@@ -23,7 +23,7 @@ import googleFontsCache from './../libs/google-fonts-cache.json';
 export const metaDefaults = {
 	size: 38,
 	family: 'Roboto',
-	weight: 'Regular',
+	weight: 'Regular (400)',
 	kerning: 0,
 	leading: 0,
 	bold: false,
@@ -54,25 +54,43 @@ export function span_font_css(span, sizeOverride = null) {
 
 export function normalize_font_weight(weight) {
 	if (weight == null || weight === '') return null;
-	const w = String(weight).trim().toLowerCase().replace(/[_\s]+/g, '');
+	const raw = String(weight).trim();
+	// Dropdown labels: "Light (300)", "Thin (100)" — prefer explicit CSS number
+	const paren = raw.match(/\((\d{2,4})\)/);
+	if (paren) return String(parseInt(paren[1], 10));
+	const w = raw.toLowerCase().replace(/[_\s]+/g, '');
 	if (/^\d{2,4}$/.test(w)) return String(parseInt(w, 10));
 	if (w === 'regular' || w === 'normal' || w === 'book' || w === 'roman') return '400';
 	if (w === 'medium') return '500';
 	if (w === 'semibold' || w === 'demibold' || w === 'semi') return '600';
 	if (w === 'bold') return '700';
-	if (w === 'extrabold' || w === 'ultrabold' || w === 'heavy') return '800';
-	if (w === 'black' || w === 'heavyblack') return '900';
+	if (w === 'extrabold' || w === 'ultrabold') return '800';
+	if (w === 'black' || w === 'heavy' || w === 'heavyblack') return '900';
 	if (w === 'thin' || w === 'hairline') return '100';
 	if (w === 'extralight' || w === 'ultralight') return '200';
 	if (w === 'light') return '300';
 	// Local Font Access styles often look like "Bold Italic" — strip italic and retry
 	const noItalic = w.replace(/italic|oblique/g, '');
 	if (noItalic && noItalic !== w) return normalize_font_weight(noItalic) || '400';
-	if (w.includes('bold')) return '700';
+	// Ordered substring fallbacks (extra* before base; thin before light)
+	if (w.includes('extralight') || w.includes('ultralight')) return '200';
+	if (w.includes('thin') || w.includes('hairline')) return '100';
 	if (w.includes('light')) return '300';
 	if (w.includes('medium')) return '500';
+	if (w.includes('semibold') || w.includes('demibold')) return '600';
+	if (w.includes('extrabold') || w.includes('ultrabold')) return '800';
 	if (w.includes('black') || w.includes('heavy')) return '900';
+	if (w.includes('bold')) return '700';
 	return '400';
+}
+
+/** Compare Weight dropdown values allowing "Regular" == "Regular (400)". */
+export function weight_labels_match(a, b) {
+	if (a == null || b == null) return false;
+	if (String(a) === String(b)) return true;
+	const na = normalize_font_weight(a);
+	const nb = normalize_font_weight(b);
+	return na != null && na === nb;
 }
 
 
@@ -127,6 +145,28 @@ fontLoadMap.set('Tahoma', true);
 fontLoadMap.set('Times New Roman', true);
 fontLoadMap.set('Verdana', true);
 
+/** Google/WebFont variants already requested per family (e.g. "100", "regular", "700italic"). */
+export const fontLoadedVariants = new Map();
+
+/** Normalize a variant token for WebFontLoader classic API + dedupe keys. */
+export function google_variant_key(weightOrVariant, italic = false) {
+	if (weightOrVariant == null || weightOrVariant === '') {
+		return italic ? 'italic' : 'regular';
+	}
+	let v = String(weightOrVariant).trim().toLowerCase().replace(/[\s_]+/g, '');
+	const isItalic = italic || /italic|oblique/.test(v);
+	v = v.replace(/italic|oblique/g, '');
+	if (!v || v === 'regular' || v === 'normal' || v === 'book' || v === 'roman') {
+		return isItalic ? 'italic' : 'regular';
+	}
+	const mapped = normalize_font_weight(v);
+	if (mapped && /^\d+$/.test(mapped)) {
+		if (mapped === '400') return isItalic ? 'italic' : 'regular';
+		return isItalic ? (mapped + 'italic') : mapped;
+	}
+	return isItalic ? (v + 'italic') : v;
+}
+
 export function load_font_family({ family, variants, source }, successCallback) {
 	if (!source && family && config.user_fonts[family] && config.user_fonts[family].source) {
 		source = config.user_fonts[family].source;
@@ -137,7 +177,12 @@ export function load_font_family({ family, variants, source }, successCallback) 
 	}
 	if (source === 'local') {
 		if (app.FontManager) {
-			app.FontManager.loadSystemFont(family).then(() => {
+			// Prefer style-specific load when a single named/numeric weight was requested.
+			const styleHint = (variants && variants.length === 1) ? variants[0] : null;
+			const loader = (styleHint && typeof app.FontManager.loadSystemFontStyle === 'function')
+				? app.FontManager.loadSystemFontStyle(family, String(styleHint))
+				: app.FontManager.loadSystemFont(family);
+			loader.then(() => {
 				fontLoadMap.set(family, true);
 				if (successCallback) successCallback();
 			}).catch(() => {
@@ -159,37 +204,68 @@ export function load_font_family({ family, variants, source }, successCallback) 
 		}
 		return;
 	}
+
+	// Google / web fonts — must be able to request ADDITIONAL weights after first load.
+	// Prior bug: once Roboto was marked loaded (Regular only), Thin/Light/Medium requests
+	// were skipped, so canvas font-weight 100–500 all drew as Regular glyphs.
+	const requested = (variants && variants.length)
+		? variants.map((v) => google_variant_key(v))
+		: ['regular'];
+	let loadedSet = fontLoadedVariants.get(family);
+	if (!loadedSet) {
+		loadedSet = new Set();
+		fontLoadedVariants.set(family, loadedSet);
+	}
+	const missing = requested.filter((v) => !loadedSet.has(v) && !loadedSet.has(v + '::pending'));
+
+	if (missing.length === 0) {
+		const pending = fontLoadPromiseMap.get(family);
+		if (pending) {
+			if (successCallback) pending.then(successCallback);
+		} else if (successCallback) {
+			requestAnimationFrame(() => { successCallback(); });
+		}
+		return;
+	}
+
 	if (fontLoadMap.get(family) == null) {
 		fontLoadMap.set(family, false);
-		const loadPromise = new Promise((resolve, reject) => {
-			WebFont.load({
-				google: {
-					families: [family + (variants ? ':' + variants.join(',') : '')]
-				},
-				fontactive: (family) => {
-					fontLoadMap.set(family, true);
-					fontLoadPromiseMap.delete(family);
-					resolve();
-				},
-				fontinactive: (family) => {
-					console.warn('Font ' + family + ' could not be loaded.');
-					fontLoadMap.set(family, true);
-					fontLoadPromiseMap.delete(family);
-					resolve();
-				}
-			});
-		});
-		fontLoadPromiseMap.set(family, loadPromise);
 	}
+
+	// Mark pending before kicking WebFont so concurrent callers coalesce.
+	for (const v of missing) loadedSet.add(v + '::pending');
+	const toLoad = missing;
+	const loadPromise = new Promise((resolve) => {
+		WebFont.load({
+			google: {
+				families: [family + ':' + toLoad.join(',')]
+			},
+			active: () => {
+				for (const v of toLoad) {
+					loadedSet.delete(v + '::pending');
+					loadedSet.add(v);
+				}
+				fontLoadMap.set(family, true);
+				resolve();
+			},
+			inactive: () => {
+				console.warn('Font ' + family + ' (' + toLoad.join(',') + ') could not be loaded.');
+				for (const v of toLoad) {
+					loadedSet.delete(v + '::pending');
+					loadedSet.add(v); // avoid tight-loop retry
+				}
+				fontLoadMap.set(family, true);
+				resolve();
+			}
+		});
+	});
+	const prev = fontLoadPromiseMap.get(family);
+	// Parallel WebFont loads are fine; settle when both prev and this request finish.
+	const chainedWait = prev ? Promise.all([prev.catch(() => {}), loadPromise]) : loadPromise;
+	fontLoadPromiseMap.set(family, Promise.resolve(chainedWait).then(() => {}));
+
 	if (successCallback) {
-		const loadPromise = fontLoadPromiseMap.get(family);
-		if (loadPromise) {
-			loadPromise.then(successCallback);
-		} else if (fontLoadMap.get(family) == true) {
-			requestAnimationFrame(() => {
-				successCallback();
-			});
-		}
+		loadPromise.then(successCallback);
 	}
 }
 window.load_font_family = load_font_family;
@@ -203,17 +279,19 @@ kerningTestCanvas.height = 10;
 kerningTestCanvas.style = 'font-kerning: normal; text-rendering: optimizeLegibility;';
 const kerningTestCtx = kerningTestCanvas.getContext('2d');
 class Font_metrics_class {
-	constructor(family, size) {
+	constructor(family, size, weightCss = '400', italic = false) {
 		this.family = family || (family = "Arial");
 		this.size = parseFloat(size) || (size = 12);
+		this.weightCss = weightCss || '400';
+		this.italic = !!italic;
 		this.kerningMap = new Map();
 
-		// Preparing container
+		// Preparing container — include weight/style so metrics match canvas faces
 		const line = document.createElement('div');
 		const body = document.body;
 		line.style.position = 'absolute';
 		line.style.whiteSpace = 'nowrap';
-		line.style.font = size + 'px ' + family;
+		line.style.font = (this.italic ? 'italic ' : 'normal ') + this.weightCss + ' ' + size + 'px ' + family;
 		body.appendChild(line);
 
 		// Now we can measure width and height of the letter
@@ -248,8 +326,7 @@ class Font_metrics_class {
 		kerningTestCanvas.height = this.height;
 		kerningTestCtx.clearRect(0, 0, this.width, this.height);
 		kerningTestCtx.font =
-		' ' + (this.size) + 'px' +
-		' ' + this.family;
+		(this.italic ? 'italic ' : 'normal ') + this.weightCss + ' ' + this.size + 'px ' + this.family;
 		kerningTestCtx.textAlign = 'left';
 		kerningTestCtx.textBaseline = baseline;
 		kerningTestCtx.fillStyle = '#000000';
@@ -287,11 +364,12 @@ class Font_metrics_class {
 	get_kerning_offset(letters, flags = {}) {
 		let offset = this.kerningMap.get(letters);
 		if (offset == null) {
+			const useItalic = flags.italic != null ? !!flags.italic : this.italic;
+			const useWeight = flags.weight != null
+				? (normalize_font_weight(flags.weight) || this.weightCss)
+				: (flags.bold ? '700' : this.weightCss);
 			kerningTestCtx.font =
-			' ' + (flags.italic ? 'italic' : '') +
-			' ' + (flags.bold ? 'bold' : '') +
-			' ' + (this.size) + 'px' +
-			' ' + this.family;
+			(useItalic ? 'italic ' : 'normal ') + useWeight + ' ' + this.size + 'px ' + this.family;
 			offset = kerningTestCtx.measureText(letters).width - (kerningTestCtx.measureText(letters[0]).width + kerningTestCtx.measureText(letters[1]).width);
 			this.kerningMap.set(letters, offset);
 		}
@@ -1364,11 +1442,14 @@ class Text_editor_class {
 	get_span_font_metrics(span, noCache) {
 		const fontSize = (span.meta.size || metaDefaults.size);
 		const fontName = (span.meta.family || metaDefaults.family);
-		let fontMetrics = fontMetricsMap.get(fontName + '_' + fontSize);
+		const weightKey = normalize_font_weight(span.meta && span.meta.weight != null ? span.meta.weight : metaDefaults.weight) || '400';
+		const italicKey = (span.meta && span.meta.italic) ? '1' : '0';
+		const cacheKey = fontName + '_' + fontSize + '_' + weightKey + '_' + italicKey;
+		let fontMetrics = fontMetricsMap.get(cacheKey);
 		if (!fontMetrics) {
-			fontMetrics = new Font_metrics_class(fontName, fontSize);
+			fontMetrics = new Font_metrics_class(fontName, fontSize, weightKey, !!italicKey && italicKey === '1');
 			if (!noCache) {
-				fontMetricsMap.set(fontName + '_' + fontSize, fontMetrics);
+				fontMetricsMap.set(cacheKey, fontMetrics);
 			}
 		}
 		return fontMetrics;
@@ -1863,11 +1944,14 @@ class Text_editor_class {
 						const strikethrough = span.meta.strikethrough != null ? span.meta.strikethrough : metaDefaults.strikethrough;
 						const family = span.meta.family || metaDefaults.family;
 
-						if (fontLoadMap.get(family) !== true) {
+						{
 							const userFont = config.user_fonts[family];
-							const variants = userFont ? userFont.variants : undefined;
 							const source = userFont ? userFont.source : undefined;
-							load_font_family({ family, variants, source }, () => {
+							const weightLabel = (span.meta && span.meta.weight != null) ? span.meta.weight : metaDefaults.weight;
+							const variantKey = google_variant_key(weightLabel, !!(span.meta && span.meta.italic));
+							// Always ask for the span weight — load_font_family no-ops if already present.
+							load_font_family({ family, variants: [variantKey], source }, () => {
+								if (fontLoadMap.get(family) !== true) return;
 								this.hasValueChanged = true;
 								this.Base_layers.render();
 							});
@@ -3733,8 +3817,11 @@ class Text_class extends Base_tools_class {
 		if (this.fonts_preloaded) return;
 		this.fonts_preloaded = true;
 		const systemFonts = ["Arial", "Courier", "Impact", "Helvetica", "Monospace", "Tahoma", "Times New Roman", "Verdana"];
-		// Prefer Roboto early — default Type face
-		load_font_family({ family: 'Roboto' }, () => {
+		// Prefer Roboto early — default Type face (all weights; not Regular-only)
+		load_font_family({
+			family: 'Roboto',
+			variants: ['100', '200', '300', 'regular', '500', '600', '700', '800', '900']
+		}, () => {
 			if (this.Base_layers) this.Base_layers.render();
 		});
 		const googleFonts = config.FONTS ? config.FONTS.filter(f => !systemFonts.includes(f)) : [];
@@ -3921,10 +4008,13 @@ class Text_class extends Base_tools_class {
 						if (toolAttributes.weight) {
 							const variants = (typeof toolAttributes.weight.values === 'function')
 								? toolAttributes.weight.values()
-								: (toolAttributes.weight.values || ['Regular']);
+								: (toolAttributes.weight.values || ['Regular (400)']);
 							const current = toolAttributes.weight.value;
-							if (!variants.includes(current)) {
-								toolAttributes.weight.value = variants[0] || 'Regular';
+							const matched = variants.find((v) => weight_labels_match(v, current));
+							if (!matched) {
+								toolAttributes.weight.value = variants[0] || 'Regular (400)';
+							} else {
+								toolAttributes.weight.value = matched;
 							}
 							meta.weight = toolAttributes.weight.value;
 							meta.bold = weight_implies_bold(meta.weight);
@@ -3933,6 +4023,27 @@ class Text_class extends Base_tools_class {
 						// Font remounts Weight dropdown — keep Mode/align from layer.
 						if (config.layer && config.layer.type === 'text') {
 							this.sync_text_tool_attributes_from_layer(config.layer);
+						}
+					} catch (e) { /* ignore */ }
+					// Load the face for the current weight (Google variants or local style)
+					try {
+						const w = meta.weight || metaDefaults.weight;
+						const isLocal = app.FontManager && typeof app.FontManager.getCachedSystemFonts === 'function'
+							&& app.FontManager.getCachedSystemFonts().includes(value);
+						if (isLocal && typeof app.FontManager.loadSystemFontStyle === 'function') {
+							app.FontManager.loadSystemFontStyle(value, String(w)).then(() => {
+								config.need_render_changed_params = true;
+								if (this.Base_layers) this.Base_layers.render();
+							}).catch(() => {});
+						} else {
+							load_font_family({
+								family: value,
+								variants: [google_variant_key(w, !!meta.italic)],
+								source: 'google'
+							}, () => {
+								config.need_render_changed_params = true;
+								if (this.Base_layers) this.Base_layers.render();
+							});
 						}
 					} catch (e) { /* ignore */ }
 				}
@@ -3976,13 +4087,9 @@ class Text_class extends Base_tools_class {
 								if (this.Base_layers) this.Base_layers.render();
 							}).catch(() => {});
 						} else {
-							// Google / web font: request the specific variant
-							const variantKey = (() => {
-								const n = normalize_font_weight(weight);
-								if (n === '400' || n === 'normal') return /italic/i.test(String(weight)) ? 'italic' : 'regular';
-								if (n && /^\d+$/.test(n)) return /italic/i.test(String(weight)) ? (n + 'italic') : n;
-								return String(weight).toLowerCase().replace(/\s+/g, '');
-							})();
+							// Google / web font: request the specific weight file (not faux from Regular)
+							const italic = !!(meta.italic) || /italic|oblique/i.test(String(weight));
+							const variantKey = google_variant_key(weight, italic);
 							load_font_family({ family, variants: [variantKey], source: 'google' }, () => {
 								config.need_render_changed_params = true;
 								if (this.Base_layers) this.Base_layers.render();
@@ -3994,11 +4101,62 @@ class Text_class extends Base_tools_class {
 			}
 			case 'bold':
 				meta.bold = value;
-				if (value) meta.weight = 'Bold';
-				else meta.weight = 'Regular';
+				if (value) meta.weight = 'Bold (700)';
+				else meta.weight = 'Regular (400)';
+				// Fall through to weight-load path via synthetic weight update
+				try {
+					const family = (this.GUI_tools && this.GUI_tools.action_data().attributes.font)
+						? this.GUI_tools.action_data().attributes.font.value
+						: (meta.family || metaDefaults.family);
+					if (family) {
+						const isLocal = app.FontManager && typeof app.FontManager.getCachedSystemFonts === 'function'
+							&& app.FontManager.getCachedSystemFonts().includes(family);
+						if (isLocal && typeof app.FontManager.loadSystemFontStyle === 'function') {
+							app.FontManager.loadSystemFontStyle(family, meta.weight).then(() => {
+								config.need_render_changed_params = true;
+								if (this.Base_layers) this.Base_layers.render();
+							}).catch(() => {});
+						} else {
+							load_font_family({
+								family,
+								variants: [google_variant_key(meta.weight, !!meta.italic)],
+								source: 'google'
+							}, () => {
+								config.need_render_changed_params = true;
+								if (this.Base_layers) this.Base_layers.render();
+							});
+						}
+					}
+				} catch (e) { /* ignore */ }
 				break;
 			case 'italic':
 				meta.italic = value;
+				try {
+					const family = (this.GUI_tools && this.GUI_tools.action_data().attributes.font)
+						? this.GUI_tools.action_data().attributes.font.value
+						: (meta.family || metaDefaults.family);
+					const w = meta.weight || metaDefaults.weight;
+					if (family) {
+						const isLocal = app.FontManager && typeof app.FontManager.getCachedSystemFonts === 'function'
+							&& app.FontManager.getCachedSystemFonts().includes(family);
+						if (isLocal && typeof app.FontManager.loadSystemFontStyle === 'function') {
+							const style = value ? (String(w) + ' Italic') : String(w);
+							app.FontManager.loadSystemFontStyle(family, style).then(() => {
+								config.need_render_changed_params = true;
+								if (this.Base_layers) this.Base_layers.render();
+							}).catch(() => {});
+						} else {
+							load_font_family({
+								family,
+								variants: [google_variant_key(w, !!value)],
+								source: 'google'
+							}, () => {
+								config.need_render_changed_params = true;
+								if (this.Base_layers) this.Base_layers.render();
+							});
+						}
+					}
+				} catch (e) { /* ignore */ }
 				break;
 			case 'underline':
 				meta.underline = value;
@@ -4360,8 +4518,21 @@ class Text_class extends Base_tools_class {
 			}
 			if (toolAttributes.weight) {
 				const weights = meta.weight && meta.weight.length === 1 ? meta.weight[0] : null;
-				if (weights != null) toolAttributes.weight.value = weights;
-				else if (meta.bold && !meta.bold.includes(false)) toolAttributes.weight.value = 'Bold';
+				const variants = (typeof toolAttributes.weight.values === 'function')
+					? toolAttributes.weight.values()
+					: (toolAttributes.weight.values || []);
+				if (weights != null) {
+					const matched = variants.find((v) => weight_labels_match(v, weights));
+					if (matched) toolAttributes.weight.value = matched;
+					else if (app.FontManager && typeof app.FontManager.formatWeightLabel === 'function') {
+						toolAttributes.weight.value = app.FontManager.formatWeightLabel(weights) || String(weights);
+					} else {
+						toolAttributes.weight.value = String(weights);
+					}
+				} else if (meta.bold && !meta.bold.includes(false)) {
+					const matched = variants.find((v) => weight_labels_match(v, 'Bold'));
+					toolAttributes.weight.value = matched || 'Bold (700)';
+				}
 			}
 			toolAttributes.bold.value = meta.bold.includes(false) ? false : true;
 			toolAttributes.italic.value = meta.italic.includes(false) ? false : true;

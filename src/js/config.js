@@ -530,7 +530,7 @@ config.TOOLS = [
 			},
 			weight: {
 				title: 'Weight',
-				value: 'Regular',
+				value: 'Regular (400)',
 				values() {
 					const textTool = (config.TOOLS || []).find((t) => t.name === 'text');
 					const family = textTool && textTool.attributes && textTool.attributes.font
@@ -553,19 +553,21 @@ config.TOOLS = [
 						if (entry && Array.isArray(entry.variants)) {
 							for (const v of entry.variants) {
 								if (!v || /italic/i.test(String(v))) continue;
-								const label = String(v) === 'regular' ? 'Regular'
-									: String(v) === '700' ? 'Bold'
-									: String(v) === '300' ? 'Light'
-									: String(v) === '100' ? 'Thin'
-									: String(v) === '500' ? 'Medium'
-									: String(v) === '600' ? 'SemiBold'
-									: String(v) === '900' ? 'Black'
-									: String(v);
+								const map = {
+									'regular': 'Regular (400)', '400': 'Regular (400)',
+									'100': 'Thin (100)', '200': 'ExtraLight (200)', '300': 'Light (300)',
+									'500': 'Medium (500)', '600': 'SemiBold (600)',
+									'700': 'Bold (700)', '800': 'ExtraBold (800)', '900': 'Black (900)',
+									'thin': 'Thin (100)', 'light': 'Light (300)', 'medium': 'Medium (500)',
+									'semibold': 'SemiBold (600)', 'bold': 'Bold (700)', 'black': 'Black (900)',
+								};
+								const key = String(v).toLowerCase();
+								const label = map[key] || String(v);
 								if (!variants.includes(label)) variants.push(label);
 							}
 						}
 					}
-					if (variants.length === 0) return ['Regular', 'Bold'];
+					if (variants.length === 0) return ['Regular (400)', 'Bold (700)'];
 					return variants;
 				}
 			},
