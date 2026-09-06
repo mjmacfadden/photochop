@@ -93,6 +93,22 @@ export class Activate_tool_action extends Base_action {
 			// Toggle pan tool class on body (grab/grabbing cursor)
 			document.body.classList.toggle('tool-pan', config.TOOL && config.TOOL.name === 'pan');
 
+			// Type tool: seed Size from baked span/params BEFORE mounting the options bar.
+			// Prior fixes synced after show_action_attributes(); the Size widget was created
+			// from a stale TOOLS default and set_value after remount was unreliable.
+			const textToolEarly = (key === 'text' && app.GUI && app.GUI.GUI_tools && app.GUI.GUI_tools.tools_modules['text'])
+				? app.GUI.GUI_tools.tools_modules['text'].object
+				: null;
+			if (textToolEarly) {
+				textToolEarly.focused = false;
+				if (typeof textToolEarly.sync_fill_from_foreground === 'function') {
+					textToolEarly.sync_fill_from_foreground({ rebuild: false });
+				}
+				if (config.layer && config.layer.type === 'text' && typeof textToolEarly.sync_size_from_layer === 'function') {
+					textToolEarly.sync_size_from_layer(config.layer);
+				}
+			}
+
 			app.GUI.GUI_tools.show_action_attributes();
 			app.GUI.GUI_tools.Helper.setCookie('active_tool', app.GUI.GUI_tools.active_tool);
 
@@ -103,29 +119,18 @@ export class Activate_tool_action extends Base_action {
 				this.hide_brush_cursor();
 			}
 
-			if (key === 'text') {
-				const textTool = (app.GUI && app.GUI.GUI_tools && app.GUI.GUI_tools.tools_modules['text']) ? app.GUI.GUI_tools.tools_modules['text'].object : null;
-				if (textTool) {
-					if (typeof textTool.sync_fill_from_foreground === 'function') {
-						textTool.sync_fill_from_foreground({ rebuild: true });
-					}
-					textTool.focused = false;
-					if (config.layer && config.layer.type === 'text') {
-						// After Select point-text resize, Size must come from baked span meta
-						// (not a stale TOOLS default) before/after the options bar rebuild.
-						if (typeof textTool.sync_size_from_layer === 'function') {
-							textTool.sync_size_from_layer(config.layer);
-						}
-						const editor = textTool.get_editor(config.layer);
-						if (editor) {
-							textTool.update_tool_attributes(config.layer, editor);
-						}
-						// Re-assert Size after update_tool_attributes (selection meta can miss).
-						if (typeof textTool.sync_size_from_layer === 'function') {
-							textTool.sync_size_from_layer(config.layer);
-						}
-					}
+			if (textToolEarly && config.layer && config.layer.type === 'text') {
+				const editor = textToolEarly.get_editor(config.layer);
+				if (editor && typeof textToolEarly.update_tool_attributes === 'function') {
+					// Font/weight/etc from selection — Size re-seeded from baked layer after.
+					textToolEarly.update_tool_attributes(config.layer, editor);
 				}
+				// update_tool_attributes remounts the bar from selection meta; re-assert Size
+				// and remount so the Size widget is *created* with the baked value.
+				if (typeof textToolEarly.sync_size_from_layer === 'function') {
+					textToolEarly.sync_size_from_layer(config.layer);
+				}
+				app.GUI.GUI_tools.show_action_attributes();
 			}
 		}
 

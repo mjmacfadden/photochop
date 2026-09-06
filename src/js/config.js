@@ -506,6 +506,7 @@ config.TOOLS = [
 	{
 		name: 'text',
 		on_update: 'on_params_update',
+		on_activate: 'on_activate',
 		on_leave: 'on_leave',
 		attributes: {
 			font: {

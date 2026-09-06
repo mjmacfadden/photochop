@@ -3162,6 +3162,18 @@ class Text_class extends Base_tools_class {
 		// Event routing is handled centrally by Base_tools_class
 	}
 
+	/**
+	 * Type tool activate: seed Size from baked span meta (fallback params.size)
+	 * before/with the options bar. activate-tool.js also calls this before
+	 * show_action_attributes so Select→Type shows the post-resize size.
+	 */
+	on_activate() {
+		if (config.layer && config.layer.type === 'text') {
+			this.sync_size_from_layer(config.layer);
+		}
+		return null;
+	}
+
 	async commit_text_changes() {
 		if (this.typing_commit_timer) {
 			clearTimeout(this.typing_commit_timer);
@@ -4262,13 +4274,24 @@ class Text_class extends Base_tools_class {
 			const toolAttributes = this.GUI_tools.action_data().attributes;
 			toolAttributes.font.value = meta.family.length === 1 ? meta.family[0] : '';
 			let sizeVal = meta.size.length === 1 ? meta.size[0] : parseFloat(null);
-			// Selection meta can miss after Select point-text bake; fall back to span / params.
-			if (sizeVal == null || !isFinite(Number(sizeVal))) {
-				const span0 = layer.data && layer.data[0] && layer.data[0][0] ? layer.data[0][0] : null;
-				if (span0 && span0.meta && span0.meta.size != null) sizeVal = Number(span0.meta.size);
-				else if (layer.params.size != null) {
-					sizeVal = typeof layer.params.size === 'object' ? Number(layer.params.size.value) : Number(layer.params.size);
-				}
+			// Prefer baked first-span / params.size over selection meta.
+			// After Select point-text bake, caret meta can miss or fall back to metaDefaults (38)
+			// while layer.data already holds the baked size — that was clobbering Type Size on activate.
+			const span0 = layer.data && layer.data[0] && layer.data[0][0] ? layer.data[0][0] : null;
+			let bakedSize = (span0 && span0.meta && span0.meta.size != null) ? Number(span0.meta.size) : null;
+			if ((bakedSize == null || !isFinite(bakedSize)) && layer.params.size != null) {
+				bakedSize = typeof layer.params.size === 'object' ? Number(layer.params.size.value) : Number(layer.params.size);
+			}
+			const selectionEmpty = editor.selection && typeof editor.selection.is_empty === 'function'
+				? editor.selection.is_empty()
+				: (editor.selection && editor.selection.start && editor.selection.end
+					&& editor.selection.start.line === editor.selection.end.line
+					&& editor.selection.start.character === editor.selection.end.character);
+			const selectionMiss = sizeVal == null || !isFinite(Number(sizeVal));
+			const selectionLooksDefault = isFinite(Number(sizeVal)) && Number(sizeVal) === metaDefaults.size
+				&& bakedSize != null && isFinite(bakedSize) && bakedSize !== metaDefaults.size;
+			if (bakedSize != null && isFinite(bakedSize) && (selectionEmpty || selectionMiss || selectionLooksDefault)) {
+				sizeVal = bakedSize;
 			}
 			if (sizeVal != null && isFinite(Number(sizeVal))) {
 				sizeVal = Math.round(Number(sizeVal) * 100) / 100;
@@ -4292,6 +4315,8 @@ class Text_class extends Base_tools_class {
 			toolAttributes.kerning.value = meta.kerning.length === 1 ? meta.kerning[0] : parseFloat(null);
 			toolAttributes.leading.value = meta.leading.length === 1 ? meta.leading[0] : parseFloat(null);
 			this.sync_text_tool_attributes_from_layer(layer);
+			// Final Size authority before remount: baked span → params → TOOLS attrs.
+			this.sync_size_from_layer(layer);
 			this.GUI_tools.show_action_attributes();
 		}
 	}

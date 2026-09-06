@@ -1,4 +1,4 @@
-var CACHE_NAME = 'photochop-shell-v9';
+var CACHE_NAME = 'photochop-shell-v10';
 var APP_SHELL = [
 	'./',
 	'./index.html',
