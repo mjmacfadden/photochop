@@ -91,6 +91,14 @@ class Layer_adjustment_class {
 					{ name: 'gamma', title: 'Gamma Correction:', value: 1, range: [0.1, 3], step: 0.01 }
 				]
 			},
+			'blur': {
+				title: 'Gaussian Blur',
+				name: 'Gaussian Blur',
+				default_params: { value: 5 },
+				params: [
+					{ name: 'value', title: 'Radius (px):', value: 5, range: [0, 50], step: 0.5 }
+				]
+			},
 			'threshold': {
 				title: 'Threshold',
 				name: 'Threshold',
@@ -172,6 +180,10 @@ class Layer_adjustment_class {
 		this.create_or_edit('exposure');
 	}
 
+	blur() {
+		this.create_or_edit('blur');
+	}
+
 	threshold() {
 		this.create_or_edit('threshold');
 	}
@@ -230,7 +242,7 @@ class Layer_adjustment_class {
 		}
 	}
 
-	edit(layer_id) {
+	edit(layer_id, options = {}) {
 		if (layer_id == null && config.layer) {
 			layer_id = config.layer.id;
 		}
@@ -242,6 +254,16 @@ class Layer_adjustment_class {
 
 		if (config.layer == null || config.layer.id !== layer.id) {
 			this.Base_layers.select(layer.id);
+		}
+
+		// Properties panel is the source of truth when available.
+		// Modal is only used when explicitly requested (force_modal) or if the
+		// Properties GUI is not mounted.
+		const prefer_properties = options.force_modal !== true;
+		if (prefer_properties && app.GUI && app.GUI.GUI_properties
+			&& typeof app.GUI.GUI_properties.show_for_layer === 'function') {
+			app.GUI.GUI_properties.show_for_layer(layer.id);
+			return;
 		}
 
 		const normType = this.normalize_type(layer.adjustment_type);
