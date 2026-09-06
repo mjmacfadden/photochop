@@ -26,7 +26,7 @@ Related: root `PERFORMANCE.md` (completed worklog).
 | Dynamic `import()` of `ag-psd` on first PSD open/save (`ensure_ag_psd`) | Done |
 | Confirm import uses live canvas `link` + `data: null` (no `toDataURL` dual bitmap) | Done (removed unused `safeToDataURL`) |
 | `[PSD][perf]` `performance.now()` logs around ag-psd load / parse / write | Done |
-| Service worker `CACHE_NAME` bump | **Not touched** this PR — see discipline below |
+| Service worker `CACHE_NAME` bump | Done — `photochop-shell-v16` → `v17` (shell `dist/bundle.js` changed) |
 | WebGL mask/blend slice | Deferred |
 | Interactive quality tier | Deferred |
 | WebGPU / React rewrite | Out of scope |
@@ -81,17 +81,17 @@ Record results in a short table (date, machine, Chrome version, fixture name, ms
 
 File: `service-worker.js` — current name pattern `photochop-shell-vNN`.
 
-**Bump `CACHE_NAME` whenever published app-shell assets change in a way users must receive** (typically `dist/bundle.js`, `dist/styles.css`, `index.html`, or `APP_SHEL` entries). The activate handler deletes prior `photochop-shell-*` keys ∉ current name.
+**Bump `CACHE_NAME` whenever published app-shell assets change in a way users must receive** (typically `dist/bundle.js`, `dist/styles.css`, `index.html`, or `APP_SHELL` entries). The activate handler deletes prior `photochop-shell-*` keys != current name.
 
 Rules:
 
 1. **One bump per release that changes shell bytes** — do not bump on pure docs/script PRs that do not alter precached URLs.
-2. **Bump in the same commit** that changes `dist/` or other `APP_SHEL` paths destined for production.
+2. **Bump in the same commit** that changes `dist/` or other `APP_SHELL` paths destined for production.
 3. **Never** reuse an old `vNN` after it has shipped — clients may keep a stale cache entry.
 4. **Do not** precache user documents, PSD fixtures, or third-party CDNs.
 5. After bumping, smoke: hard-reload twice; confirm Network shows updated shell and old cache key is gone (Application → Cache Storage).
 
-This foundation PR bumps SW because committed \`dist/bundle.js\` (APP_SHELL) changed with lazy PSD chunks. When a later perf PR ships new `dist/` chunks (e.g. `ag-psd` async chunk hashed into runtime), bump then if the production deploy updates precached shell files. Webpack async chunks load via `publicPath` and are **not** listed in `APP_SHELL` today — first PSD open still hits network/disk for the chunk; that is expected.
+This foundation PR bumps SW because committed `dist/bundle.js` (APP_SHELL) changed with lazy PSD chunks. When a later perf PR ships new `dist/` chunks (e.g. `ag-psd` async chunk hashed into runtime), bump then if the production deploy updates precached shell files. Webpack async chunks load via `publicPath` and are **not** listed in `APP_SHELL` today — first PSD open still hits network/disk for the chunk; that is expected.
 
 ---
 
