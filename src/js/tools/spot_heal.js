@@ -4,6 +4,7 @@ import Base_tools_class from './../core/base-tools.js';
 import Base_layers_class from './../core/base-layers.js';
 import alertify from './../../../node_modules/alertifyjs/build/alertify.min.js';
 import { buildBrushMask, findSourcePatch, blendSeamless } from './../libs/heal/index.js';
+import { ensure_paint_layer } from './../libs/paint-target.js';
 
 /**
  * Spot Healing Brush — samples surrounding texture and blends it under the brush.
@@ -74,37 +75,20 @@ class Spot_heal_class extends Base_tools_class {
 			return;
 		}
 
-		if (!config.layer) {
-			alertify.error('Please select a layer to paint on.');
-			return;
-		}
-
-		if (config.layer.type === 'adjustment') {
-			alertify.error('Cannot heal directly on an adjustment layer.');
-			return;
-		}
-
-		if (config.layer.type === 'text') {
-			alertify.error('Cannot heal a text layer. Rasterize it first, or paint on an image layer.');
-			return;
-		}
-
-		if (config.layer.type === 'group') {
+		if (config.layer && config.layer.type === 'group') {
 			alertify.error('Cannot heal a group. Select an image layer inside the group.');
 			return;
 		}
 
-		if (config.layer.type !== 'image') {
-			alertify.error('This layer must contain an image. Please convert it to raster to apply this tool.');
+		var layer = ensure_paint_layer({ verb: 'heal' });
+		if (!layer || layer.type !== 'image') {
 			return;
 		}
 
-		if ((config.layer.rotate || 0) > 0) {
+		if ((layer.rotate || 0) > 0) {
 			alertify.error('Heal on a rotated layer is disabled. Please rasterize first.');
 			return;
 		}
-
-		var layer = config.layer;
 		var src = layer.link_canvas || layer.link;
 		if (!src) {
 			alertify.error('Layer image is not ready. Add pixels or open an image first.');
