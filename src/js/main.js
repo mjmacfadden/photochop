@@ -23,6 +23,7 @@ import Base_search_class from './core/base-search.js';
 import Base_documents_class from './core/base-documents.js';
 import File_open_class from './modules/file/open.js';
 import File_save_class from './modules/file/save.js';
+import Font_manager_class from './core/font-manager.js';
 import * as Actions from './actions/index.js';
 
 window.addEventListener('load', function (e) {
@@ -35,6 +36,7 @@ window.addEventListener('load', function (e) {
 	var File_open = new File_open_class();
 	var File_save = new File_save_class();
 	var Base_search = new Base_search_class();
+	var FontManager = new Font_manager_class();
 
 	// Register singletons in app module
 	app.Actions = Actions;
@@ -46,6 +48,7 @@ window.addEventListener('load', function (e) {
 	app.Layers = Layers;
 	app.State = Base_state;
 	app.Tools = Base_tools;
+	app.FontManager = FontManager;
 
 	// Register as global for quick or external access
 	window.Layers = Layers;
@@ -54,9 +57,11 @@ window.addEventListener('load', function (e) {
 	window.Documents = Documents;
 	window.FileOpen = File_open;
 	window.FileSave = File_save;
+	window.FontManager = FontManager;
 
 	// Render all
 	GUI.init();
 	Layers.init();
 	Documents.init();
+	FontManager.init();
 }, false);

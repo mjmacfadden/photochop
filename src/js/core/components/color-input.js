@@ -137,8 +137,13 @@ const Helper = new Helper_class();
 				if (id) {
 					el.setAttribute('id', id);
 				}
-				if (inputId) {
-					input.setAttribute('id', inputId);
+				const finalInputId = inputId || (id ? id + '_input' : '');
+				const inputName = definition.name || id || '';
+				if (finalInputId) {
+					input.setAttribute('id', finalInputId);
+				}
+				if (inputName) {
+					input.setAttribute('name', inputName);
 				}
 				if (ariaLabeledBy) {
 					input.setAttribute('aria-labelledby', ariaLabeledBy);

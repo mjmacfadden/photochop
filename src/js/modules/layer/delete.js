@@ -22,7 +22,7 @@ class Layer_delete_class {
 		}
 
 		const layers = ids
-			.map((id) => app.Layers.get_layer(id))
+			.map((id) => app.Layers.get_layer(id, true))
 			.filter(Boolean);
 
 		if (!layers.length) {
@@ -132,7 +132,7 @@ class Layer_delete_class {
 			new app.Actions.Bundle_action(name, label, actions)
 		).then(() => {
 			// Reconcile selection: drop stale refs so New Layer / UI keep working.
-			let live = (config.layer && app.Layers.get_layer(config.layer.id)) || null;
+			let live = (config.layer && config.layers && config.layers.find((l) => l.id === config.layer.id)) || null;
 			if (!live && config.layers && config.layers.length) {
 				live = app.Layers.get_sorted_layers()[0] || config.layers[0];
 				config.layer = live;
@@ -147,7 +147,7 @@ class Layer_delete_class {
 			}
 		}).catch(() => {
 			// Aborted (e.g. last layer) — Delete_layer_action throws; Bundle may surface it
-			let live = (config.layer && app.Layers.get_layer(config.layer.id)) || null;
+			let live = (config.layer && config.layers && config.layers.find((l) => l.id === config.layer.id)) || null;
 			if (!live && config.layers && config.layers.length) {
 				live = app.Layers.get_sorted_layers()[0] || config.layers[0];
 				config.layer = live;

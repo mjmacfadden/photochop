@@ -14,7 +14,19 @@ import Dialog_class from './../../libs/popup.js';
 import GUI_brush_library_class from './gui-brush-library.js';
 
 var instance = null;
+
 var Helper = new Helper_class();
+
+/** Local copy — avoid importing text.js (circular with GUI_tools). */
+function layer_is_box_text(layer) {
+	if (!layer || layer.type !== 'text' || !layer.params) return false;
+	let b = layer.params.boundary;
+	if (b != null && typeof b === 'object') {
+		b = (b.value != null) ? b.value : (b.boundary != null ? b.boundary : '');
+	}
+	b = String(b == null ? '' : b).trim().toLowerCase();
+	return b === 'box' || b === 'paragraph' || b === 'fixed';
+}
 
 /**
  * GUI class responsible for rendering left sidebar tools
@@ -432,8 +444,8 @@ class GUI_tools_class {
 
 		let itemDom;
 		let currentButtonGroup = null;
-		for (var k in attributes) {
-			var item = attributes[k];
+		for (const k in attributes) {
+			const item = attributes[k];
 
 			var title = k[0].toUpperCase() + k.slice(1);
 			title = title.replace("_", " ");
@@ -570,15 +582,18 @@ class GUI_tools_class {
 					elementValue.step = String(step || 1);
 					elementValue.value = String(value);
 					elementValue.id = 'attribute_value_' + attribute_key;
+					elementValue.name = 'attribute_value_' + attribute_key;
 					elementValue.className = 'attribute_value slider_value';
 					elementValue.setAttribute('aria-labelledby', 'attribute_label_' + attribute_key);
 					elementValue.title = title;
+					elementTitle.htmlFor = elementValue.id;
 
 					const elementInput = document.createElement('input');
 					elementInput.type = 'range';
 					elementInput.min = min;
 					elementInput.max = max;
 					elementInput.step = step || 1;
+					elementInput.name = attribute_key;
 					elementInput.className = 'precise';
 					itemDom.appendChild(elementInput);
 					const $range = $(elementInput)
@@ -629,16 +644,22 @@ class GUI_tools_class {
 				}
 				else {
 
+				elementTitle.htmlFor = k + '_input';
+
 				const elementInput = document.createElement('input');
 				elementInput.type = 'number';
 				elementInput.setAttribute('aria-labelledby', 'attribute_label_' + k);
 				const $numberInput = $(elementInput)
 					.uiNumberInput({
 						id: k,
+						inputId: k + '_input',
+						name: k,
 						min,
 						max,
 						value,
 						step: step || 1,
+						inputStep: item.inputStep,
+						inputType: item.inputType,
 						exponentialStepButtons: !step
 					})
 					.on('input', () => {
@@ -668,17 +689,208 @@ class GUI_tools_class {
 				// Brush Library trigger (Procreate / PS / Krita style picker)
 				this.Brush_library.render_trigger(itemDom);
 			}
+			else if (typeof item == 'object' && (item.type === 'button_group' || item.icons || k === 'halign')) {
+				const buttonGroup = document.createElement('div');
+				buttonGroup.className = 'ui_button_group no_wrap';
+				buttonGroup.id = k + '_button_group';
+
+				const values = typeof item.values === 'function' ? item.values() : item.values;
+				const currentValue = String(item.value != null ? (item.value.value || item.value) : '').toLowerCase();
+
+				for (let j in values) {
+					const val = values[j];
+					const valStr = String(val);
+					const isSelected = currentValue === valStr.toLowerCase();
+
+					const btn = document.createElement('button');
+					btn.type = 'button';
+					btn.className = 'trn ui_icon_button input_height';
+					btn.id = k + '_' + valStr.toLowerCase();
+					btn.title = k === 'halign' ? `${valStr} Align` : valStr;
+					btn.setAttribute('aria-pressed', isSelected ? 'true' : 'false');
+
+					const iconName = item.icons ? (item.icons[valStr] || item.icons[valStr.toLowerCase()]) : null;
+					if (iconName) {
+						btn.innerHTML = `<img style="width:16px;height:16px;" alt="${valStr}" src="images/icons/${iconName}" />`;
+					} else {
+						btn.textContent = valStr;
+					}
+
+					// Capture per-iteration key (avoid var-k loop closure sending wrong attr key)
+					const attrKey = k;
+					btn.addEventListener('click', () => {
+						const actionData = this.action_data();
+						if (typeof actionData.attributes[attrKey] === 'object') {
+							actionData.attributes[attrKey].value = val;
+						} else {
+							actionData.attributes[attrKey] = val;
+						}
+
+						const groupButtons = buttonGroup.querySelectorAll('button');
+						groupButtons.forEach(b => {
+							b.setAttribute('aria-pressed', b === btn ? 'true' : 'false');
+						});
+
+						if (actionData.on_update != undefined) {
+							var moduleKey = actionData.name;
+							var functionName = actionData.on_update;
+							const result = this.tools_modules[moduleKey].object[functionName]({ key: attrKey, value: val });
+							if (result && result.new_values) {
+								for (let key in result.new_values) {
+									actionData.attributes[key].value = result.new_values[key];
+								}
+							}
+						}
+
+						// Align must not rebuild the options bar (rebuilding Mode from a stale
+						// default was flipping Paragraph → Point). Button pressed state is enough.
+						if (attrKey !== 'halign') {
+							this.show_action_attributes();
+						} else {
+							try {
+								const textMod = this.tools_modules && this.tools_modules['text'] && this.tools_modules['text'].object;
+								const layer = (typeof config !== 'undefined') ? config.layer : null;
+								const isPoint = !(layer && layer.type === 'text' && layer_is_box_text(layer));
+								if (textMod && typeof textMod.update_halign_justify_availability === 'function') {
+									textMod.update_halign_justify_availability(isPoint);
+								}
+								// Drive Mode from the layer, never from a corrupted attribute
+								if (actionData.attributes.boundary && layer && layer.type === 'text' && layer.params) {
+									actionData.attributes.boundary.value = isPoint ? 'Point' : 'Paragraph';
+								}
+								const modeSelect = document.getElementById('boundary');
+								if (modeSelect && actionData.attributes.boundary) {
+									modeSelect.value = actionData.attributes.boundary.value;
+								}
+							} catch (e) { /* ignore */ }
+						}
+					});
+
+					buttonGroup.appendChild(btn);
+				}
+
+				itemDom.appendChild(buttonGroup);
+
+				// Photoshop: justify only for paragraph/box text
+				if (k === 'halign') {
+					try {
+						const textMod = this.tools_modules && this.tools_modules['text'] && this.tools_modules['text'].object;
+						const layer = (typeof config !== 'undefined') ? config.layer : null;
+						const isPoint = !(layer && layer.type === 'text' && layer_is_box_text(layer));
+						if (textMod && typeof textMod.update_halign_justify_availability === 'function') {
+							textMod.update_halign_justify_availability(isPoint);
+						}
+					} catch (e) { /* ignore */ }
+				}
+			}
 			else if (typeof item == 'object') {
 				//select
 
 				var elementTitle = document.createElement('label');
 				elementTitle.innerHTML = title + ':';
-				elementTitle.for = k;
+				elementTitle.htmlFor = k;
 				elementTitle.className = 'trn';
 
 				var selectList = document.createElement("select");
 				selectList.id = k;
+				selectList.name = k;
 				const values = typeof item.values === 'function' ? item.values() : item.values;
+				if (k === 'font') {
+					const fontPicker = document.createElement('div');
+					fontPicker.className = 'font_picker';
+					const fontButton = document.createElement('button');
+					fontButton.type = 'button';
+					fontButton.className = 'font_picker_button';
+					fontButton.setAttribute('aria-haspopup', 'listbox');
+					fontButton.setAttribute('aria-expanded', 'false');
+					const fontMenu = document.createElement('div');
+					fontMenu.className = 'font_picker_menu';
+					fontMenu.setAttribute('role', 'listbox');
+					const updateFontButton = (value) => {
+						fontButton.textContent = value || 'Select font';
+						fontButton.style.fontFamily = value && !value.includes('...') ? `"${value}", sans-serif` : '';
+						if (value && !value.includes('...') && app.FontManager) {
+							const fontSource = (config.user_fonts && config.user_fonts[value])
+								? config.user_fonts[value].source
+								: (app.FontManager.getCachedSystemFonts && app.FontManager.getCachedSystemFonts().includes(value) ? 'local' : 'google');
+							app.FontManager.loadFont(value, fontSource);
+						}
+					};
+					// Toolbar ancestors clip vertical overflow, so the menu is positioned
+					// via fixed coordinates and attached to <body> only while open.
+					const onDocumentMouseDown = (event) => {
+						if (fontButton.contains(event.target) || fontMenu.contains(event.target)) return;
+						closeFontMenu();
+					};
+					const onDocumentKeyDown = (event) => {
+						if (event.key === 'Escape') closeFontMenu();
+					};
+					const closeFontMenu = () => {
+						if (fontMenu.parentNode) fontMenu.parentNode.removeChild(fontMenu);
+						fontButton.setAttribute('aria-expanded', 'false');
+						document.removeEventListener('mousedown', onDocumentMouseDown, true);
+						document.removeEventListener('keydown', onDocumentKeyDown, true);
+					};
+					const openFontMenu = () => {
+						const rect = fontButton.getBoundingClientRect();
+						fontMenu.style.left = rect.left + 'px';
+						fontMenu.style.top = (rect.bottom + 4) + 'px';
+						fontMenu.style.width = Math.max(rect.width, 200) + 'px';
+						// Keep the menu on-screen if there isn't enough room below the button.
+						fontMenu.style.maxHeight = Math.max(120, window.innerHeight - rect.bottom - 12) + 'px';
+						document.body.appendChild(fontMenu);
+						fontButton.setAttribute('aria-expanded', 'true');
+						document.addEventListener('mousedown', onDocumentMouseDown, true);
+						document.addEventListener('keydown', onDocumentKeyDown, true);
+					};
+					for (let j in values) {
+						const value = values[j];
+						const option = document.createElement('button');
+						option.type = 'button';
+						option.className = 'font_picker_option';
+						option.setAttribute('role', 'option');
+						option.setAttribute('aria-selected', String(item.value === value));
+						let labelText = value || 'Select font';
+						if (config.user_fonts && config.user_fonts[value]) {
+							if (config.user_fonts[value].source === 'user_uploaded') {
+								labelText += ' (Custom)';
+							} else if (config.user_fonts[value].source === 'local') {
+								labelText += ' (System)';
+							}
+						}
+						option.textContent = labelText;
+						if (value && !value.includes('...')) {
+							option.style.fontFamily = `"${value}", sans-serif`;
+							if (app.FontManager) {
+								const fontSource = (config.user_fonts && config.user_fonts[value])
+									? config.user_fonts[value].source
+									: (app.FontManager.getCachedSystemFonts && app.FontManager.getCachedSystemFonts().includes(value) ? 'local' : 'google');
+								app.FontManager.loadFont(value, fontSource);
+							}
+						}
+						option.addEventListener('click', () => {
+							closeFontMenu();
+							const actionData = this.action_data();
+							actionData.attributes.font.value = value;
+							if (actionData.on_update != undefined) {
+								const result = this.tools_modules[actionData.name].object[actionData.on_update]({ key: 'font', value });
+								if (result && result.new_values) {
+									for (let key in result.new_values) actionData.attributes[key].value = result.new_values[key];
+								}
+							}
+							this.show_action_attributes();
+						});
+						fontMenu.appendChild(option);
+					}
+					updateFontButton(item.value);
+					fontButton.addEventListener('click', () => {
+						if (fontMenu.parentNode) closeFontMenu();
+						else openFontMenu();
+					});
+					fontPicker.appendChild(fontButton);
+					itemDom.appendChild(fontPicker);
+					continue;
+				}
 				for (let j in values) {
 					var option = document.createElement("option");
 					if (item.value == values[j]) {
@@ -733,7 +945,7 @@ class GUI_tools_class {
 
 				var elementTitle = document.createElement('label');
 				elementTitle.innerHTML = title + ':';
-				elementTitle.for = k;
+				elementTitle.htmlFor = k + '_input';
 				elementTitle.className = 'trn';
 
 				var colorInput = document.createElement('input');
@@ -741,6 +953,8 @@ class GUI_tools_class {
 				const $colorInput = $(colorInput)
 					.uiColorInput({
 						id: k,
+						inputId: k + '_input',
+						name: k,
 						value: item
 					})
 					.on('change', () => {
@@ -803,6 +1017,7 @@ class GUI_tools_class {
 		// W indicator / input
 		const wLabel = document.createElement('label');
 		wLabel.innerText = 'W:';
+		wLabel.htmlFor = 'select_transform_w';
 		wLabel.className = 'trn';
 		wLabel.style.fontWeight = 'bold';
 		wLabel.style.marginRight = '2px';
@@ -810,6 +1025,7 @@ class GUI_tools_class {
 
 		const wInput = document.createElement('input');
 		wInput.id = 'select_transform_w';
+		wInput.name = 'select_transform_w';
 		wInput.type = 'number';
 		wInput.className = 'attribute_value';
 		wInput.style.width = '60px';
@@ -843,6 +1059,7 @@ class GUI_tools_class {
 		// H indicator / input
 		const hLabel = document.createElement('label');
 		hLabel.innerText = 'H:';
+		hLabel.htmlFor = 'select_transform_h';
 		hLabel.className = 'trn';
 		hLabel.style.fontWeight = 'bold';
 		hLabel.style.marginRight = '2px';
@@ -850,6 +1067,7 @@ class GUI_tools_class {
 
 		const hInput = document.createElement('input');
 		hInput.id = 'select_transform_h';
+		hInput.name = 'select_transform_h';
 		hInput.type = 'number';
 		hInput.className = 'attribute_value';
 		hInput.style.width = '60px';
@@ -858,11 +1076,46 @@ class GUI_tools_class {
 
 		const applyDimensions = (newW, newH) => {
 			if (!config.layer || newW <= 0 || newH <= 0) return;
+			const settings = { width: newW, height: newH };
+			if (config.layer.type === 'text' && config.layer.params && config.layer.params.boundary !== 'box'
+				&& String(config.layer.params.boundary).toLowerCase() !== 'paragraph') {
+				try {
+					const textTool = this.tools_modules['text'] && this.tools_modules['text'].object;
+					if (textTool && typeof textTool.commit_point_text_resize === 'function') {
+						const preData = config.layer.data ? JSON.parse(JSON.stringify(config.layer.data)) : null;
+						const preParams = JSON.parse(JSON.stringify(config.layer.params));
+						const preX = config.layer.x, preY = config.layer.y, preW = config.layer.width, preH = config.layer.height;
+						textTool.mousedownBounds = {
+							x: preX, y: preY, width: preW, height: preH,
+							boundary: config.layer.params.boundary || 'dynamic'
+						};
+						const committed = textTool.commit_point_text_resize(config.layer, newW, newH);
+						if (committed) {
+							settings.x = committed.x;
+							settings.y = committed.y;
+							settings.width = committed.width;
+							settings.height = committed.height;
+							settings.params = committed.params;
+							settings.data = committed.data;
+						}
+						// Restore pre-edit state for correct history old_settings
+						config.layer.x = preX;
+						config.layer.y = preY;
+						config.layer.width = preW;
+						config.layer.height = preH;
+						config.layer.params = preParams;
+						if (preData) {
+							config.layer.data = preData;
+							if (typeof textTool.get_editor === 'function') {
+								const ed = textTool.get_editor(config.layer);
+								if (ed && ed.set_lines) ed.set_lines(JSON.parse(JSON.stringify(preData)), true);
+							}
+						}
+					}
+				} catch (e) { /* ignore */ }
+			}
 			app.State.do_action(
-				new app.Actions.Update_layer_action(config.layer.id, {
-					width: newW,
-					height: newH,
-				})
+				new app.Actions.Update_layer_action(config.layer.id, settings)
 			);
 		};
 
@@ -905,6 +1158,7 @@ class GUI_tools_class {
 		group.appendChild(hInput);
 
 		container.appendChild(group);
+
 	}
 
 	update_aspect_lock_ui(isShiftDown, btn) {

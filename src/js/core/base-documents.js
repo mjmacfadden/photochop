@@ -250,7 +250,7 @@ class Base_documents_class {
 		config.layer = doc.layer || (config.layers ? config.layers[0] : null);
 		config.ZOOM = doc.zoom || 1;
 		config.guides = doc.guides || [];
-		config.user_fonts = doc.user_fonts || {};
+		config.user_fonts = Object.assign({}, app.FontManager ? app.FontManager.get_user_fonts() : {}, doc.user_fonts || {});
 		config.TRANSPARENCY = doc.transparency !== false;
 		if (this.Base_gui && this.Base_gui.render_canvas_background) {
 			this.Base_gui.render_canvas_background('canvas_minipaint');

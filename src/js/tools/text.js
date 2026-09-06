@@ -9,13 +9,12 @@ import Helper_class from './../libs/helpers.js';
 import Dialog_class from './../libs/popup.js';
 import WebFont from 'webfontloader';
 import alertify from './../../../node_modules/alertifyjs/build/alertify.min.js';
+import googleFontsCache from './../libs/google-fonts-cache.json';
 
 /**
- * TODO
- * - Add leading, superscript, subscript
- * - Implement text direction (right to left, top to bottom, etc.); currently partial implementation
- * - Allow search & add google fonts
- * - Undo history
+ * Type layers stay editable vector records (span JSON), redrawn each frame.
+ * Glyphs currently use canvas fillText + metrics (FIXME: swap for Typr paths).
+ * Out of scope: text on a path, warp, PSD type round-trip, HarfBuzz/RTL.
  */
 
 // Default text styling
@@ -24,6 +23,7 @@ import alertify from './../../../node_modules/alertifyjs/build/alertify.min.js';
 export const metaDefaults = {
 	size: 38,
 	family: 'Roboto',
+	weight: 'Regular (400)',
 	kerning: 0,
 	leading: 0,
 	bold: false,
@@ -35,13 +35,107 @@ export const metaDefaults = {
 	stroke_color: '#000000'
 };
 
+/** Build a canvas font string from span meta (supports numeric/named weights). */
+export function span_font_css(span, sizeOverride = null) {
+	const meta = (span && span.meta) ? span.meta : {};
+	const size = sizeOverride != null ? sizeOverride : (meta.size != null ? meta.size : metaDefaults.size);
+	const family = meta.family || metaDefaults.family;
+	const weightRaw = meta.weight != null ? meta.weight : null;
+	let italic = !!meta.italic;
+	let weightCss = meta.bold ? 'bold' : 'normal';
+	if (weightRaw != null && String(weightRaw).length) {
+		const w = String(weightRaw);
+		if (/italic/i.test(w)) italic = true;
+		const mapped = normalize_font_weight(w);
+		if (mapped) weightCss = mapped;
+	}
+	return (italic ? 'italic' : 'normal') + ' ' + weightCss + ' ' + Math.round(size) + 'px ' + family;
+}
+
+export function normalize_font_weight(weight) {
+	if (weight == null || weight === '') return null;
+	const raw = String(weight).trim();
+	// Dropdown labels: "Light (300)", "Thin (100)" — prefer explicit CSS number
+	const paren = raw.match(/\((\d{2,4})\)/);
+	if (paren) return String(parseInt(paren[1], 10));
+	const w = raw.toLowerCase().replace(/[_\s]+/g, '');
+	if (/^\d{2,4}$/.test(w)) return String(parseInt(w, 10));
+	if (w === 'regular' || w === 'normal' || w === 'book' || w === 'roman') return '400';
+	if (w === 'medium') return '500';
+	if (w === 'semibold' || w === 'demibold' || w === 'semi') return '600';
+	if (w === 'bold') return '700';
+	if (w === 'extrabold' || w === 'ultrabold') return '800';
+	if (w === 'black' || w === 'heavy' || w === 'heavyblack') return '900';
+	if (w === 'thin' || w === 'hairline') return '100';
+	if (w === 'extralight' || w === 'ultralight') return '200';
+	if (w === 'light') return '300';
+	// Local Font Access styles often look like "Bold Italic" — strip italic and retry
+	const noItalic = w.replace(/italic|oblique/g, '');
+	if (noItalic && noItalic !== w) return normalize_font_weight(noItalic) || '400';
+	// Ordered substring fallbacks (extra* before base; thin before light)
+	if (w.includes('extralight') || w.includes('ultralight')) return '200';
+	if (w.includes('thin') || w.includes('hairline')) return '100';
+	if (w.includes('light')) return '300';
+	if (w.includes('medium')) return '500';
+	if (w.includes('semibold') || w.includes('demibold')) return '600';
+	if (w.includes('extrabold') || w.includes('ultrabold')) return '800';
+	if (w.includes('black') || w.includes('heavy')) return '900';
+	if (w.includes('bold')) return '700';
+	return '400';
+}
+
+/** Compare Weight dropdown values allowing "Regular" == "Regular (400)". */
+export function weight_labels_match(a, b) {
+	if (a == null || b == null) return false;
+	if (String(a) === String(b)) return true;
+	const na = normalize_font_weight(a);
+	const nb = normalize_font_weight(b);
+	return na != null && na === nb;
+}
+
+
+export function weight_implies_bold(weight) {
+	const n = parseInt(normalize_font_weight(weight) || '400', 10);
+	return n >= 600;
+}
+
+/** Unwrap UI attribute objects ({ value }) then canonicalize boundary. */
+export function normalize_text_boundary(boundary) {
+	if (boundary != null && typeof boundary === 'object') {
+		boundary = (boundary.value != null) ? boundary.value
+			: (boundary.boundary != null ? boundary.boundary : '');
+	}
+	const b = String(boundary == null ? '' : boundary).trim().toLowerCase();
+	if (b === 'box' || b === 'paragraph' || b === 'fixed') return 'box';
+	return 'dynamic';
+}
+
+/** Unwrap UI attribute objects; return left|center|right|justify. */
+export function normalize_halign(halign) {
+	if (halign != null && typeof halign === 'object') {
+		halign = (halign.value != null) ? halign.value : 'left';
+	}
+	const h = String(halign == null ? 'left' : halign).trim().toLowerCase();
+	if (h === 'center' || h === 'right' || h === 'justify') return h;
+	return 'left';
+}
+
+export function is_box_text(layer) {
+	return !!(layer && layer.params && normalize_text_boundary(layer.params.boundary) === 'box');
+}
+
+export function is_point_text(layer) {
+	return !!(layer && layer.type === 'text' && !is_box_text(layer));
+}
+
 const LOREM_IPSUM = 'Lorem ipsum';
+const LOREM_PARAGRAPH = 'Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut labore et dolore magna aliqua. Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris nisi ut aliquip ex ea commodo consequat. Duis aute irure dolor in reprehenderit in voluptate velit esse cillum dolore eu fugiat nulla pariatur. Excepteur sint occaecat cupidatat non proident, sunt in culpa qui officia deserunt mollit anim id est laborum. Sed ut perspiciatis unde omnis iste natus error sit voluptatem accusantium doloremque laudantium, totam rem aperiam, eaque ipsa quae ab illo inventore veritatis et quasi architecto beatae vitae dicta sunt explicabo. Nemo enim ipsam voluptatem quia voluptas sit aspernatur aut odit aut fugit, sed quia consequuntur magni dolores eos qui ratione voluptatem sequi nesciunt. Neque porro quisquam est, qui dolorem ipsum quia dolor sit amet, consectetur, adipisci velit, sed quia non numquam eius modi tempora incidunt ut labore et dolore magnam aliquam quaerat voluptatem.';
 
 // Global map of font name to font metrics information.
 const fontMetricsMap = new Map();
 const layerEditors = new WeakMap();
 const fontLoadPromiseMap = new Map();
-const fontLoadMap = new Map();
+export const fontLoadMap = new Map();
 fontLoadMap.set('Arial', true);
 fontLoadMap.set('Courier', true);
 fontLoadMap.set('Impact', true);
@@ -51,39 +145,130 @@ fontLoadMap.set('Tahoma', true);
 fontLoadMap.set('Times New Roman', true);
 fontLoadMap.set('Verdana', true);
 
-function load_font_family({ family, variants }, successCallback) {
-	if (fontLoadMap.get(family) == null) {
-		fontLoadMap.set(family, false);
-		const loadPromise = new Promise((resolve, reject) => {
-			WebFont.load({
-				google: {
-					families: [family + (variants ? ':' + variants.join(',') : '')]
-				},
-				fontactive: (family) => {
-					fontLoadMap.set(family, true);
-					fontLoadPromiseMap.delete(family);
-					resolve();
-				},
-				fontinactive: (family) => {
-					alertify.error('Font ' + family + ' could not be loaded.');
-					fontLoadPromiseMap.delete(family);
-					reject();
-				}
-			});
-		});
-		fontLoadPromiseMap.set(family, loadPromise);
+/** Google/WebFont variants already requested per family (e.g. "100", "regular", "700italic"). */
+export const fontLoadedVariants = new Map();
+
+/** Normalize a variant token for WebFontLoader classic API + dedupe keys. */
+export function google_variant_key(weightOrVariant, italic = false) {
+	if (weightOrVariant == null || weightOrVariant === '') {
+		return italic ? 'italic' : 'regular';
 	}
-	if (successCallback) {
-		const loadPromise = fontLoadPromiseMap.get(family);
-		if (loadPromise) {
-			loadPromise.then(successCallback);
-		} else if (fontLoadMap.get(family) == true) {
+	let v = String(weightOrVariant).trim().toLowerCase().replace(/[\s_]+/g, '');
+	const isItalic = italic || /italic|oblique/.test(v);
+	v = v.replace(/italic|oblique/g, '');
+	if (!v || v === 'regular' || v === 'normal' || v === 'book' || v === 'roman') {
+		return isItalic ? 'italic' : 'regular';
+	}
+	const mapped = normalize_font_weight(v);
+	if (mapped && /^\d+$/.test(mapped)) {
+		if (mapped === '400') return isItalic ? 'italic' : 'regular';
+		return isItalic ? (mapped + 'italic') : mapped;
+	}
+	return isItalic ? (v + 'italic') : v;
+}
+
+export function load_font_family({ family, variants, source }, successCallback) {
+	if (!source && family && config.user_fonts[family] && config.user_fonts[family].source) {
+		source = config.user_fonts[family].source;
+	}
+	if (!source && family && app.FontManager && typeof app.FontManager.getCachedSystemFonts === 'function'
+		&& app.FontManager.getCachedSystemFonts().includes(family)) {
+		source = 'local';
+	}
+	if (source === 'local') {
+		if (app.FontManager) {
+			// Prefer style-specific load when a single named/numeric weight was requested.
+			const styleHint = (variants && variants.length === 1) ? variants[0] : null;
+			const loader = (styleHint && typeof app.FontManager.loadSystemFontStyle === 'function')
+				? app.FontManager.loadSystemFontStyle(family, String(styleHint))
+				: app.FontManager.loadSystemFont(family);
+			loader.then(() => {
+				fontLoadMap.set(family, true);
+				if (successCallback) successCallback();
+			}).catch(() => {
+				fontLoadMap.set(family, true);
+				if (successCallback) successCallback();
+			});
+		} else {
+			fontLoadMap.set(family, true);
+			if (successCallback) successCallback();
+		}
+		return;
+	}
+	if (source === 'user_uploaded') {
+		fontLoadMap.set(family, true);
+		if (successCallback) {
 			requestAnimationFrame(() => {
 				successCallback();
 			});
 		}
+		return;
+	}
+
+	// Google / web fonts — must be able to request ADDITIONAL weights after first load.
+	// Prior bug: once Roboto was marked loaded (Regular only), Thin/Light/Medium requests
+	// were skipped, so canvas font-weight 100–500 all drew as Regular glyphs.
+	const requested = (variants && variants.length)
+		? variants.map((v) => google_variant_key(v))
+		: ['regular'];
+	let loadedSet = fontLoadedVariants.get(family);
+	if (!loadedSet) {
+		loadedSet = new Set();
+		fontLoadedVariants.set(family, loadedSet);
+	}
+	const missing = requested.filter((v) => !loadedSet.has(v) && !loadedSet.has(v + '::pending'));
+
+	if (missing.length === 0) {
+		const pending = fontLoadPromiseMap.get(family);
+		if (pending) {
+			if (successCallback) pending.then(successCallback);
+		} else if (successCallback) {
+			requestAnimationFrame(() => { successCallback(); });
+		}
+		return;
+	}
+
+	if (fontLoadMap.get(family) == null) {
+		fontLoadMap.set(family, false);
+	}
+
+	// Mark pending before kicking WebFont so concurrent callers coalesce.
+	for (const v of missing) loadedSet.add(v + '::pending');
+	const toLoad = missing;
+	const loadPromise = new Promise((resolve) => {
+		WebFont.load({
+			google: {
+				families: [family + ':' + toLoad.join(',')]
+			},
+			active: () => {
+				for (const v of toLoad) {
+					loadedSet.delete(v + '::pending');
+					loadedSet.add(v);
+				}
+				fontLoadMap.set(family, true);
+				resolve();
+			},
+			inactive: () => {
+				console.warn('Font ' + family + ' (' + toLoad.join(',') + ') could not be loaded.');
+				for (const v of toLoad) {
+					loadedSet.delete(v + '::pending');
+					loadedSet.add(v); // avoid tight-loop retry
+				}
+				fontLoadMap.set(family, true);
+				resolve();
+			}
+		});
+	});
+	const prev = fontLoadPromiseMap.get(family);
+	// Parallel WebFont loads are fine; settle when both prev and this request finish.
+	const chainedWait = prev ? Promise.all([prev.catch(() => {}), loadPromise]) : loadPromise;
+	fontLoadPromiseMap.set(family, Promise.resolve(chainedWait).then(() => {}));
+
+	if (successCallback) {
+		loadPromise.then(successCallback);
 	}
 }
+window.load_font_family = load_font_family;
 
 /**
  * The canvas's native font metrics implementation doesn't really give us enough information...
@@ -94,17 +279,19 @@ kerningTestCanvas.height = 10;
 kerningTestCanvas.style = 'font-kerning: normal; text-rendering: optimizeLegibility;';
 const kerningTestCtx = kerningTestCanvas.getContext('2d');
 class Font_metrics_class {
-	constructor(family, size) {
+	constructor(family, size, weightCss = '400', italic = false) {
 		this.family = family || (family = "Arial");
 		this.size = parseFloat(size) || (size = 12);
+		this.weightCss = weightCss || '400';
+		this.italic = !!italic;
 		this.kerningMap = new Map();
 
-		// Preparing container
+		// Preparing container — include weight/style so metrics match canvas faces
 		const line = document.createElement('div');
 		const body = document.body;
 		line.style.position = 'absolute';
 		line.style.whiteSpace = 'nowrap';
-		line.style.font = size + 'px ' + family;
+		line.style.font = (this.italic ? 'italic ' : 'normal ') + this.weightCss + ' ' + size + 'px ' + family;
 		body.appendChild(line);
 
 		// Now we can measure width and height of the letter
@@ -139,8 +326,7 @@ class Font_metrics_class {
 		kerningTestCanvas.height = this.height;
 		kerningTestCtx.clearRect(0, 0, this.width, this.height);
 		kerningTestCtx.font =
-		' ' + (this.size) + 'px' +
-		' ' + this.family;
+		(this.italic ? 'italic ' : 'normal ') + this.weightCss + ' ' + this.size + 'px ' + this.family;
 		kerningTestCtx.textAlign = 'left';
 		kerningTestCtx.textBaseline = baseline;
 		kerningTestCtx.fillStyle = '#000000';
@@ -178,11 +364,12 @@ class Font_metrics_class {
 	get_kerning_offset(letters, flags = {}) {
 		let offset = this.kerningMap.get(letters);
 		if (offset == null) {
+			const useItalic = flags.italic != null ? !!flags.italic : this.italic;
+			const useWeight = flags.weight != null
+				? (normalize_font_weight(flags.weight) || this.weightCss)
+				: (flags.bold ? '700' : this.weightCss);
 			kerningTestCtx.font =
-			' ' + (flags.italic ? 'italic' : '') +
-			' ' + (flags.bold ? 'bold' : '') +
-			' ' + (this.size) + 'px' +
-			' ' + this.family;
+			(useItalic ? 'italic ' : 'normal ') + useWeight + ' ' + this.size + 'px ' + this.family;
 			offset = kerningTestCtx.measureText(letters).width - (kerningTestCtx.measureText(letters[0]).width + kerningTestCtx.measureText(letters[1]).width);
 			this.kerningMap.set(letters, offset);
 		}
@@ -1255,11 +1442,14 @@ class Text_editor_class {
 	get_span_font_metrics(span, noCache) {
 		const fontSize = (span.meta.size || metaDefaults.size);
 		const fontName = (span.meta.family || metaDefaults.family);
-		let fontMetrics = fontMetricsMap.get(fontName + '_' + fontSize);
+		const weightKey = normalize_font_weight(span.meta && span.meta.weight != null ? span.meta.weight : metaDefaults.weight) || '400';
+		const italicKey = (span.meta && span.meta.italic) ? '1' : '0';
+		const cacheKey = fontName + '_' + fontSize + '_' + weightKey + '_' + italicKey;
+		let fontMetrics = fontMetricsMap.get(cacheKey);
 		if (!fontMetrics) {
-			fontMetrics = new Font_metrics_class(fontName, fontSize);
+			fontMetrics = new Font_metrics_class(fontName, fontSize, weightKey, !!italicKey && italicKey === '1');
 			if (!noCache) {
-				fontMetricsMap.set(fontName + '_' + fontSize, fontMetrics);
+				fontMetricsMap.set(cacheKey, fontMetrics);
 			}
 		}
 		return fontMetrics;
@@ -1438,11 +1628,11 @@ class Text_editor_class {
 	}
 
 	calculate_text_placement(ctx, layer) {
-		const boundary = layer.params.boundary;
-		const textDirection = layer.params.text_direction;
-		const wrapDirection = layer.params.wrap_direction;
-		const halign = layer.params.halign;
-		const valign = layer.params.valign;
+		const boundary = normalize_text_boundary(layer.params && layer.params.boundary);
+		const textDirection = (layer.params && layer.params.text_direction) || 'ltr';
+		const wrapDirection = (layer.params && layer.params.wrap_direction) || 'ttb';
+		const halign = normalize_halign(layer.params.halign);
+		const valign = layer.params.valign || 'top';
 		const isHorizontalTextDirection = ['ltr', 'rtl'].includes(textDirection);
 		const isNegativeTextDirection = ['rtl', 'btt'].includes(textDirection);
 
@@ -1472,11 +1662,7 @@ class Text_editor_class {
 				const size = span.meta.size || metaDefaults.size;
 				fontMetrics = this.get_span_font_metrics(span, !fontLoadMap.get(family));
 				if (isHorizontalTextDirection) {
-					ctx.font =
-						' ' + (span.meta.italic ? 'italic' : '') +
-						' ' + (span.meta.bold ? 'bold' : '') +
-						' ' + size + 'px' +
-						' ' + family;
+					ctx.font = span_font_css(span, size);
 				}
 				for (let c = 0; c < span.text.length; c++) {
 					character = span.text[c];
@@ -1529,12 +1715,7 @@ class Text_editor_class {
 								});
 							}
 						}
-						// For word split only, break out.
-						else if (layer.params.wrap === 'word') {
-							wrapCharacterOffsets.push(wrapAccumulativeSize);
-							break;
-						}
-						// Otherwise, split the word
+						// No break opportunity: split the long word (Photoshop/Photopea).
 						else {
 							if (s === 0 && c === 0) {
 								c++;
@@ -1600,14 +1781,46 @@ class Text_editor_class {
 		if ((isHorizontalTextDirection && halign !== 'left') || (!isHorizontalTextDirection && valign !== 'top')) {
 			const maxTextDirectionSize = boundary === 'dynamic' ? totalTextDirectionSize : (isHorizontalTextDirection ? layer.width : layer.height);
 			for (let line of lineRenderInfo.lines) {
-				for (let wrap of line.wraps) {
-					const isCentered = (isHorizontalTextDirection && halign == 'center') || (!isHorizontalTextDirection && valign === 'middle');
-					const lastSpan = wrap.spans[wrap.spans.length - 1];
-					const wrapSize = wrap.characterOffsets[wrap.characterOffsets.length - 1 - (lastSpan.text[lastSpan.text.length - 1] === ' ' ? 1 : 0)];
-					const startOffset = (isCentered ? maxTextDirectionSize / 2 : maxTextDirectionSize) - (isCentered ? wrapSize / 2 : wrapSize);
-					if (startOffset > 0) {
-						for (let oi = 0; oi < wrap.characterOffsets.length; oi++) {
-							wrap.characterOffsets[oi] += startOffset;
+				for (let w = 0; w < line.wraps.length; w++) {
+					const wrap = line.wraps[w];
+					if (isHorizontalTextDirection && halign === 'justify') {
+						const isLastWrap = (w === line.wraps.length - 1);
+						const isSingleLineLayer = (lineRenderInfo.lines.length === 1 && line.wraps.length === 1);
+						if (!isLastWrap || (isSingleLineLayer && boundary === 'box')) {
+							const wrapText = this.get_wrap_text(wrap);
+							if (!wrapText || wrap.characterOffsets.length <= 1) continue;
+							const hasTrailingSpace = wrapText.endsWith(' ');
+							const effectiveCharCount = wrapText.length - (hasTrailingSpace ? 1 : 0);
+							if (effectiveCharCount <= 0) continue;
+							const spaceIndices = [];
+							for (let i = 0; i < effectiveCharCount; i++) {
+								if (wrapText[i] === ' ') {
+									spaceIndices.push(i);
+								}
+							}
+							if (spaceIndices.length === 0) continue;
+							const wrapSize = wrap.characterOffsets[effectiveCharCount];
+							const remainingSpace = maxTextDirectionSize - wrapSize;
+							if (remainingSpace > 0) {
+								const extraPerSpace = remainingSpace / spaceIndices.length;
+								let spacesEncountered = 0;
+								for (let i = 0; i < wrapText.length; i++) {
+									if (i < effectiveCharCount && wrapText[i] === ' ') {
+										spacesEncountered++;
+									}
+									wrap.characterOffsets[i + 1] += spacesEncountered * extraPerSpace;
+								}
+							}
+						}
+					} else {
+						const isCentered = (isHorizontalTextDirection && halign == 'center') || (!isHorizontalTextDirection && valign === 'middle');
+						const lastSpan = wrap.spans[wrap.spans.length - 1];
+						const wrapSize = wrap.characterOffsets[wrap.characterOffsets.length - 1 - (lastSpan.text[lastSpan.text.length - 1] === ' ' ? 1 : 0)];
+						const startOffset = (isCentered ? maxTextDirectionSize / 2 : maxTextDirectionSize) - (isCentered ? wrapSize / 2 : wrapSize);
+						if (Math.abs(startOffset) > 0.01) {
+							for (let oi = 0; oi < wrap.characterOffsets.length; oi++) {
+								wrap.characterOffsets[oi] += startOffset;
+							}
 						}
 					}
 				}
@@ -1629,11 +1842,7 @@ class Text_editor_class {
 					if (isHorizontalTextDirection) {
 						fontMetrics = this.get_span_font_metrics(span, !fontLoadMap.get(family));
 					} else {
-						ctx.font =
-							' ' + (span.meta.italic ? 'italic' : '') +
-							' ' + (span.meta.bold ? 'bold' : '') +
-							' ' + (span.meta.size || metaDefaults.size) + 'px' +
-							' ' + family;
+						ctx.font = span_font_css(span);
 					}
 					let spanAscenderSize = isHorizontalTextDirection ? fontMetrics.baseline : ctx.measureText(character).width;
 					let spanDescenderSize = isHorizontalTextDirection ? Math.abs(fontMetrics.baseline - fontMetrics.height) : ctx.measureText(character).width;
@@ -1675,15 +1884,6 @@ class Text_editor_class {
 		}
 
 		this._livePointScale = null;
-		if (this._pointTransforming && this.textBoundaryWidth > 0 && this.textBoundaryHeight > 0) {
-			const bw = Math.max(1, this.textBoundaryWidth);
-			const bh = Math.max(1, this.textBoundaryHeight);
-			const sx = layer.width / bw;
-			const sy = layer.height / bh;
-			if (Math.abs(sx - 1) > 0.01 || Math.abs(sy - 1) > 0.01) {
-				this._livePointScale = { sx, sy };
-			}
-		}
 
 		if (!this.lineRenderInfo) return;
 
@@ -1695,11 +1895,11 @@ class Text_editor_class {
 			ctx.textAlign = 'left';
 			ctx.textBaseline = 'alphabetic';
 
-			const boundary = layer.params.boundary;
+			const boundary = normalize_text_boundary(layer.params && layer.params.boundary);
 			let drawOffsetTop = layer.y + 1;
 			let drawOffsetLeft = layer.x + 1;
-			const textDirection = layer.params.text_direction;
-			const wrapDirection = layer.params.wrap_direction;
+			const textDirection = (layer.params && layer.params.text_direction) || 'ltr';
+			const wrapDirection = (layer.params && layer.params.wrap_direction) || 'ttb';
 			const isHorizontalTextDirection = ['ltr', 'rtl'].includes(textDirection);
 			const isNegativeTextDirection = ['rtl', 'btt'].includes(textDirection);
 
@@ -1708,7 +1908,8 @@ class Text_editor_class {
 			let wrapIndex = 0;
 			const cursorLine = this.selection.isActiveSideEnd ? this.selection.end.line : this.selection.start.line;
 			const cursorCharacter = this.selection.isActiveSideEnd ? this.selection.end.character : this.selection.start.character;
-			if(layer.rotate){
+			const hasRotate = !!layer.rotate;
+			if(hasRotate){
 				const alpha = (layer.rotate * Math.PI) / 180;
 				ctx.save();
 				// Move the canvas to the center before rotating
@@ -1718,10 +1919,13 @@ class Text_editor_class {
 				ctx.translate(-layer.x - layer.width / 2, -layer.y - layer.height / 2);
 
 			}
-			if (this._livePointScale) {
-				const { sx, sy } = this._livePointScale;
+			const layerScaleX = (layer.params && layer.params.scale_x != null) ? layer.params.scale_x : 1;
+			const layerScaleY = (layer.params && layer.params.scale_y != null) ? layer.params.scale_y : 1;
+			const hasLayerScale = Math.abs(layerScaleX - 1) > 0.001 || Math.abs(layerScaleY - 1) > 0.001;
+			if (hasLayerScale) {
+				ctx.save();
 				ctx.translate(layer.x, layer.y);
-				ctx.scale(sx, sy);
+				ctx.scale(layerScaleX, layerScaleY);
 				ctx.translate(-layer.x, -layer.y);
 			}
 			for (let line of this.lineRenderInfo.lines) {
@@ -1740,9 +1944,14 @@ class Text_editor_class {
 						const strikethrough = span.meta.strikethrough != null ? span.meta.strikethrough : metaDefaults.strikethrough;
 						const family = span.meta.family || metaDefaults.family;
 
-						if (fontLoadMap.get(family) !== true) {
-							const variants = config.user_fonts[family] ? config.user_fonts[family].variants : undefined;
-							load_font_family({ family, variants }, () => {
+						{
+							const userFont = config.user_fonts[family];
+							const source = userFont ? userFont.source : undefined;
+							const weightLabel = (span.meta && span.meta.weight != null) ? span.meta.weight : metaDefaults.weight;
+							const variantKey = google_variant_key(weightLabel, !!(span.meta && span.meta.italic));
+							// Always ask for the span weight — load_font_family no-ops if already present.
+							load_font_family({ family, variants: [variantKey], source }, () => {
+								if (fontLoadMap.get(family) !== true) return;
 								this.hasValueChanged = true;
 								this.Base_layers.render();
 							});
@@ -1754,11 +1963,7 @@ class Text_editor_class {
 						}
 
 						// Set styles for drawing
-						ctx.font =
-							' ' + (italic ? 'italic' : '') +
-							' ' + (bold ? 'bold' : '') +
-							' ' + Math.round(span.meta.size || metaDefaults.size) + 'px' +
-							' ' + family;
+						ctx.font = span_font_css(span);
 						const fill_color = span.meta.fill_color || config.COLOR || metaDefaults.fill_color;
 						let fillStyle;
 						if (fill_color.startsWith('#')) {
@@ -1880,7 +2085,10 @@ class Text_editor_class {
 				}
 				lineIndex++;
 			}
-			if(layer.rotate){
+			if (hasLayerScale) {
+				ctx.restore();
+			}
+			if (hasRotate) {
 				ctx.restore();
 			}
 		} catch (error) {
@@ -1896,144 +2104,750 @@ class Google_fonts_search_class {
 		this.POP = new Dialog_class();
 		this.GUI_tools = new GUI_tools_class();
 		this.popup = null;
-		this.fontsPerPage = 8;
+		this.batchSize = 25;
 		this.dialogContentNode = null;
 		this.fontListNode = null;
+		this.cardsContainer = null;
+		this.loadMoreContainer = null;
+		this.loadMoreButton = null;
+		this.countIndicator = null;
+		this.localFontsButton = null;
 		this.fontList = [];
 		this.fontListFiltered = [];
+		this.googleFontList = [];
+		this.localFontList = [];
+		this.customFontList = [];
 		this.selectedFonts = {};
 		this.searchTimeoutHandle = null;
+		this.searchQuery = '';
+		this.activeFilter = 'all';
+		this.selectedCategory = 'all';
+		this.selectedWeight = 'all';
+		this.selectedWidth = 'all';
+		this.selectedStyle = 'all';
+		this.selectedSort = 'popularity';
+		this.renderedCount = 0;
+		this.tabButtons = {};
+		this.resetFiltersCallback = null;
 	}
 
-	render_font_list(page) {
-		page = page || 1;
-		const pageCount = Math.ceil(this.fontListFiltered.length / 8);
-		const startIndex = (page - 1) * this.fontsPerPage;
-		let html = '<div class="selection_card_list">';
-		for (let i = startIndex; i < startIndex + this.fontsPerPage; i++) {
-			const font = this.fontListFiltered[i];
-			if (!font) break;
-			const isSelected = !!this.selectedFonts[font.family];
-			load_font_family({ family: font.family, variants: font.variants });
-			html += `
-				<div class="selection_card">
-					<input type="checkbox" id="google_font_selection_${font.family}" value="${font.family}" ${isSelected ? 'checked="checked"' : ''}>
-					<label for="google_font_selection_${font.family}"">
-						<div class="font_preview" style="font-family: '${font.family}'">
-							The quick brown fox jumps over the lazy dog.
-						</div>
-						<div class="text_muted">
-							${font.family}
-						</div>
-					</label>
+	escapeHtml(str) {
+		if (!str) return '';
+		return String(str)
+			.replace(/&/g, '&amp;')
+			.replace(/"/g, '&quot;')
+			.replace(/'/g, '&#39;')
+			.replace(/</g, '&lt;')
+			.replace(/>/g, '&gt;');
+	}
+
+	detectCategory(font) {
+		if (font.category && font.category !== 'other') {
+			return font.category.toLowerCase();
+		}
+		const name = (font.family || '').toLowerCase();
+		if (/\b(mono|code|console|typewriter|fixed)\b|mono/i.test(name)) return 'monospace';
+		if (/script|hand|brush|calli|cursive|pen|marker|sketch|doodle/i.test(name)) return 'handwriting';
+		if (/serif|roman|times|garamond|baskerville|palatino|bookman|century|georgia|didot|bodoni|caslon|cambria|cormorant/i.test(name)) return 'serif';
+		if (/sans|gothic|arial|helvetica|calibri|verdana|trebuchet|segoe|ubuntu|roboto|inter|adwaita|grotesk|lato|poppins|nunito|work|rubik|prompt/i.test(name)) return 'sans-serif';
+		if (/display|poster|black|ultra|fat|shadow|headline|stencil|impact|comic|bungee|chunk|alfa|bebas|bricolage/i.test(name)) return 'display';
+		return 'sans-serif';
+	}
+
+	matchesWeight(font, weight) {
+		if (!weight || weight === 'all') return true;
+		const variants = Array.isArray(font.variants) ? font.variants : [];
+		const lowerVariants = variants.map(v => String(v).toLowerCase());
+		if (lowerVariants.length === 0) return true;
+
+		if (weight === 'thin') {
+			return lowerVariants.some(v => /100|200|300|thin|light|hairline/.test(v));
+		}
+		if (weight === 'regular') {
+			return lowerVariants.some(v => /regular|normal|book|roman|400/.test(v));
+		}
+		if (weight === 'medium') {
+			return lowerVariants.some(v => /500|600|medium|semi[- ]?bold|demi/.test(v));
+		}
+		if (weight === 'bold') {
+			return lowerVariants.some(v => /700|800|900|bold|black|heavy|extra[- ]?bold/.test(v));
+		}
+		return true;
+	}
+
+	matchesWidth(font, width) {
+		if (!width || width === 'all') return true;
+		const name = (font.family || '').toLowerCase();
+		const isCondensed = /condensed|narrow|compressed|compact/.test(name);
+		const isExpanded = /expanded|extended|wide/.test(name);
+
+		if (width === 'condensed') return isCondensed;
+		if (width === 'expanded') return isExpanded;
+		if (width === 'normal') return !isCondensed && !isExpanded;
+		return true;
+	}
+
+	matchesStyle(font, style) {
+		if (!style || style === 'all') return true;
+		const variants = Array.isArray(font.variants) ? font.variants : [];
+		const lowerVariants = variants.map(v => String(v).toLowerCase());
+
+		if (style === 'italic') {
+			return lowerVariants.some(v => /italic|oblique/.test(v));
+		}
+		if (style === 'multiple') {
+			return lowerVariants.length >= 4;
+		}
+		return true;
+	}
+
+	sortFonts(list, sortOrder) {
+		if (sortOrder === 'alpha_asc') {
+			return [...list].sort((a, b) => a.family.localeCompare(b.family));
+		}
+		if (sortOrder === 'alpha_desc') {
+			return [...list].sort((a, b) => b.family.localeCompare(a.family));
+		}
+		if (sortOrder === 'styles') {
+			return [...list].sort((a, b) => {
+				const countA = (a.variants ? a.variants.length : 1);
+				const countB = (b.variants ? b.variants.length : 1);
+				return countB - countA;
+			});
+		}
+		return list;
+	}
+
+	createCardElement(font, index) {
+		const isSelected = this.selectedFonts[font.family] != null
+			? !!this.selectedFonts[font.family]
+			: !!config.user_fonts[font.family];
+		const fontSource = font.source || (config.user_fonts[font.family] ? config.user_fonts[font.family].source : 'google');
+		load_font_family({ family: font.family, variants: font.variants, source: fontSource });
+
+		let badgeClass = 'font_badge_google';
+		let badgeLabel = 'Google';
+		if (fontSource === 'local') {
+			badgeClass = 'font_badge_system';
+			badgeLabel = 'System';
+		} else if (fontSource === 'user_uploaded') {
+			badgeClass = 'font_badge_custom';
+			badgeLabel = 'Custom';
+		}
+
+		const cat = this.detectCategory(font);
+		const catLabels = {
+			'sans-serif': 'Sans Serif',
+			'serif': 'Serif',
+			'display': 'Display',
+			'handwriting': 'Handwriting',
+			'monospace': 'Monospace'
+		};
+		const catLabel = catLabels[cat] || cat;
+		const styleCount = (font.variants && font.variants.length > 0) ? font.variants.length : 1;
+		const styleLabel = `${styleCount} style${styleCount === 1 ? '' : 's'}`;
+
+		const inputId = `font_sel_item_${index}_${encodeURIComponent(font.family).replace(/[^a-zA-Z0-9]/g, '_')}`;
+
+		const card = document.createElement('div');
+		card.className = 'selection_card';
+		card.innerHTML = `
+			<input type="checkbox" id="${inputId}" value="${this.escapeHtml(font.family)}" ${isSelected ? 'checked="checked"' : ''}>
+			<label for="${inputId}">
+				<div class="font_preview" style="font-family: '${this.escapeHtml(font.family)}', sans-serif">
+					The quick brown fox jumps over the lazy dog.
+				</div>
+				<div class="text_muted" style="display:flex;align-items:center;flex-wrap:wrap;gap:4px;margin-top:4px;">
+					<span style="font-family: '${this.escapeHtml(font.family)}', sans-serif;font-weight:600;margin-right:4px;">${this.escapeHtml(font.family)}</span>
+					<span class="font_badge ${badgeClass}">${badgeLabel}</span>
+					<span class="font_badge font_badge_category">${catLabel}</span>
+					<span class="font_badge font_badge_styles">${styleLabel}</span>
+				</div>
+			</label>
+		`;
+		return card;
+	}
+
+	renderEmptyState() {
+		let emptyHtml = '';
+		const hasActiveFilters = (this.selectedCategory !== 'all' || this.selectedWeight !== 'all' || this.selectedWidth !== 'all' || this.selectedStyle !== 'all' || this.searchQuery);
+
+		if (hasActiveFilters) {
+			emptyHtml = `
+				<div class="font_empty_state">
+					<div>No fonts found matching your search & filter criteria.</div>
+					<button type="button" class="btn font_reset_filters_btn" style="margin-top:10px;">Clear All Filters</button>
 				</div>
 			`;
+		} else if (this.activeFilter === 'system') {
+			const supported = app.FontManager && app.FontManager.isLocalFontAccessSupported();
+			if (supported) {
+				emptyHtml = `
+					<div class="font_empty_state">
+						<div>No system fonts loaded yet.</div>
+						<button type="button" class="btn load_system_btn">Allow Access to System Fonts</button>
+					</div>
+				`;
+			} else {
+				emptyHtml = `
+					<div class="font_empty_state">
+						<div>System font access requires a Chromium desktop browser (Chrome, Edge, Brave).</div>
+						<div style="margin-top:6px;font-size:12px;opacity:0.8;">You can upload any font file (.ttf, .otf, .woff) directly using the button below.</div>
+						<button type="button" class="btn upload_custom_btn">Upload Font File...</button>
+					</div>
+				`;
+			}
+		} else if (this.activeFilter === 'custom') {
+			emptyHtml = `
+				<div class="font_empty_state">
+					<div>No custom fonts uploaded yet.</div>
+					<div style="margin-top:6px;font-size:12px;opacity:0.8;">Custom fonts are saved in your browser and available anytime.</div>
+					<button type="button" class="btn upload_custom_btn">Upload Font File (.ttf, .otf, .woff)...</button>
+				</div>
+			`;
+		} else {
+			emptyHtml = '<div class="font_empty_state">No fonts found.</div>';
 		}
-		html += `
-				</div>
-				<div class="pagination">
-					${page > 1 ? '<button title="Previous Page" data-page="' + (page - 1) + '">&laquo;</button>' : ''}
-					${page - 2 > 0 ? '<button title="Page ' + (page - 2) + '" data-page="' + (page - 2) + '">' + (page - 2) + '</button>' : ''}
-					${page - 1 > 0 ? '<button title="Page ' + (page - 1) + '" data-page="' + (page - 1) + '">' + (page - 1) + '</button>' : ''}
-					<button title="Page ${page}" aria-pressed="true" data-page="${page}">${page}</button>
-					${page + 1 <= pageCount ? '<button title="Page ' + (page + 1) + '" data-page="' + (page + 1) + '">' + (page + 1) + '</button>' : ''}
-					${page + 2 <= pageCount ? '<button title="Page ' + (page + 2) + '" data-page="' + (page + 2) + '">' + (page + 2) + '</button>' : ''}
-					${page < pageCount ? '<button title="Next Page" data-page="' + (page + 1) + '">&raquo;</button>' : ''}
-				</div>
-			</div>
-		`;
-		this.fontListNode.innerHTML = html;
+		this.cardsContainer.innerHTML = emptyHtml;
+	}
 
-		// Attempt to remove vertical scroll by decreasing page size.
-		if (this.fontsPerPage > 3 && this.dialogContentNode.scrollHeight > this.dialogContentNode.clientHeight) {
-			this.fontsPerPage--;
-			this.render_font_list(page);
+	resetAndRender() {
+		this.renderedCount = 0;
+		if (this.cardsContainer) {
+			this.cardsContainer.innerHTML = '';
+		}
+		if (this.dialogContentNode) {
+			this.dialogContentNode.scrollTop = 0;
+		}
+
+		if (!this.fontListFiltered || this.fontListFiltered.length === 0) {
+			this.renderEmptyState();
+			this.updateLoadMoreUI();
 			return;
 		}
 
-		// Handle checkbox
-		this.fontListNode.querySelectorAll('input[type="checkbox"]').forEach((checkbox) => {
-			checkbox.addEventListener('change', (e) => {
-				if (checkbox.checked) {
-					this.selectedFonts[checkbox.value] = this.fontListFiltered
-						.slice(startIndex, startIndex + this.fontsPerPage)
-						.filter((font) => { return font.family === checkbox.value; })[0];
-				} else {
-					delete this.selectedFonts[checkbox.value];
-				}
-			});
+		// Progressive batching (25 fonts per batch) prevents loading 200+ font files at once
+		let initialCount = this.batchSize;
+		if (this.activeFilter === 'custom') {
+			initialCount = this.fontListFiltered.length;
+		} else {
+			initialCount = Math.min(this.batchSize, this.fontListFiltered.length);
+		}
+
+		this.appendBatch(initialCount);
+	}
+
+	appendBatch(count) {
+		const start = this.renderedCount;
+		const end = Math.min(this.fontListFiltered.length, start + count);
+		if (start >= end) {
+			this.updateLoadMoreUI();
+			return;
+		}
+
+		const fragment = document.createDocumentFragment();
+		for (let i = start; i < end; i++) {
+			const font = this.fontListFiltered[i];
+			const card = this.createCardElement(font, i);
+			fragment.appendChild(card);
+		}
+		this.cardsContainer.appendChild(fragment);
+		this.renderedCount = end;
+		this.updateLoadMoreUI();
+	}
+
+	updateLoadMoreUI() {
+		if (!this.loadMoreContainer) return;
+		const total = this.fontListFiltered ? this.fontListFiltered.length : 0;
+		const current = this.renderedCount;
+
+		if (total === 0) {
+			this.loadMoreContainer.style.display = 'none';
+			return;
+		}
+
+		this.loadMoreContainer.style.display = 'flex';
+		if (current < total) {
+			this.loadMoreButton.style.display = 'block';
+			this.loadMoreButton.textContent = `Load More Fonts (Showing ${current} of ${total})`;
+			const remaining = total - current;
+			this.countIndicator.textContent = `${remaining} more font${remaining === 1 ? '' : 's'} available`;
+		} else {
+			this.loadMoreButton.style.display = 'none';
+			if (this.activeFilter === 'system') {
+				this.countIndicator.textContent = `Showing all ${total} system fonts`;
+			} else if (this.activeFilter === 'custom') {
+				this.countIndicator.textContent = `Showing all ${total} custom fonts`;
+			} else {
+				this.countIndicator.textContent = `Showing all ${total} fonts`;
+			}
+		}
+	}
+
+	updateTabCounts() {
+		if (this.tabButtons['system']) {
+			this.tabButtons['system'].textContent = this.localFontList.length > 0
+				? `System (${this.localFontList.length})`
+				: 'System';
+		}
+		if (this.tabButtons['custom']) {
+			this.tabButtons['custom'].textContent = this.customFontList.length > 0
+				? `Custom (${this.customFontList.length})`
+				: 'Custom';
+		}
+	}
+
+	rebuildFontList() {
+		const customNames = app.FontManager ? app.FontManager.getCustomFontNames() : [];
+		this.customFontList = customNames.map(name => ({
+			family: name,
+			source: 'user_uploaded',
+			category: this.detectCategory({ family: name }),
+			variants: ['regular']
+		}));
+
+		const customSet = new Set(this.customFontList.map(f => f.family));
+		const localFiltered = this.localFontList.filter(f => !customSet.has(f.family));
+		const localSet = new Set(this.localFontList.map(f => f.family));
+		const googleFiltered = this.googleFontList.filter(f => !customSet.has(f.family) && !localSet.has(f.family));
+
+		if (this.activeFilter === 'custom') {
+			this.fontList = this.customFontList;
+		} else if (this.activeFilter === 'system') {
+			this.fontList = localFiltered;
+		} else if (this.activeFilter === 'google') {
+			this.fontList = googleFiltered;
+		} else {
+			this.fontList = [...this.customFontList, ...localFiltered, ...googleFiltered];
+		}
+		this.updateTabCounts();
+		this.applySearchFilter();
+	}
+
+	applySearchFilter() {
+		const query = (this.searchQuery || '').trim().toLowerCase();
+		const category = this.selectedCategory;
+		const weight = this.selectedWeight;
+		const width = this.selectedWidth;
+		const style = this.selectedStyle;
+
+		let filtered = this.fontList.filter(font => {
+			if (query && !font.family.toLowerCase().includes(query)) {
+				return false;
+			}
+			if (category && category !== 'all') {
+				if (this.detectCategory(font) !== category) return false;
+			}
+			if (weight && weight !== 'all') {
+				if (!this.matchesWeight(font, weight)) return false;
+			}
+			if (width && width !== 'all') {
+				if (!this.matchesWidth(font, width)) return false;
+			}
+			if (style && style !== 'all') {
+				if (!this.matchesStyle(font, style)) return false;
+			}
+			return true;
 		});
 
-		// Handle pagination
-		this.fontListNode.querySelector('.pagination').addEventListener('click', (e) => {
-			const page = parseInt(e.target.getAttribute('data-page'), 10);
-			this.render_font_list(page);
-		});
+		this.fontListFiltered = this.sortFonts(filtered, this.selectedSort);
+		this.resetAndRender();
+	}
+
+	async scanSystemFonts(forceRefresh = false) {
+		if (!app.FontManager || !app.FontManager.isLocalFontAccessSupported()) {
+			alertify.error('System font access requires a Chromium desktop browser (Chrome, Edge, Brave).');
+			return;
+		}
+		if (this.localFontsButton) {
+			this.localFontsButton.disabled = true;
+			this.localFontsButton.textContent = 'Scanning System Fonts...';
+		}
+		try {
+			const uniqueFamilies = await app.FontManager.querySystemFonts(forceRefresh);
+			this.localFontList = uniqueFamilies.map(family => ({
+				family,
+				source: 'local',
+				variants: app.FontManager ? app.FontManager.getSystemFontVariants(family) : ['regular'],
+				category: this.detectCategory({ family })
+			}));
+			this.rebuildFontList();
+			alertify.success(`Loaded ${uniqueFamilies.length} system font families.`);
+		} catch (error) {
+			if (error.name !== 'AbortError') {
+				alertify.error('System font access was not granted or failed: ' + (error.message || error));
+			}
+		} finally {
+			if (this.localFontsButton) {
+				this.localFontsButton.disabled = false;
+				this.localFontsButton.textContent = this.localFontList.length > 0 ? 'Refresh System Fonts' : 'Use System Fonts';
+			}
+		}
 	}
 
 	show() {
 		this.POP.show({
 			title: 'Search for Font',
+			className: 'wide',
 			params: [
 				{ name: "query", title: "Search:", value: '', prevent_submission: true }
 			],
 			on_load: (params, popup) => {
 				this.popup = popup;
-				var node = document.createElement("div");
 				this.dialogContentNode = popup.el.querySelector('.dialog_content');
-				this.dialogContentNode.appendChild(node);
-				this.fontListNode = node;				
 
-				const queryInput = popup.el.querySelector('#pop_data_query');
-				queryInput.addEventListener('input', (e) => {
-					const query = (e.target.value || '').toLowerCase();
-					if (!query) {
-						this.fontListFiltered = this.fontList;
-						this.render_font_list();
-					} else {
-					clearTimeout(this.searchTimeoutHandle);
-						this.searchTimeoutHandle = setTimeout(() => {
-							this.fontListFiltered = [];
-							for (let i = 0; i < this.fontList.length; i++) {
-								const fontFamily = this.fontList[i].family.toLowerCase();
-								if (fontFamily.includes(query)) {
-									this.fontListFiltered.push(this.fontList[i]);
+				const wrapperNode = document.createElement("div");
+				wrapperNode.className = 'font_browser_wrapper';
+				this.dialogContentNode.appendChild(wrapperNode);
+				this.fontListNode = wrapperNode;
+
+				// Action buttons
+				const actionsBar = document.createElement('div');
+				actionsBar.className = 'font_dialog_actions';
+				this.dialogContentNode.insertBefore(actionsBar, wrapperNode);
+
+				// 1. Upload Font File button
+				const uploadButton = document.createElement('button');
+				uploadButton.type = 'button';
+				uploadButton.className = 'btn';
+				uploadButton.textContent = 'Upload Font File (.ttf, .otf, .woff)...';
+				uploadButton.title = 'Upload custom font files stored in your browser';
+				uploadButton.addEventListener('click', () => {
+					if (app.FontManager) {
+						app.FontManager.openFontFileDialog((loadedNames) => {
+							if (loadedNames && loadedNames.length > 0) {
+								for (const name of loadedNames) {
+									this.selectedFonts[name] = { family: name, source: 'user_uploaded' };
 								}
+								this.rebuildFontList();
 							}
-							this.render_font_list();
-						}, 350);
+						});
+					}
+				});
+				actionsBar.appendChild(uploadButton);
+
+				// 2. System Fonts button
+				const localFontsButton = document.createElement('button');
+				localFontsButton.type = 'button';
+				localFontsButton.className = 'btn';
+				this.localFontsButton = localFontsButton;
+				const hasLocalAccess = app.FontManager && app.FontManager.isLocalFontAccessSupported();
+				const cachedSystem = app.FontManager ? app.FontManager.getCachedSystemFonts() : [];
+				if (cachedSystem.length > 0) {
+					this.localFontList = cachedSystem.map(family => ({
+						family,
+						source: 'local',
+						variants: app.FontManager ? app.FontManager.getSystemFontVariants(family) : ['regular'],
+						category: this.detectCategory({ family })
+					}));
+					localFontsButton.textContent = 'Refresh System Fonts';
+				} else {
+					localFontsButton.textContent = 'Use System Fonts';
+				}
+				localFontsButton.title = hasLocalAccess
+					? 'Allow access to fonts installed on this computer'
+					: 'System font access requires a Chromium desktop browser (Chrome, Edge, Brave)';
+
+				localFontsButton.addEventListener('click', () => {
+					this.scanSystemFonts(true);
+				});
+				actionsBar.appendChild(localFontsButton);
+
+				// Filter tabs (All | System | Custom | Google)
+				const filterContainer = document.createElement('div');
+				filterContainer.className = 'font_filter_tabs';
+				const tabs = [
+					{ id: 'all', label: 'All' },
+					{ id: 'system', label: this.localFontList.length > 0 ? `System (${this.localFontList.length})` : 'System' },
+					{ id: 'custom', label: 'Custom' },
+					{ id: 'google', label: 'Google Fonts' }
+				];
+				tabs.forEach(tab => {
+					const tabBtn = document.createElement('button');
+					tabBtn.type = 'button';
+					tabBtn.className = `btn font_filter_tab ${tab.id === 'all' ? 'active' : ''}`;
+					tabBtn.textContent = tab.label;
+					this.tabButtons[tab.id] = tabBtn;
+
+					tabBtn.addEventListener('click', () => {
+						filterContainer.querySelectorAll('.font_filter_tab').forEach(b => {
+							b.classList.remove('active');
+						});
+						tabBtn.classList.add('active');
+						this.activeFilter = tab.id;
+
+						// If clicking system tab and system fonts not loaded yet, automatically scan
+						if (tab.id === 'system' && this.localFontList.length === 0 && app.FontManager && app.FontManager.isLocalFontAccessSupported()) {
+							this.scanSystemFonts();
+						} else {
+							this.rebuildFontList();
+						}
+					});
+					filterContainer.appendChild(tabBtn);
+				});
+				this.dialogContentNode.insertBefore(filterContainer, wrapperNode);
+
+				// Properties & Category Filters Bar
+				const filtersBar = document.createElement('div');
+				filtersBar.className = 'font_filters_bar';
+				filtersBar.innerHTML = `
+					<div class="font_filter_group">
+						<label for="font_filter_category">Category:</label>
+						<select id="font_filter_category" class="font_filter_select">
+							<option value="all">All Categories</option>
+							<option value="sans-serif">Sans Serif</option>
+							<option value="serif">Serif</option>
+							<option value="display">Display</option>
+							<option value="handwriting">Handwriting</option>
+							<option value="monospace">Monospace</option>
+						</select>
+					</div>
+					<div class="font_filter_group">
+						<label for="font_filter_weight">Weight:</label>
+						<select id="font_filter_weight" class="font_filter_select">
+							<option value="all">Any Weight</option>
+							<option value="thin">Thin / Light (100–300)</option>
+							<option value="regular">Regular (400)</option>
+							<option value="medium">Medium / Semi-Bold (500–600)</option>
+							<option value="bold">Bold / Black (700+)</option>
+						</select>
+					</div>
+					<div class="font_filter_group">
+						<label for="font_filter_width">Width:</label>
+						<select id="font_filter_width" class="font_filter_select">
+							<option value="all">Any Width</option>
+							<option value="condensed">Condensed / Narrow</option>
+							<option value="normal">Normal</option>
+							<option value="expanded">Expanded / Wide</option>
+						</select>
+					</div>
+					<div class="font_filter_group">
+						<label for="font_filter_style">Style:</label>
+						<select id="font_filter_style" class="font_filter_select">
+							<option value="all">Any Style</option>
+							<option value="italic">Has Italic</option>
+							<option value="multiple">4+ Styles</option>
+						</select>
+					</div>
+					<div class="font_filter_group">
+						<label for="font_filter_sort">Sort:</label>
+						<select id="font_filter_sort" class="font_filter_select">
+							<option value="popularity">Popularity</option>
+							<option value="alpha_asc">Name (A–Z)</option>
+							<option value="alpha_desc">Name (Z–A)</option>
+							<option value="styles">Most Styles</option>
+						</select>
+					</div>
+					<button type="button" id="font_filter_reset" class="btn font_filter_reset_btn" title="Reset all filters">Reset Filters</button>
+				`;
+				this.dialogContentNode.insertBefore(filtersBar, wrapperNode);
+
+				const catSelect = filtersBar.querySelector('#font_filter_category');
+				const weightSelect = filtersBar.querySelector('#font_filter_weight');
+				const widthSelect = filtersBar.querySelector('#font_filter_width');
+				const styleSelect = filtersBar.querySelector('#font_filter_style');
+				const sortSelect = filtersBar.querySelector('#font_filter_sort');
+				const resetBtn = filtersBar.querySelector('#font_filter_reset');
+
+				const doResetFilters = () => {
+					catSelect.value = 'all';
+					weightSelect.value = 'all';
+					widthSelect.value = 'all';
+					styleSelect.value = 'all';
+					sortSelect.value = 'popularity';
+					this.selectedCategory = 'all';
+					this.selectedWeight = 'all';
+					this.selectedWidth = 'all';
+					this.selectedStyle = 'all';
+					this.selectedSort = 'popularity';
+					this.applySearchFilter();
+				};
+				this.resetFiltersCallback = doResetFilters;
+
+				catSelect.addEventListener('change', (e) => {
+					this.selectedCategory = e.target.value;
+					this.applySearchFilter();
+				});
+				weightSelect.addEventListener('change', (e) => {
+					this.selectedWeight = e.target.value;
+					this.applySearchFilter();
+				});
+				widthSelect.addEventListener('change', (e) => {
+					this.selectedWidth = e.target.value;
+					this.applySearchFilter();
+				});
+				styleSelect.addEventListener('change', (e) => {
+					this.selectedStyle = e.target.value;
+					this.applySearchFilter();
+				});
+				sortSelect.addEventListener('change', (e) => {
+					this.selectedSort = e.target.value;
+					this.applySearchFilter();
+				});
+				resetBtn.addEventListener('click', doResetFilters);
+
+				// Cards container
+				this.cardsContainer = document.createElement('div');
+				this.cardsContainer.className = 'selection_card_list';
+				wrapperNode.appendChild(this.cardsContainer);
+
+				// Load more container & button
+				this.loadMoreContainer = document.createElement('div');
+				this.loadMoreContainer.className = 'font_load_more_container';
+				this.loadMoreButton = document.createElement('button');
+				this.loadMoreButton.type = 'button';
+				this.loadMoreButton.className = 'font_load_more_btn';
+				this.loadMoreButton.textContent = 'Load More Fonts';
+				this.countIndicator = document.createElement('div');
+				this.countIndicator.className = 'font_load_more_info';
+
+				this.loadMoreContainer.appendChild(this.loadMoreButton);
+				this.loadMoreContainer.appendChild(this.countIndicator);
+				wrapperNode.appendChild(this.loadMoreContainer);
+
+				this.loadMoreButton.addEventListener('click', () => {
+					this.appendBatch(this.batchSize);
+				});
+
+				// Event delegation for checkbox changes
+				this.cardsContainer.addEventListener('change', (e) => {
+					const checkbox = e.target.closest('input[type="checkbox"]');
+					if (!checkbox) return;
+					const fontName = checkbox.value;
+					const fontObj = this.fontList.find(f => f.family === fontName) || { family: fontName };
+					if (checkbox.checked) {
+						this.selectedFonts[fontName] = fontObj;
+					} else {
+						this.selectedFonts[fontName] = false;
 					}
 				});
 
-				const apiKey = config.google_webfonts_key;
-				$.getJSON(`https://www.googleapis.com/webfonts/v1/webfonts?key=${apiKey}&sort=popularity`, (data) => {
-					this.fontList = data.items;
-					this.fontListFiltered = data.items;
-					this.render_font_list();
-				}).fail(function () {
-					alertify.error('Error loading the list of fonts from Google.');
+				// Event delegation for buttons inside empty state
+				this.cardsContainer.addEventListener('click', (e) => {
+					const sysBtn = e.target.closest('.load_system_btn');
+					if (sysBtn) {
+						this.scanSystemFonts(true);
+						return;
+					}
+					const resetEmptyBtn = e.target.closest('.font_reset_filters_btn');
+					if (resetEmptyBtn && this.resetFiltersCallback) {
+						this.resetFiltersCallback();
+						return;
+					}
+					const uploadBtn = e.target.closest('.upload_custom_btn');
+					if (uploadBtn && app.FontManager) {
+						app.FontManager.openFontFileDialog((loadedNames) => {
+							if (loadedNames && loadedNames.length > 0) {
+								for (const name of loadedNames) {
+									this.selectedFonts[name] = { family: name, source: 'user_uploaded' };
+								}
+								this.rebuildFontList();
+							}
+						});
+					}
 				});
+
+				// Search input listener
+				const queryInput = popup.el.querySelector('#pop_data_query');
+				if (queryInput) {
+					queryInput.addEventListener('input', (e) => {
+						this.searchQuery = e.target.value || '';
+						clearTimeout(this.searchTimeoutHandle);
+						this.searchTimeoutHandle = setTimeout(() => {
+							this.applySearchFilter();
+						}, 200);
+					});
+				}
+
+				// Check if permission already granted to auto-populate system fonts silently
+				if (navigator.permissions && navigator.permissions.query) {
+					navigator.permissions.query({ name: 'local-fonts' }).then(status => {
+						if (status.state === 'granted' && this.localFontList.length === 0) {
+							if (app.FontManager && app.FontManager.isLocalFontAccessSupported()) {
+								app.FontManager.querySystemFonts().then(fonts => {
+									if (fonts && fonts.length > 0) {
+										this.localFontList = fonts.map(family => ({
+											family,
+											source: 'local',
+											variants: app.FontManager.getSystemFontVariants(family),
+											category: this.detectCategory({ family })
+										}));
+										this.rebuildFontList();
+									}
+								}).catch(() => {});
+							}
+						}
+					}).catch(() => {});
+				}
+
+				// Load Google Fonts (instant offline cache + optional live catalog)
+				const configuredFonts = (config.FONTS || [])
+					.filter((family) => !['Arial', 'Courier', 'Impact', 'Helvetica', 'Monospace', 'Tahoma', 'Times New Roman', 'Verdana'].includes(family))
+					.map((family) => ({
+						family,
+						source: 'google',
+						category: this.detectCategory({ family }),
+						variants: ['regular']
+					}));
+
+				const useGoogleFonts = (items) => {
+					this.googleFontList = items.map(item => ({
+						family: item.family,
+						variants: item.variants || ['regular'],
+						category: item.category || this.detectCategory(item),
+						source: 'google'
+					}));
+					this.rebuildFontList();
+				};
+
+				// Pre-populate immediately from bundled cache (150 top fonts) or configured fallback
+				const initialGoogleFonts = (Array.isArray(googleFontsCache) && googleFontsCache.length > 0)
+					? googleFontsCache
+					: configuredFonts;
+				useGoogleFonts(initialGoogleFonts);
+
+				// Optionally fetch extended catalog in background if API key is present
+				const apiKey = config.google_webfonts_key;
+				if (apiKey) {
+					$.getJSON(`https://www.googleapis.com/webfonts/v1/webfonts?key=${apiKey}&sort=popularity`, (data) => {
+						if (data && data.items && data.items.length > 0) {
+							useGoogleFonts(data.items);
+						}
+					}).fail((jqXHR, textStatus, errorThrown) => {
+						console.warn('Could not fetch complete Google font catalog (adblocker or offline):', textStatus, errorThrown);
+					});
+				}
 			},
 			on_finish: () => {
 				this.popup = null;
 				this.POP = null;
-				if (Object.keys(this.selectedFonts).length > 0) {
-					let firstFont = null;
-					for (let font in this.selectedFonts) {
-						if (!firstFont) {
-							firstFont = font;
-						}
-						config.user_fonts[font] = this.selectedFonts[font];
-					}
-					app.GUI.GUI_tools.action_data().attributes.font.value = firstFont;
-					app.GUI.GUI_tools.show_action_attributes();
-					try {
-						const changeEvent = new Event('change');
-						document.querySelector('#action_attributes select#font').dispatchEvent(changeEvent);
-					} catch (error) {
-						console.warn('Application markup may have changed, ', error);
+				let firstFont = null;
+				for (let fontName in this.selectedFonts) {
+					if (this.selectedFonts[fontName] === false) {
+						delete config.user_fonts[fontName];
+					} else {
+						const selected = this.selectedFonts[fontName];
+						if (!firstFont) firstFont = fontName;
+						config.user_fonts[fontName] = {
+							family: selected.family,
+							source: selected.source || 'google',
+							variants: selected.variants
+						};
 					}
 				}
+				if (firstFont) {
+					app.GUI.GUI_tools.action_data().attributes.font.value = firstFont;
+					if (config.TOOL && config.TOOL.name === 'text') {
+						const textTool = app.GUI.GUI_tools.tools_modules['text']?.object;
+						if (textTool && typeof textTool.on_params_update === 'function') {
+							textTool.on_params_update({ key: 'font', value: firstFont });
+						}
+					}
+				}
+				if (app.FontManager && typeof app.FontManager.persistSelectedLocalFonts === 'function') {
+					app.FontManager.persistSelectedLocalFonts();
+				}
+				app.GUI.GUI_tools.show_action_attributes();
 			}
 		});
 	}
@@ -2041,6 +2855,14 @@ class Google_fonts_search_class {
 
 
 class Text_class extends Base_tools_class {
+
+	is_cursor_active() {
+		const isTextLayer = config.layer && config.layer.type === 'text';
+		if (!isTextLayer) return false;
+		if (this.focused) return true;
+		const editor = this.get_editor(config.layer);
+		return !!(editor && editor.selection && (editor.selection.isCursorVisible || editor.selection.isVisible));
+	}
 
 	constructor(ctx) {
 		super();
@@ -2058,7 +2880,7 @@ class Text_class extends Base_tools_class {
 		this.focusedWidth = null;
 		this.focusedHeight = null;
 		this.typing_commit_timer = null;
-		this.create_box_threshold = 4; // px drag before point text becomes paragraph/box
+		this.create_box_threshold = 8; // px drag before point text becomes paragraph/box
 		this.mousedownX = 0;
 		this.mousedownY = 0;
 		this.mousedownBounds = {};
@@ -2107,8 +2929,13 @@ class Text_class extends Base_tools_class {
 					this._ignore_textarea_blur = true;
 				}
 			}, true);
-			document.addEventListener('pointerup', () => {
+			document.addEventListener('pointerup', (ev) => {
 				if (this._params_ui_active) {
+					if (ev.target && ev.target.closest && ev.target.closest('.ui_number_input input')) {
+						this._params_ui_active = false;
+						this._ignore_textarea_blur = false;
+						return;
+					}
 					setTimeout(() => {
 						markParamsUi(false);
 						this._ignore_textarea_blur = false;
@@ -2131,33 +2958,40 @@ class Text_class extends Base_tools_class {
 			this.textarea.addEventListener('blur', (e) => {
 				const keepFocusSelector = '#main_wrapper, #action_attributes, #main_tools, .ui_swatches, .sp-container, .ui_color_picker_gradient, .ui_number_input, .ui_range';
 				const related = e.relatedTarget;
+				if (related && related.closest && related.closest('.ui_number_input input')) {
+					return;
+				}
 				if (related && related.closest && related.closest(keepFocusSelector)) {
-					this.focus_textarea();
+					if (this.focused) this.focus_textarea();
 					return;
 				}
 				if (this._ignore_textarea_blur || this._params_ui_active) {
-					this.focus_textarea();
+					if (this.focused) this.focus_textarea();
 					return;
 				}
 				setTimeout(() => {
 					if (this._ignore_textarea_blur || this._params_ui_active) {
-						this.focus_textarea();
+						if (this.focused) this.focus_textarea();
 						return;
 					}
 					const active = document.activeElement;
-					if (active && active.closest && active.closest(keepFocusSelector)) {
-						this.focus_textarea();
-						return;
+					if (active && (active === document.body || active.id === 'canvas_minipaint' || (active.closest && active.closest(keepFocusSelector)))) {
+						if (this.focused && config.TOOL && config.TOOL.name === 'text') {
+							this.focus_textarea();
+							return;
+						}
 					}
 					if (config.TOOL && config.TOOL.name === 'text' && this.textarea && document.activeElement === this.textarea) {
 						return;
 					}
-					this.focused = false;
-					this.commit_text_changes();
-					this.focusedValue = null;
-					this.focusedWidth = null;
-					this.focusedHeight = null;
-					this.Base_layers.render();
+					if (this.focused) {
+						this.focused = false;
+						this.commit_text_changes();
+						this.focusedValue = null;
+						this.focusedWidth = null;
+						this.focusedHeight = null;
+						this.Base_layers.render();
+					}
 				}, 0);
 			}, true);
 
@@ -2182,6 +3016,9 @@ class Text_class extends Base_tools_class {
 
 			this.textarea.addEventListener('input', (e) => {
 				const inputValue = e.target.value;
+				if (!inputValue && !isComposing) {
+					return;
+				}
 				if(isComposing){
 					const editor = this.get_editor(config.layer);
 					editor.replace_entire_IME_text(beforeImeText, inputValue);
@@ -2227,6 +3064,14 @@ class Text_class extends Base_tools_class {
 						(async () => {
 							await app.State.redo();
 						})();
+						return;
+					}
+					// Select All shortcut while focused in textarea
+					if ((e.ctrlKey || e.metaKey) && (e.key === 'a' || e.key === 'A' || e.code === 'KeyA' || e.keyCode === 65)) {
+						e.preventDefault();
+						e.stopImmediatePropagation();
+						const editor = this.get_editor(config.layer);
+						this.select_all_text(editor);
 						return;
 					}
 					let handled = true;
@@ -2294,20 +3139,35 @@ class Text_class extends Base_tools_class {
 							editor.selection.move_line_next(1, e.shiftKey);
 							break;
 						case 'a':
-							if (e.ctrlKey) {
-								editor.selection.set_position(0, 0);
-								const lastLine = editor.document.lines.length - 1;
-								editor.selection.set_position(lastLine, editor.document.get_line_character_count(lastLine), true);
-								break;
+						case 'A':
+							handled = false;
+							break;
+						case 'Enter':
+							if (e.ctrlKey || e.metaKey) {
+								e.preventDefault();
+								e.stopImmediatePropagation();
+								(async () => {
+									await this.commit_text_changes();
+									this.focused = false;
+									if (this.textarea) this.textarea.blur();
+									this.Base_layers.render();
+								})();
+								return;
 							}
+							handled = false;
+							break;
 						case 'b':
-							if (e.ctrlKey) {
+						case 'B':
+							if (e.ctrlKey || e.metaKey) {
 								e.preventDefault();
 								document.querySelector('#action_attributes #bold').click();
 								break;
 							}
+							handled = false;
+							break;
 						case 'c':
-							if (e.ctrlKey) {
+						case 'C':
+							if (e.ctrlKey || e.metaKey) {
 								e.preventDefault();
 								this.textarea.value = editor.selection.get_text();
 								this.textarea.select();
@@ -2316,20 +3176,29 @@ class Text_class extends Base_tools_class {
 								this.textarea.value = '';
 								break;
 							}
+							handled = false;
+							break;
 						case 'i':
-							if (e.ctrlKey) {
+						case 'I':
+							if (e.ctrlKey || e.metaKey) {
 								e.preventDefault();
 								document.querySelector('#action_attributes #italic').click();
 								break;
 							}
+							handled = false;
+							break;
 						case 'u':
-							if (e.ctrlKey) {
+						case 'U':
+							if (e.ctrlKey || e.metaKey) {
 								e.preventDefault();
 								document.querySelector('#action_attributes #underline').click();
 								break;
 							}
+							handled = false;
+							break;
 						case 'x':
-							if (e.ctrlKey) {
+						case 'X':
+							if (e.ctrlKey || e.metaKey) {
 								e.preventDefault();
 								this.textarea.value = editor.selection.get_text();
 								this.textarea.select();
@@ -2339,6 +3208,8 @@ class Text_class extends Base_tools_class {
 								editor.delete_selection();
 								break;
 							}
+							handled = false;
+							break;
 						default:
 							handled = false;
 					}
@@ -2375,52 +3246,134 @@ class Text_class extends Base_tools_class {
 		// Event routing is handled centrally by Base_tools_class
 	}
 
+	/**
+	 * Type tool activate: seed Size from baked span meta (fallback params.size)
+	 * before/with the options bar. activate-tool.js also calls this before
+	 * show_action_attributes so Select→Type shows the post-resize size.
+	 */
+	on_activate() {
+		if (config.layer && config.layer.type === 'text') {
+			this.sync_size_from_layer(config.layer);
+		}
+		return null;
+	}
+
 	async commit_text_changes() {
 		if (this.typing_commit_timer) {
 			clearTimeout(this.typing_commit_timer);
 			this.typing_commit_timer = null;
 		}
 		const layer = (config.layer && config.layer.type === 'text') ? config.layer : this.layer;
-		if (!layer || layer.id == null || layer.type !== 'text') {
+		if (!layer || layer.id == null || layer.type !== 'text' || !config.layers || !config.layers.some((l) => l.id === layer.id)) {
 			this.focusedValue = null;
+			this.focusedX = null;
+			this.focusedY = null;
+			this.focusedWidth = null;
+			this.focusedHeight = null;
 			return;
 		}
 		const editor = this.get_editor(layer);
 		if (!editor) return;
 
-		// Ensure dynamic/box bounds reflect latest layout before snapshotting.
-		this.resize_to_dynamic_bounds(layer, editor);
-		this.extend_fixed_bounds(layer, editor);
+		const isBox = is_box_text(layer);
+		if (!isBox) {
+			this.resize_to_dynamic_bounds(layer, editor);
+		}
 
 		const currentValue = JSON.stringify(editor.document.lines);
+		const currentX = layer.x;
+		const currentY = layer.y;
 		const currentWidth = layer.width;
 		const currentHeight = layer.height;
 		const dataChanged = this.focusedValue != null && this.focusedValue !== currentValue;
-		const sizeChanged = (
+		const sizeChanged = !isBox && (
 			(this.focusedWidth != null && this.focusedWidth !== currentWidth) ||
-			(this.focusedHeight != null && this.focusedHeight !== currentHeight)
+			(this.focusedHeight != null && this.focusedHeight !== currentHeight) ||
+			(this.focusedX != null && this.focusedX !== currentX) ||
+			(this.focusedY != null && this.focusedY !== currentY)
 		);
 		if (dataChanged || sizeChanged) {
 			const oldValue = this.focusedValue != null ? this.focusedValue : currentValue;
-			const oldWidth = this.focusedWidth != null ? this.focusedWidth : currentWidth;
-			const oldHeight = this.focusedHeight != null ? this.focusedHeight : currentHeight;
+			if (isBox) {
+				// Paragraph text box: frame dimensions are constant, only text data changes on typing
+				layer.data = JSON.parse(oldValue);
+				await app.State.do_action(
+					new app.Actions.Update_layer_action(layer.id, {
+						data: JSON.parse(currentValue)
+					})
+				);
+			} else {
+				const oldX = this.focusedX != null ? this.focusedX : currentX;
+				const oldY = this.focusedY != null ? this.focusedY : currentY;
+				const oldWidth = this.focusedWidth != null ? this.focusedWidth : currentWidth;
+				const oldHeight = this.focusedHeight != null ? this.focusedHeight : currentHeight;
 
-			// Temporarily revert so action records the pre-edit state as old_settings
-			layer.data = JSON.parse(oldValue);
-			layer.width = oldWidth;
-			layer.height = oldHeight;
+				// Temporarily revert so action records the pre-edit state as old_settings
+				layer.data = JSON.parse(oldValue);
+				layer.x = oldX;
+				layer.y = oldY;
+				layer.width = oldWidth;
+				layer.height = oldHeight;
 
-			await app.State.do_action(
-				new app.Actions.Update_layer_action(layer.id, {
-					data: JSON.parse(currentValue),
-					width: currentWidth,
-					height: currentHeight
-				})
-			);
+				await app.State.do_action(
+					new app.Actions.Update_layer_action(layer.id, {
+						data: JSON.parse(currentValue),
+						x: currentX,
+						y: currentY,
+						width: currentWidth,
+						height: currentHeight
+					})
+				);
+			}
 
 			this.focusedValue = currentValue;
+			this.focusedX = currentX;
+			this.focusedY = currentY;
 			this.focusedWidth = currentWidth;
 			this.focusedHeight = currentHeight;
+		}
+	}
+
+	is_paragraph_drag(width, height) {
+		const threshold = this.create_box_threshold || 8;
+		return width >= threshold && height >= threshold;
+	}
+
+	mouse_to_local(layer, mouse) {
+		if (!layer || !mouse) return { x: 0, y: 0 };
+		let localX = mouse.x - layer.x;
+		let localY = mouse.y - layer.y;
+		if (layer.rotate) {
+			const cx = layer.x + layer.width / 2;
+			const cy = layer.y + layer.height / 2;
+			const rad = -(layer.rotate * Math.PI) / 180;
+			const cosA = Math.cos(rad);
+			const sinA = Math.sin(rad);
+			const dx = mouse.x - cx;
+			const dy = mouse.y - cy;
+			localX = (cx + (dx * cosA - dy * sinA)) - layer.x;
+			localY = (cy + (dx * sinA + dy * cosA)) - layer.y;
+		}
+		const sx = (layer.params && layer.params.scale_x != null) ? layer.params.scale_x : 1;
+		const sy = (layer.params && layer.params.scale_y != null) ? layer.params.scale_y : 1;
+		return {
+			x: (localX - 1) / (sx || 1),
+			y: (localY - 1) / (sy || 1)
+		};
+	}
+
+	ensure_font_registered(family) {
+		if (!family || family.includes('...')) return;
+		if (config.user_fonts[family]) return;
+		if (app.FontManager && typeof app.FontManager.getCachedSystemFonts === 'function'
+			&& app.FontManager.getCachedSystemFonts().includes(family)) {
+			const variants = (typeof app.FontManager.getSystemFontVariants === 'function')
+				? app.FontManager.getSystemFontVariants(family)
+				: [];
+			config.user_fonts[family] = { family, source: 'local', variants };
+			if (typeof app.FontManager.persistSelectedLocalFonts === 'function') {
+				app.FontManager.persistSelectedLocalFonts();
+			}
 		}
 	}
 
@@ -2433,8 +3386,11 @@ class Text_class extends Base_tools_class {
 			this.textarea.focus();
 		}
 		setTimeout(() => {
-			if (this.textarea && (this.focused || (config.TOOL && config.TOOL.name === 'text'))) {
-				this.focused = true;
+			const activeNumberInput = document.activeElement && document.activeElement.closest
+				? document.activeElement.closest('.ui_number_input input')
+				: null;
+			if (activeNumberInput) return;
+			if (this.textarea && this.focused) {
 				try {
 					this.textarea.focus({ preventScroll: true });
 				} catch (e) {
@@ -2461,6 +3417,7 @@ class Text_class extends Base_tools_class {
 		this.creating = false;
 		this.selecting = false;
 		this.resizing = false;
+		this.end_point_text_resize();
 
 		this.mousedownX = mouse.x;
 		this.mousedownY = mouse.y;
@@ -2473,53 +3430,80 @@ class Text_class extends Base_tools_class {
 		} : null;
 
 		if (this.Base_selection.mouse_lock !== null) {
-			// Only allow box-handle resize for paragraph (box) text
-			if (config.layer && config.layer.type === 'text' && config.layer.params && config.layer.params.boundary === 'box') {
+			if (config.layer && config.layer.type === 'text') {
 				this.resizing = true;
+				if (is_point_text(config.layer)) {
+					this.begin_point_text_resize(config.layer);
+				}
+				return;
+			} else {
+				this.Base_selection.mouse_lock = null;
 			}
-			return;
 		}
 
 		const existingLayer = this.get_text_layer_at_mouse(e);
 		if (existingLayer) {
-			await this.commit_text_changes();
-			this.selecting = true;
+			if (config.layer && config.layer.id !== existingLayer.id) {
+				await this.commit_text_changes();
+				await app.State.do_action(
+					new app.Actions.Select_layer_action(existingLayer.id, true)
+				);
+			}
 			this.layer = existingLayer;
+			this.selecting = true;
+			this.focused = true;
 			const editor = this.get_editor(this.layer);
 			if (editor) {
-				editor.trigger_cursor_start(this.layer, -1 + mouse.x - this.layer.x, mouse.y - this.layer.y);
+				if (this.layer.params && this.layer.params.boundary === 'dynamic') {
+					if (this.layer.params.anchor_x == null) {
+						const halign = normalize_halign(this.layer.params.halign);
+						if (halign === 'center') {
+							this.layer.params.anchor_x = this.layer.x + this.layer.width / 2;
+						} else if (halign === 'right') {
+							this.layer.params.anchor_x = this.layer.x + this.layer.width;
+						} else {
+							this.layer.params.anchor_x = this.layer.x;
+						}
+					}
+					if (this.layer.params.anchor_y == null) {
+						this.layer.params.anchor_y = this.layer.y;
+					}
+				}
+				const local = this.mouse_to_local(this.layer, mouse);
+				editor.trigger_cursor_start(this.layer, local.x, local.y);
 				this.focusedValue = JSON.stringify(editor.document.lines);
+				this.focusedX = this.layer.x;
+				this.focusedY = this.layer.y;
 				this.focusedWidth = this.layer.width;
 				this.focusedHeight = this.layer.height;
+				this.update_tool_attributes(this.layer, editor);
 			}
-			const selectActions = [
-					new app.Actions.Select_layer_action(existingLayer.id)
-				];
-				// Point text: caret only (no rectangular selection chrome).
-				// Paragraph/box: keep a selection matching the text box.
-				if (this.layer.params && this.layer.params.boundary === 'box') {
-					selectActions.push(new app.Actions.Set_selection_action(this.layer.x, this.layer.y, this.layer.width, this.layer.height));
-				} else {
-					selectActions.push(new app.Actions.Reset_selection_action());
-				}
-				await app.State.do_action(
-					new app.Actions.Bundle_action('select_text_layer', 'Select Text Layer', selectActions)
-				);
+			this.focus_textarea();
+			this.Base_layers.render();
 		}
 		else {
 			await this.commit_text_changes();
 			// Create a new text layer (point by default; drag past threshold => paragraph/box)
 			this.creating = true;
+			const initialHalign = normalize_halign(
+				(this.GUI_tools && this.GUI_tools.action_data().attributes.halign && this.GUI_tools.action_data().attributes.halign.value)
+					? this.GUI_tools.action_data().attributes.halign.value
+					: 'left'
+			);
 			const layer = {
 				type: this.name,
 				params: {
 					boundary: 'dynamic',
+					anchor_x: mouse.x,
+					anchor_y: mouse.y,
 					kerning: 'metrics',
 					text_direction: 'ltr',
 					wrap_direction: 'ttb',
-					halign: 'left',
+					halign: initialHalign,
 					valign: 'top',
-					wrap: 'letter'
+					wrap: 'letter',
+					scale_x: 1,
+					scale_y: 1
 				},
 				render_function: [this.name, 'render'],
 				x: mouse.x,
@@ -2543,6 +3527,11 @@ class Text_class extends Base_tools_class {
 			const editor = this.get_editor(this.layer);
 			if (editor) {
 				this.seed_placeholder_text(this.layer, editor, { selectAll: true });
+				this.focusedValue = JSON.stringify(editor.document.lines);
+				this.focusedX = this.layer.x;
+				this.focusedY = this.layer.y;
+				this.focusedWidth = this.layer.width;
+				this.focusedHeight = this.layer.height;
 			}
 			this.focus_textarea();
 		}
@@ -2562,7 +3551,13 @@ class Text_class extends Base_tools_class {
 				config.layer.y = this.selection.y;
 				config.layer.width = this.selection.width;
 				config.layer.height = this.selection.height;
-				// Point (dynamic): keep dynamic — transform scales glyphs (see bake_point_text_scale).
+				if (is_point_text(config.layer)) {
+					// Live preview: geometric scale; font sizes bake on mouseup.
+					if (!this._point_resize_snapshot) {
+						this.begin_point_text_resize(config.layer);
+					}
+					this.apply_point_text_resize(config.layer, this.selection.width, this.selection.height);
+				}
 				// Paragraph (box): only the frame changes; glyphs reflow / clip.
 			}
 		}
@@ -2572,27 +3567,31 @@ class Text_class extends Base_tools_class {
 			}
 			const width = Math.abs(mouse.x - this.mousedownX);
 			const height = Math.abs(mouse.y - this.mousedownY);
-			const threshold = this.create_box_threshold || 4;
-			const isBoxDrag = width >= threshold || height >= threshold;
+			const isBoxDrag = this.is_paragraph_drag(width, height);
 
 			// Photoshop-like: click = point/dynamic text; click-drag past threshold = paragraph/box
 			if (isBoxDrag) {
 				config.layer.params.boundary = 'box';
+				config.layer.params.wrap = 'word';
 				config.layer.x = Math.min(mouse.x, this.mousedownX);
 				config.layer.y = Math.min(mouse.y, this.mousedownY);
 				config.layer.width = Math.max(1, width);
 				config.layer.height = Math.max(1, height);
 			} else {
 				config.layer.params.boundary = 'dynamic';
-				config.layer.x = this.mousedownX;
-				config.layer.y = this.mousedownY;
-				config.layer.width = 1;
-				config.layer.height = 1;
+				config.layer.params.wrap = 'letter';
+				config.layer.params.anchor_x = this.mousedownX;
+				config.layer.params.anchor_y = this.mousedownY;
+				const editor = this.get_editor(config.layer);
+				if (editor) {
+					this.resize_to_dynamic_bounds(config.layer, editor);
+				}
 			}
 		} else {
 			const editor = this.get_editor(this.layer);
-			if (editor && this.layer) {
-				editor.trigger_cursor_move(this.layer, -1 + mouse.x - this.layer.x, mouse.y - this.layer.y);
+			if (editor && this.layer && this.selecting) {
+				const local = this.mouse_to_local(this.layer, mouse);
+				editor.trigger_cursor_move(this.layer, local.x, local.y);
 			}
 		}
 		this.Base_layers.render();
@@ -2600,21 +3599,20 @@ class Text_class extends Base_tools_class {
 
 	async mouseup(e) {
 		var mouse = this.get_mouse_info(e);
-		if (mouse.click_valid == false) {
-			this.resizing = false;
-			this.selecting = false;
-			this.creating = false;
+		// pointerup clears click_valid before mouseup; do not drop in-progress resize
+		// (would leave geometric scale_x/y unbaked and Size stuck at the old value).
+		if (mouse.click_valid == false && !this.resizing && !this.selecting && !this.creating) {
 			return;
 		}
 		const editor = this.get_editor(this.layer);
 
 		if (this.resizing) {
 			if (this.mousedownBounds && config.layer && config.layer.type === 'text' && config.layer.params) {
-				const wasDynamic = this.mousedownBounds.boundary === 'dynamic';
-				const nextX = this.selection.x;
-				const nextY = this.selection.y;
-				const nextW = this.selection.width;
-				const nextH = this.selection.height;
+				const wasDynamic = normalize_text_boundary(this.mousedownBounds.boundary) !== 'box';
+				let nextX = this.selection.x;
+				let nextY = this.selection.y;
+				let nextW = this.selection.width;
+				let nextH = this.selection.height;
 				config.layer.x = this.mousedownBounds.x;
 				config.layer.y = this.mousedownBounds.y;
 				config.layer.width = this.mousedownBounds.width;
@@ -2623,6 +3621,19 @@ class Text_class extends Base_tools_class {
 				// Never promote point→box on transform
 				new_params.boundary = this.mousedownBounds.boundary;
 				config.layer.params.boundary = this.mousedownBounds.boundary;
+				if (wasDynamic) {
+					const halign = normalize_halign(new_params.halign);
+					if (halign === 'center') {
+						new_params.anchor_x = nextX + nextW / 2;
+					} else if (halign === 'right') {
+						new_params.anchor_x = nextX + nextW;
+					} else {
+						new_params.anchor_x = nextX;
+					}
+					new_params.anchor_y = nextY;
+					config.layer.params.anchor_x = new_params.anchor_x;
+					config.layer.params.anchor_y = new_params.anchor_y;
+				}
 				// End live transform before history render so scale bakes instead of snapping back
 				this.resizing = false;
 				const update = {
@@ -2633,67 +3644,133 @@ class Text_class extends Base_tools_class {
 					params: new_params
 				};
 				if (wasDynamic && this.mousedownBounds.width > 0) {
-					if (!this._point_resize_snapshot) {
-						this.begin_point_text_resize(config.layer);
-						this._point_resize_base_width = Math.max(1, this.mousedownBounds.width);
-						this._point_resize_base_height = Math.max(1, this.mousedownBounds.height);
+					const preData = config.layer.data ? JSON.parse(JSON.stringify(config.layer.data)) : null;
+					const preParams = JSON.parse(JSON.stringify(config.layer.params || {}));
+					const committed = this.commit_point_text_resize(config.layer, nextW, nextH);
+					if (committed) {
+						update.x = committed.x;
+						update.y = committed.y;
+						update.width = committed.width;
+						update.height = committed.height;
+						update.params = committed.params;
+						if (new_params.anchor_x != null) update.params.anchor_x = new_params.anchor_x;
+						if (new_params.anchor_y != null) update.params.anchor_y = new_params.anchor_y;
+						update.params.boundary = 'dynamic';
+						update.params.halign = new_params.halign || update.params.halign;
+						update.data = committed.data;
+						nextX = committed.x;
+						nextY = committed.y;
+						nextW = committed.width;
+						nextH = committed.height;
+						this.focusedValue = JSON.stringify(committed.data);
 					}
-					const scaledData = this.apply_point_text_resize(config.layer, nextW, nextH);
-					if (scaledData) {
-						update.data = scaledData;
-						this.focusedValue = JSON.stringify(scaledData);
-						this.focusedWidth = nextW;
-						this.focusedHeight = nextH;
+					// Restore pre-drag so history captures correct old_settings
+					config.layer.x = this.mousedownBounds.x;
+					config.layer.y = this.mousedownBounds.y;
+					config.layer.width = this.mousedownBounds.width;
+					config.layer.height = this.mousedownBounds.height;
+					config.layer.params = preParams;
+					if (preData) {
+						config.layer.data = preData;
+						const ed = this.get_editor(config.layer);
+						if (ed && ed.set_lines) {
+							ed.set_lines(JSON.parse(JSON.stringify(preData)), true);
+							ed.hasValueChanged = true;
+						}
 					}
-					this.end_point_text_resize();
+					if (this.GUI_tools) this.GUI_tools.show_action_attributes();
 				}
+				this.focusedX = nextX;
+				this.focusedY = nextY;
+				this.focusedWidth = nextW;
+				this.focusedHeight = nextH;
 				await app.State.do_action(
 					new app.Actions.Bundle_action('resize_text_layer', 'Resize Text Layer', [
 						new app.Actions.Update_layer_action(config.layer.id, update),
 						...(wasDynamic ? [] : [new app.Actions.Set_selection_action(nextX, nextY, nextW, nextH)])
 					])
 				);
+				// Update_layer skips Size sync while Type is active — re-assert from baked spans.
+				if (wasDynamic && config.layer) {
+					this.sync_size_from_layer(config.layer);
+					if (this.GUI_tools) this.GUI_tools.show_action_attributes();
+				}
 			}
 		}
 		else if (this.creating) {
 			let width = Math.abs(mouse.x - this.mousedownX);
 			let height = Math.abs(mouse.y - this.mousedownY);
-			const threshold = this.create_box_threshold || 4;
-			const isBoxDrag = width >= threshold || height >= threshold;
+			const isBoxDrag = this.is_paragraph_drag(width, height);
 
-			if (!isBoxDrag) {
-				// Point text (Photoshop-like): keep dynamic bounds at click/anchor point
-				width = 1;
-				height = 1;
-			}
 			if (config.layer && config.layer.type === 'text') {
 				const nextParams = JSON.parse(JSON.stringify(config.layer.params || {}));
 				nextParams.boundary = isBoxDrag ? 'box' : 'dynamic';
 				nextParams.wrap = isBoxDrag ? 'word' : 'letter';
-				const nextX = isBoxDrag ? Math.min(mouse.x, this.mousedownX) : this.mousedownX;
-				const nextY = isBoxDrag ? Math.min(mouse.y, this.mousedownY) : this.mousedownY;
+				if (!isBoxDrag) {
+					nextParams.anchor_x = this.mousedownX;
+					nextParams.anchor_y = this.mousedownY;
+				}
 				config.layer.params.boundary = nextParams.boundary;
 				config.layer.params.wrap = nextParams.wrap;
+				if (!isBoxDrag) {
+					config.layer.params.anchor_x = this.mousedownX;
+					config.layer.params.anchor_y = this.mousedownY;
+				}
+
+				let nextX, nextY, nextW, nextH;
+				const ed = this.get_editor(config.layer);
+				if (isBoxDrag) {
+					nextX = Math.min(mouse.x, this.mousedownX);
+					nextY = Math.min(mouse.y, this.mousedownY);
+					nextW = Math.max(1, width);
+					nextH = Math.max(1, height);
+					config.layer.x = nextX;
+					config.layer.y = nextY;
+					config.layer.width = nextW;
+					config.layer.height = nextH;
+					if (ed) {
+						this.fill_box_with_lorem_ipsum(config.layer, ed, { selectAll: true });
+						this.focusedValue = JSON.stringify(ed.document.lines);
+					}
+				} else {
+					if (ed) {
+						this.resize_to_dynamic_bounds(config.layer, ed);
+						this.focusedValue = JSON.stringify(ed.document.lines);
+					}
+					nextX = config.layer.x;
+					nextY = config.layer.y;
+					nextW = config.layer.width;
+					nextH = config.layer.height;
+				}
+
+				const createUpdate = {
+					x: nextX,
+					y: nextY,
+					width: nextW,
+					height: nextH,
+					params: nextParams
+				};
+				if (ed && ed.document && ed.document.lines) {
+					createUpdate.data = JSON.parse(JSON.stringify(ed.document.lines));
+				}
 				await app.State.do_action(
 					new app.Actions.Bundle_action('resize_text_layer', 'Resize Text Layer', [
-						new app.Actions.Update_layer_action(config.layer.id, {
-							x: nextX,
-							y: nextY,
-							width: isBoxDrag ? Math.max(1, width) : 1,
-							height: isBoxDrag ? Math.max(1, height) : 1,
-							params: nextParams
-						})
+						new app.Actions.Update_layer_action(config.layer.id, createUpdate)
 					]),
 					{ merge_with_history: 'new_text_layer' }
 				);
-				const ed = this.get_editor(config.layer);
-				if (ed) {
-					// Ensure placeholder + full selection for both point and paragraph create
-					this.seed_placeholder_text(config.layer, ed, { selectAll: true });
+				this.focusedX = nextX;
+				this.focusedY = nextY;
+				this.focusedWidth = nextW;
+				this.focusedHeight = nextH;
+				this.sync_text_tool_attributes_from_layer(config.layer);
+				// Remount options bar so Mode flips to Paragraph and Justify enables.
+				if (this.GUI_tools && typeof this.GUI_tools.show_action_attributes === 'function') {
+					this.GUI_tools.show_action_attributes();
 				}
 				if (isBoxDrag) {
 					await app.State.do_action(
-						new app.Actions.Set_selection_action(nextX, nextY, Math.max(1, width), Math.max(1, height)),
+						new app.Actions.Set_selection_action(nextX, nextY, nextW, nextH),
 						{ merge_with_history: 'new_text_layer' }
 					);
 				}
@@ -2740,8 +3817,11 @@ class Text_class extends Base_tools_class {
 		if (this.fonts_preloaded) return;
 		this.fonts_preloaded = true;
 		const systemFonts = ["Arial", "Courier", "Impact", "Helvetica", "Monospace", "Tahoma", "Times New Roman", "Verdana"];
-		// Prefer Roboto early — default Type face
-		load_font_family({ family: 'Roboto' }, () => {
+		// Prefer Roboto early — default Type face (all weights; not Regular-only)
+		load_font_family({
+			family: 'Roboto',
+			variants: ['100', '200', '300', 'regular', '500', '600', '700', '800', '900']
+		}, () => {
 			if (this.Base_layers) this.Base_layers.render();
 		});
 		const googleFonts = config.FONTS ? config.FONTS.filter(f => !systemFonts.includes(f)) : [];
@@ -2761,17 +3841,23 @@ class Text_class extends Base_tools_class {
 		}
 	}
 
-	dblclick(event) {
-		if (this.textarea && (document.activeElement === this.textarea || this.focused)) {
+	async dblclick(event) {
+		if (this.focused) {
 			const editor = this.get_editor(this.layer);
 			if (editor && editor.selection.is_empty()) {
 				const position = editor.selection.get_position();
 				const wordStart = editor.document.get_word_start_position(position.line, position.character, true);
 				const wordEnd = editor.document.get_word_end_position(position.line, position.character, true);
-				editor.selection.set_position(wordStart.line, wordStart.character);
+				editor.selection.set_position(wordStart.line, wordStart.character, false);
 				editor.selection.set_position(wordEnd.line, wordEnd.character, true);
 				this.update_tool_attributes(this.layer, editor);
 				this.focus_textarea();
+				this.Base_layers.render();
+			}
+		} else {
+			const targetLayer = this.get_text_layer_at_mouse(event) || (config.layer && config.layer.type === 'text' ? config.layer : null);
+			if (targetLayer && targetLayer.type === 'text') {
+				await this.enter_edit_mode(targetLayer, event);
 			}
 		}
 	}
@@ -2811,6 +3897,9 @@ class Text_class extends Base_tools_class {
 
 		this._ignore_textarea_blur = true;
 		this._params_ui_active = true;
+		const activeNumberInput = document.activeElement && document.activeElement.closest
+			? document.activeElement.closest('.ui_number_input input')
+			: null;
 		const selectionSnap = this.snapshot_selection(editor);
 		const hadSelection = selectionSnap && !(
 			selectionSnap.startLine === selectionSnap.endLine &&
@@ -2818,6 +3907,18 @@ class Text_class extends Base_tools_class {
 		);
 
 		const oldData = JSON.parse(JSON.stringify(editor.document.lines));
+		let nextParams = null;
+		// Size UI updates visual font size (meta.size / params.size). Preserve residual
+		// horizontal scale from Shift-skew bake (params.scale_x); do not reset to 1.
+		// Proportional bake already left scale_x = scale_y = 1 — nothing to clear.
+		if (meta.size != null && layer.params) {
+			nextParams = JSON.parse(JSON.stringify(layer.params));
+			const sizeNum = Number(meta.size);
+			if (isFinite(sizeNum)) {
+				nextParams.size = Math.round(sizeNum * 100) / 100;
+			}
+			// Intentionally leave scale_x / scale_y untouched.
+		}
 		if (hadSelection) {
 			editor.document.queuedMetaChanges = null;
 			editor.document.set_meta_range(
@@ -2851,10 +3952,12 @@ class Text_class extends Base_tools_class {
 		editor.hasValueChanged = true;
 		this._preserve_selection = hadSelection ? selectionSnap : null;
 		layer.data = oldData;
+		const layerUpdate = {
+			data: JSON.parse(JSON.stringify(editor.document.lines))
+		};
+		if (nextParams) layerUpdate.params = nextParams;
 		await app.State.do_action(
-			new app.Actions.Update_layer_action(layer.id, {
-				data: JSON.parse(JSON.stringify(editor.document.lines))
-			})
+			new app.Actions.Update_layer_action(layer.id, layerUpdate)
 		);
 
 		const editorAfter = this.get_editor(layer);
@@ -2865,7 +3968,9 @@ class Text_class extends Base_tools_class {
 		this.resize_to_dynamic_bounds(layer, editorAfter || editor);
 		this.extend_fixed_bounds(layer, editorAfter || editor);
 		this.Base_layers.render();
-		this.focus_textarea();
+		if (this.focused && !activeNumberInput) {
+			this.focus_textarea();
+		}
 		setTimeout(() => {
 			this._ignore_textarea_blur = false;
 			this._params_ui_active = false;
@@ -2873,7 +3978,11 @@ class Text_class extends Base_tools_class {
 				const ed = this.get_editor(layer);
 				if (ed) this.restore_selection(ed, selectionSnap);
 			}
-			this.focus_textarea();
+			if (activeNumberInput && document.contains(activeNumberInput)) {
+				activeNumberInput.focus();
+			} else if (this.focused) {
+				this.focus_textarea();
+			}
 		}, 0);
 	}
 
@@ -2891,16 +4000,163 @@ class Text_class extends Base_tools_class {
 					};
 					new Google_fonts_search_class().show();
 				}
-				else if (value) meta.family = value;
+				else if (value) {
+					this.ensure_font_registered(value);
+					meta.family = value;
+					try {
+						const toolAttributes = this.GUI_tools.action_data().attributes;
+						if (toolAttributes.weight) {
+							const variants = (typeof toolAttributes.weight.values === 'function')
+								? toolAttributes.weight.values()
+								: (toolAttributes.weight.values || ['Regular (400)']);
+							const current = toolAttributes.weight.value;
+							const matched = variants.find((v) => weight_labels_match(v, current));
+							if (!matched) {
+								toolAttributes.weight.value = variants[0] || 'Regular (400)';
+							} else {
+								toolAttributes.weight.value = matched;
+							}
+							meta.weight = toolAttributes.weight.value;
+							meta.bold = weight_implies_bold(meta.weight);
+							if (toolAttributes.bold) toolAttributes.bold.value = !!meta.bold;
+						}
+						// Font remounts Weight dropdown — keep Mode/align from layer.
+						if (config.layer && config.layer.type === 'text') {
+							this.sync_text_tool_attributes_from_layer(config.layer);
+						}
+					} catch (e) { /* ignore */ }
+					// Load the face for the current weight (Google variants or local style)
+					try {
+						const w = meta.weight || metaDefaults.weight;
+						const isLocal = app.FontManager && typeof app.FontManager.getCachedSystemFonts === 'function'
+							&& app.FontManager.getCachedSystemFonts().includes(value);
+						if (isLocal && typeof app.FontManager.loadSystemFontStyle === 'function') {
+							app.FontManager.loadSystemFontStyle(value, String(w)).then(() => {
+								config.need_render_changed_params = true;
+								if (this.Base_layers) this.Base_layers.render();
+							}).catch(() => {});
+						} else {
+							load_font_family({
+								family: value,
+								variants: [google_variant_key(w, !!meta.italic)],
+								source: 'google'
+							}, () => {
+								config.need_render_changed_params = true;
+								if (this.Base_layers) this.Base_layers.render();
+							});
+						}
+					} catch (e) { /* ignore */ }
+				}
 				break;
 			case 'size':
 				if (value) meta.size = value;
 				break;
+			case 'weight': {
+				const weight = (value && value.value != null) ? value.value : value;
+				if (weight != null && String(weight).length) {
+					meta.weight = String(weight);
+					meta.bold = weight_implies_bold(weight);
+					if (/italic|oblique/i.test(String(weight))) {
+						meta.italic = true;
+					}
+					// Keep options-bar Bold + Mode/align in sync. Weight must NEVER clear
+					// halign or flip Point↔Paragraph (show_action_attributes rebuilds after change).
+					try {
+						const toolAttributes = this.GUI_tools && this.GUI_tools.action_data
+							? this.GUI_tools.action_data().attributes : null;
+						if (toolAttributes) {
+							if (toolAttributes.weight) toolAttributes.weight.value = String(weight);
+							if (toolAttributes.bold) toolAttributes.bold.value = !!meta.bold;
+							if (meta.italic != null && toolAttributes.italic) {
+								toolAttributes.italic.value = !!meta.italic;
+							}
+						}
+						if (config.layer && config.layer.type === 'text') {
+							this.sync_text_tool_attributes_from_layer(config.layer);
+						}
+					} catch (e) { /* ignore */ }
+					const family = (this.GUI_tools && this.GUI_tools.action_data().attributes.font)
+						? this.GUI_tools.action_data().attributes.font.value
+						: null;
+					if (family) {
+						const isLocal = app.FontManager && typeof app.FontManager.getCachedSystemFonts === 'function'
+							&& app.FontManager.getCachedSystemFonts().includes(family);
+						if (isLocal && typeof app.FontManager.loadSystemFontStyle === 'function') {
+							app.FontManager.loadSystemFontStyle(family, String(weight)).then(() => {
+								config.need_render_changed_params = true;
+								if (this.Base_layers) this.Base_layers.render();
+							}).catch(() => {});
+						} else {
+							// Google / web font: request the specific weight file (not faux from Regular)
+							const italic = !!(meta.italic) || /italic|oblique/i.test(String(weight));
+							const variantKey = google_variant_key(weight, italic);
+							load_font_family({ family, variants: [variantKey], source: 'google' }, () => {
+								config.need_render_changed_params = true;
+								if (this.Base_layers) this.Base_layers.render();
+							});
+						}
+					}
+				}
+				break;
+			}
 			case 'bold':
 				meta.bold = value;
+				if (value) meta.weight = 'Bold (700)';
+				else meta.weight = 'Regular (400)';
+				// Fall through to weight-load path via synthetic weight update
+				try {
+					const family = (this.GUI_tools && this.GUI_tools.action_data().attributes.font)
+						? this.GUI_tools.action_data().attributes.font.value
+						: (meta.family || metaDefaults.family);
+					if (family) {
+						const isLocal = app.FontManager && typeof app.FontManager.getCachedSystemFonts === 'function'
+							&& app.FontManager.getCachedSystemFonts().includes(family);
+						if (isLocal && typeof app.FontManager.loadSystemFontStyle === 'function') {
+							app.FontManager.loadSystemFontStyle(family, meta.weight).then(() => {
+								config.need_render_changed_params = true;
+								if (this.Base_layers) this.Base_layers.render();
+							}).catch(() => {});
+						} else {
+							load_font_family({
+								family,
+								variants: [google_variant_key(meta.weight, !!meta.italic)],
+								source: 'google'
+							}, () => {
+								config.need_render_changed_params = true;
+								if (this.Base_layers) this.Base_layers.render();
+							});
+						}
+					}
+				} catch (e) { /* ignore */ }
 				break;
 			case 'italic':
 				meta.italic = value;
+				try {
+					const family = (this.GUI_tools && this.GUI_tools.action_data().attributes.font)
+						? this.GUI_tools.action_data().attributes.font.value
+						: (meta.family || metaDefaults.family);
+					const w = meta.weight || metaDefaults.weight;
+					if (family) {
+						const isLocal = app.FontManager && typeof app.FontManager.getCachedSystemFonts === 'function'
+							&& app.FontManager.getCachedSystemFonts().includes(family);
+						if (isLocal && typeof app.FontManager.loadSystemFontStyle === 'function') {
+							const style = value ? (String(w) + ' Italic') : String(w);
+							app.FontManager.loadSystemFontStyle(family, style).then(() => {
+								config.need_render_changed_params = true;
+								if (this.Base_layers) this.Base_layers.render();
+							}).catch(() => {});
+						} else {
+							load_font_family({
+								family,
+								variants: [google_variant_key(w, !!value)],
+								source: 'google'
+							}, () => {
+								config.need_render_changed_params = true;
+								if (this.Base_layers) this.Base_layers.render();
+							});
+						}
+					}
+				} catch (e) { /* ignore */ }
 				break;
 			case 'underline':
 				meta.underline = value;
@@ -2920,12 +4176,6 @@ class Text_class extends Base_tools_class {
 					}
 				}
 				break;
-			case 'stroke':
-				if (value) meta.stroke_color = value;
-				break;
-			case 'stroke_size':
-				if (!isNaN(value)) meta.stroke_size = value;
-				break;
 			case 'kerning':
 				if (!isNaN(value)) meta.kerning = value;
 				break;
@@ -2936,27 +4186,210 @@ class Text_class extends Base_tools_class {
 				const align = (value && value.value ? value.value : value) || 'Left';
 				if (config.layer && config.layer.type === 'text' && config.layer.params) {
 					const nextParams = JSON.parse(JSON.stringify(config.layer.params));
-					nextParams.halign = String(align).toLowerCase();
-					app.State.do_action(
-						new app.Actions.Update_layer_action(config.layer.id, { params: nextParams })
-					);
+					// CRITICAL: align must NEVER change boundary / text mode.
+					// Always persist canonical 'box'|'dynamic' (never UI labels Point/Paragraph).
+					const lockedBoundary = normalize_text_boundary(config.layer.params.boundary);
+					nextParams.boundary = lockedBoundary;
+					const newAlign = normalize_halign(align);
+					const isPoint = lockedBoundary !== 'box';
+					if (isPoint && newAlign === 'justify') {
+						// Photoshop: justify is disabled for point text.
+						return returnValue;
+					}
+					nextParams.halign = newAlign;
+					const updates = { params: nextParams };
+
+					const editor = this.get_editor(config.layer);
+					let ctx = editor ? editor.editingCtx : null;
+					if (!ctx && app.GUI && app.GUI.canvas_ctx) ctx = app.GUI.canvas_ctx;
+					if (!ctx) {
+						const c = document.getElementById('canvas_minipaint');
+						ctx = c ? c.getContext('2d') : document.createElement('canvas').getContext('2d');
+					}
+
+					if (isPoint) {
+						// PS point text: keep the anchor fixed; move glyphs so L/C/R sits on it.
+						if (editor) {
+							editor.hasValueChanged = true;
+							const measureLayer = Object.assign({}, config.layer, {
+								params: Object.assign({}, config.layer.params, { halign: newAlign, boundary: lockedBoundary })
+							});
+							editor.calculate_text_placement(ctx, measureLayer);
+						}
+						const sx = (nextParams.scale_x != null) ? Number(nextParams.scale_x) : 1;
+						const sy = (nextParams.scale_y != null) ? Number(nextParams.scale_y) : 1;
+						// Prefer live layout width; fall back to layer box so unloaded fonts
+						// don't under-shift (tiny measured width → almost no glyph move).
+						const measuredW = (editor && editor.textBoundaryWidth)
+							? (editor.textBoundaryWidth * (isFinite(sx) ? sx : 1) + 1)
+							: 0;
+						const layerW = Math.max(1, Number(config.layer.width) || 1);
+						const visualW = Math.max(1, measuredW || layerW, layerW);
+						if (nextParams.anchor_x == null) {
+							const prev = normalize_halign(config.layer.params.halign);
+							if (prev === 'center') nextParams.anchor_x = config.layer.x + layerW / 2;
+							else if (prev === 'right') nextParams.anchor_x = config.layer.x + layerW;
+							else nextParams.anchor_x = config.layer.x;
+						}
+						if (nextParams.anchor_y == null) nextParams.anchor_y = config.layer.y;
+						const anchorX = nextParams.anchor_x;
+						let newX = config.layer.x;
+						if (newAlign === 'center') newX = Math.round(anchorX - visualW / 2);
+						else if (newAlign === 'right') newX = Math.round(anchorX - visualW);
+						else newX = Math.round(anchorX);
+						updates.x = newX;
+						updates.width = Math.max(1, Math.ceil(visualW));
+						if (editor && editor.textBoundaryHeight) {
+							updates.height = Math.max(1, Math.ceil(editor.textBoundaryHeight * (isFinite(sy) ? sy : 1) + 1));
+						}
+					}
+					// Paragraph (box): ONLY halign changes. Never convert to point / never touch frame.
+					nextParams.boundary = lockedBoundary;
+
+					// Snapshot pre-update state so Update_layer records correct history old_settings.
+					const preParams = JSON.parse(JSON.stringify(config.layer.params));
+					const preX = config.layer.x;
+					const preW = config.layer.width;
+					const preH = config.layer.height;
+
+					// Apply for immediate paint, then revert for history capture.
+					config.layer.params = nextParams;
+					if (updates.x != null) {
+						config.layer.x = updates.x;
+						if (updates.width != null) config.layer.width = updates.width;
+						if (updates.height != null) config.layer.height = updates.height;
+					}
+					this.sync_text_tool_attributes_from_layer(config.layer);
+					if (editor) {
+						editor.hasValueChanged = true;
+						editor.calculate_text_placement(ctx, config.layer);
+					}
+					config.need_render_changed_params = true;
+
+					// Revert so Update_layer_action stores true previous values, then re-apply via action.
+					config.layer.params = preParams;
+					config.layer.x = preX;
+					config.layer.width = preW;
+					config.layer.height = preH;
+
+					// Prevent Update_layer from rebuilding the options bar (Mode flip risk).
+					const prevParamsUi = this._params_ui_active;
+					this._params_ui_active = true;
+					try {
+						app.State.do_action(
+							new app.Actions.Update_layer_action(config.layer.id, updates)
+						);
+					} finally {
+						this._params_ui_active = prevParamsUi;
+					}
+					this.sync_text_tool_attributes_from_layer(config.layer);
 					this.Base_layers.render();
-					this.focus_textarea();
+					if (this.focused) this.focus_textarea();
 				}
 				return returnValue;
 			}
 			case 'boundary': {
-				const mode = (value && value.value ? value.value : value) || 'Auto';
+				const mode = (value && value.value ? value.value : value) || '';
 				const normalized = String(mode).toLowerCase();
-				const boundary = (normalized === 'box' || normalized === 'paragraph') ? 'box' : 'dynamic';
+				const targetBoundary = normalize_text_boundary(normalized === 'paragraph' || normalized === 'box' ? 'box' : (normalized === 'point' || normalized === 'dynamic' ? 'dynamic' : normalized));
+				if (normalized && !['point', 'dynamic', 'paragraph', 'box'].includes(normalized)) return returnValue;
 				if (config.layer && config.layer.type === 'text' && config.layer.params) {
+					const currentBoundary = normalize_text_boundary(config.layer.params.boundary);
+					if (currentBoundary === targetBoundary) return returnValue;
+
 					const nextParams = JSON.parse(JSON.stringify(config.layer.params));
-					nextParams.boundary = boundary;
+					nextParams.boundary = targetBoundary;
+					const editor = this.get_editor(config.layer);
+					const updates = { params: nextParams };
+
+					if (targetBoundary === 'dynamic') {
+						// Paragraph (box) -> Point (dynamic)
+						if (normalize_halign(nextParams.halign) === 'justify') {
+							nextParams.halign = 'left';
+						}
+						// Convert visual wrap breaks into explicit lines so text does not collapse into a single line
+						if (editor) {
+							let ctx = editor.editingCtx;
+							if (!ctx && app.GUI && app.GUI.canvas_ctx) ctx = app.GUI.canvas_ctx;
+							if (!ctx) {
+								const c = document.getElementById('canvas_minipaint');
+								ctx = c ? c.getContext('2d') : document.createElement('canvas').getContext('2d');
+							}
+							editor.calculate_text_placement(ctx, config.layer);
+							if (editor.lineRenderInfo && editor.lineRenderInfo.lines && editor.lineRenderInfo.lines.length) {
+								const newLines = [];
+								for (const line of editor.lineRenderInfo.lines) {
+									for (const wrap of line.wraps) {
+										const wrapSpans = JSON.parse(JSON.stringify(wrap.spans || []));
+										if (wrapSpans.length > 0) {
+											const lastSpan = wrapSpans[wrapSpans.length - 1];
+											if (typeof lastSpan.text === 'string') {
+												lastSpan.text = lastSpan.text.replace(/\s+$/, '');
+											}
+										}
+										newLines.push(wrapSpans.length > 0 ? wrapSpans : [{ text: '', meta: {} }]);
+									}
+								}
+								if (newLines.length > 0) {
+									editor.set_lines(newLines, true);
+									config.layer.data = JSON.parse(JSON.stringify(newLines));
+									updates.data = config.layer.data;
+									this.focusedValue = JSON.stringify(newLines);
+								}
+							}
+						}
+						nextParams.wrap = 'letter';
+						const halign = normalize_halign(nextParams.halign);
+						if (halign === 'center') {
+							nextParams.anchor_x = config.layer.x + config.layer.width / 2;
+						} else if (halign === 'right') {
+							nextParams.anchor_x = config.layer.x + config.layer.width;
+						} else {
+							nextParams.anchor_x = config.layer.x;
+						}
+						nextParams.anchor_y = config.layer.y;
+						if (editor) {
+							this.resize_to_dynamic_bounds(config.layer, editor);
+							updates.x = config.layer.x;
+							updates.y = config.layer.y;
+							updates.width = config.layer.width;
+							updates.height = config.layer.height;
+						}
+					} else {
+						// Point (dynamic) -> Paragraph (box)
+						// Frame text into a box sized to current text bounds
+						nextParams.wrap = 'word';
+						if (editor) {
+							let ctx = editor.editingCtx;
+							if (!ctx && app.GUI && app.GUI.canvas_ctx) ctx = app.GUI.canvas_ctx;
+							if (!ctx) {
+								const c = document.getElementById('canvas_minipaint');
+								ctx = c ? c.getContext('2d') : document.createElement('canvas').getContext('2d');
+							}
+							editor.calculate_text_placement(ctx, config.layer);
+							this.resize_to_dynamic_bounds(config.layer, editor);
+						}
+						const boxW = Math.max(20, config.layer.width);
+						const boxH = Math.max(20, config.layer.height);
+						updates.x = config.layer.x;
+						updates.y = config.layer.y;
+						updates.width = boxW;
+						updates.height = boxH;
+						config.layer.width = boxW;
+						config.layer.height = boxH;
+						this.focusedWidth = boxW;
+						this.focusedHeight = boxH;
+						this.focusedX = config.layer.x;
+						this.focusedY = config.layer.y;
+					}
+
+					config.layer.params = nextParams;
+					this.sync_text_tool_attributes_from_layer(config.layer);
 					app.State.do_action(
-						new app.Actions.Update_layer_action(config.layer.id, { params: nextParams })
+						new app.Actions.Update_layer_action(config.layer.id, updates)
 					);
 					this.Base_layers.render();
-					this.focus_textarea();
+					if (this.focused) this.focus_textarea();
 				}
 				return returnValue;
 			}
@@ -2967,33 +4400,150 @@ class Text_class extends Base_tools_class {
 		return returnValue;
 	}
 
+	sync_text_tool_attributes_from_layer(layer, options = {}) {
+		if (!layer || layer.type !== 'text' || !layer.params) return;
+		try {
+			// Prefer the Text tool entry in config.TOOLS — action_data() is the *active* tool
+			// (Select while transforming), which has no size/halign/boundary attrs.
+			const textToolCfg = (config.TOOLS || []).find((t) => t && t.name === 'text');
+			const toolAttributes = (textToolCfg && textToolCfg.attributes)
+				? textToolCfg.attributes
+				: (this.GUI_tools && this.GUI_tools.action_data
+					? this.GUI_tools.action_data().attributes
+					: null);
+			if (!toolAttributes) return;
+			const isPoint = normalize_text_boundary(layer.params.boundary) !== 'box';
+			if (toolAttributes.halign) {
+				let h = normalize_halign(layer.params.halign);
+				// Photoshop: justify is paragraph-only.
+				if (isPoint && h === 'justify') h = 'left';
+				toolAttributes.halign.value = h === 'center' ? 'Center' : (h === 'right' ? 'Right' : (h === 'justify' ? 'Justify' : 'Left'));
+			}
+			if (toolAttributes.boundary) {
+				// Always drive Mode from layer params — never leave a stale Point default.
+				toolAttributes.boundary.value = isPoint ? 'Point' : 'Paragraph';
+			}
+			// Size contract: after point-text resize, span meta.size, layer.params.size, and
+			// Text-tool attributes.size must all match (≤2 dp). Size UI lives only on Type.
+			// When Select (or any non-Text tool) is active — or forceSize — push baked span
+			// size into TOOLS (+ DOM if Type bar is mounted). Skip while Text is actively
+			// driving Size from the editor selection unless forceSize (activate / post-bake).
+			const activeIsText = config.TOOL && config.TOOL.name === 'text';
+			if (!activeIsText || options.forceSize) {
+				this.sync_size_from_layer(layer);
+			} else {
+				// Still keep params.size mirrored for the next Select→Type switch.
+				try {
+					const span0 = layer.data && layer.data[0] && layer.data[0][0] ? layer.data[0][0] : null;
+					const size = (span0 && span0.meta && span0.meta.size != null) ? Number(span0.meta.size) : null;
+					if (size != null && isFinite(size)) {
+						layer.params.size = Math.round(size * 100) / 100;
+					}
+				} catch (e2) { /* ignore */ }
+			}
+			this.update_halign_justify_availability(isPoint);
+		} catch (e) { /* ignore */ }
+	}
+
+	/**
+	 * Push baked/current font size from the layer into params + Type TOOLS attrs + Size DOM.
+	 * Contract: span meta.size === layer.params.size === TOOLS text attributes.size (≤2 dp).
+	 * Size control lives only on the Type tool; Select transform must still update these so
+	 * switching to Type (or a live Type bar) shows the post-resize size without an extra click.
+	 */
+	sync_size_from_layer(layer) {
+		if (!layer || layer.type !== 'text') return;
+		try {
+			const span0 = layer.data && layer.data[0] && layer.data[0][0] ? layer.data[0][0] : null;
+			let size = (span0 && span0.meta && span0.meta.size != null) ? Number(span0.meta.size) : null;
+			if ((size == null || !isFinite(size)) && layer.params && layer.params.size != null) {
+				size = typeof layer.params.size === 'object' ? Number(layer.params.size.value) : Number(layer.params.size);
+			}
+			if (size == null || !isFinite(size)) return;
+			this._sync_size_attribute(size, layer);
+		} catch (e) { /* ignore */ }
+	}
+
+	update_halign_justify_availability(isPoint) {
+		const justifyBtn = document.getElementById('halign_justify');
+		if (!justifyBtn) return;
+		if (isPoint) {
+			justifyBtn.disabled = true;
+			justifyBtn.setAttribute('aria-disabled', 'true');
+			justifyBtn.title = 'Justify is only available for paragraph text';
+			justifyBtn.style.opacity = '0.35';
+			justifyBtn.style.pointerEvents = 'none';
+		} else {
+			justifyBtn.disabled = false;
+			justifyBtn.removeAttribute('aria-disabled');
+			justifyBtn.title = 'Justify Align';
+			justifyBtn.style.opacity = '';
+			justifyBtn.style.pointerEvents = '';
+		}
+	}
+
 	update_tool_attributes(layer, editor) {
 		if (layer && layer.params) {
 			const meta = editor.document.get_meta_range(editor.selection.start.line, editor.selection.start.character, editor.selection.end.line, editor.selection.end.character);
 			const toolAttributes = this.GUI_tools.action_data().attributes;
 			toolAttributes.font.value = meta.family.length === 1 ? meta.family[0] : '';
-			const sizeVal = meta.size.length === 1 ? meta.size[0] : parseFloat(null);
+			let sizeVal = meta.size.length === 1 ? meta.size[0] : parseFloat(null);
+			// Prefer baked first-span / params.size over selection meta.
+			// After Select point-text bake, caret meta can miss or fall back to metaDefaults (38)
+			// while layer.data already holds the baked size — that was clobbering Type Size on activate.
+			const span0 = layer.data && layer.data[0] && layer.data[0][0] ? layer.data[0][0] : null;
+			let bakedSize = (span0 && span0.meta && span0.meta.size != null) ? Number(span0.meta.size) : null;
+			if ((bakedSize == null || !isFinite(bakedSize)) && layer.params.size != null) {
+				bakedSize = typeof layer.params.size === 'object' ? Number(layer.params.size.value) : Number(layer.params.size);
+			}
+			const selectionEmpty = editor.selection && typeof editor.selection.is_empty === 'function'
+				? editor.selection.is_empty()
+				: (editor.selection && editor.selection.start && editor.selection.end
+					&& editor.selection.start.line === editor.selection.end.line
+					&& editor.selection.start.character === editor.selection.end.character);
+			const selectionMiss = sizeVal == null || !isFinite(Number(sizeVal));
+			const selectionLooksDefault = isFinite(Number(sizeVal)) && Number(sizeVal) === metaDefaults.size
+				&& bakedSize != null && isFinite(bakedSize) && bakedSize !== metaDefaults.size;
+			if (bakedSize != null && isFinite(bakedSize) && (selectionEmpty || selectionMiss || selectionLooksDefault)) {
+				sizeVal = bakedSize;
+			}
+			if (sizeVal != null && isFinite(Number(sizeVal))) {
+				sizeVal = Math.round(Number(sizeVal) * 100) / 100;
+				layer.params.size = sizeVal;
+			}
 			if (toolAttributes.size && typeof toolAttributes.size === 'object') {
 				toolAttributes.size.value = sizeVal;
 			} else {
 				toolAttributes.size = sizeVal;
+			}
+			if (toolAttributes.weight) {
+				const weights = meta.weight && meta.weight.length === 1 ? meta.weight[0] : null;
+				const variants = (typeof toolAttributes.weight.values === 'function')
+					? toolAttributes.weight.values()
+					: (toolAttributes.weight.values || []);
+				if (weights != null) {
+					const matched = variants.find((v) => weight_labels_match(v, weights));
+					if (matched) toolAttributes.weight.value = matched;
+					else if (app.FontManager && typeof app.FontManager.formatWeightLabel === 'function') {
+						toolAttributes.weight.value = app.FontManager.formatWeightLabel(weights) || String(weights);
+					} else {
+						toolAttributes.weight.value = String(weights);
+					}
+				} else if (meta.bold && !meta.bold.includes(false)) {
+					const matched = variants.find((v) => weight_labels_match(v, 'Bold'));
+					toolAttributes.weight.value = matched || 'Bold (700)';
+				}
 			}
 			toolAttributes.bold.value = meta.bold.includes(false) ? false : true;
 			toolAttributes.italic.value = meta.italic.includes(false) ? false : true;
 			toolAttributes.underline.value = meta.underline.includes(false) ? false : true;
 			toolAttributes.strikethrough.value = meta.strikethrough.includes(false) ? false : true;
 			toolAttributes.fill = meta.fill_color.length === 1 ? meta.fill_color[0] : (config.COLOR || '#000000');
-			toolAttributes.stroke = meta.stroke_color.length === 1 ? meta.stroke_color[0] : '#000000';
-			toolAttributes.stroke_size.value = meta.stroke_size.length === 1 ? meta.stroke_size[0] : parseFloat(null);
 			toolAttributes.kerning.value = meta.kerning.length === 1 ? meta.kerning[0] : parseFloat(null);
 			toolAttributes.leading.value = meta.leading.length === 1 ? meta.leading[0] : parseFloat(null);
-			if (toolAttributes.halign) {
-				const h = (layer.params.halign || 'left').toLowerCase();
-				toolAttributes.halign.value = h === 'center' ? 'Center' : (h === 'right' ? 'Right' : 'Left');
-			}
-			if (toolAttributes.boundary) {
-				toolAttributes.boundary.value = layer.params.boundary === 'box' ? 'Paragraph' : 'Point';
-			}
+			this.sync_text_tool_attributes_from_layer(layer);
+			// Final Size authority before remount: baked span → params → TOOLS attrs.
+			this.sync_size_from_layer(layer);
 			this.GUI_tools.show_action_attributes();
 		}
 	}
@@ -3001,16 +4551,17 @@ class Text_class extends Base_tools_class {
 
 	_scale_text_lines(lines, scale) {
 		const out = JSON.parse(JSON.stringify(lines || [[{ text: '', meta: {} }]]));
+		const maxSize = 999;
 		for (const line of out) {
 			for (const span of line) {
 				if (!span.meta) span.meta = {};
 				const size = (span.meta.size != null) ? span.meta.size : metaDefaults.size;
-				span.meta.size = Math.max(1, Math.round(size * scale * 100) / 100);
+				span.meta.size = Math.max(1, Math.min(maxSize, Math.round(size * scale * 100) / 100));
 				if (span.meta.stroke_size != null && span.meta.stroke_size > 0) {
 					span.meta.stroke_size = Math.max(0, Math.round(span.meta.stroke_size * scale * 10) / 10);
 				}
 				if (span.meta.leading != null) {
-					span.meta.leading = Math.max(0, Math.round(span.meta.leading * scale));
+					span.meta.leading = Math.max(0, Math.round(span.meta.leading * scale * 100) / 100);
 				}
 			}
 		}
@@ -3038,70 +4589,281 @@ class Text_class extends Base_tools_class {
 	}
 
 	/**
-	 * Start a point-text transform: remember pre-drag fonts so scale is always
+	 * Start a point-text transform: remember pre-drag fonts/box so scale is always
 	 * relative to the drag start (not compounded each move).
 	 */
 	begin_point_text_resize(layer) {
 		if (!layer || layer.type !== 'text') return;
+		if (is_box_text(layer)) return;
 		const editor = this.get_editor(layer);
+		if (editor) {
+			let ctx = editor.editingCtx;
+			if (!ctx && app.GUI && app.GUI.canvas_ctx) ctx = app.GUI.canvas_ctx;
+			if (!ctx) {
+				const c = document.getElementById('canvas_minipaint');
+				ctx = c ? c.getContext('2d') : document.createElement('canvas').getContext('2d');
+			}
+			editor.hasValueChanged = true;
+			editor.calculate_text_placement(ctx, layer);
+		}
 		const lines = editor ? editor.document.lines : layer.data;
 		this._point_resize_snapshot = JSON.parse(JSON.stringify(lines || [[{ text: '', meta: {} }]]));
-		this._point_resize_base_width = Math.max(1, layer.width || 1);
-		this._point_resize_base_height = Math.max(1, layer.height || 1);
+		const sx = (layer.params && layer.params.scale_x != null) ? layer.params.scale_x : 1;
+		const sy = (layer.params && layer.params.scale_y != null) ? layer.params.scale_y : 1;
+		const layoutW = (editor && editor.textBoundaryWidth) ? (editor.textBoundaryWidth * sx + 1) : 0;
+		const layoutH = (editor && editor.textBoundaryHeight) ? (editor.textBoundaryHeight * sy + 1) : 0;
+		// Prefer mousedownBounds / select mousedown_dimensions (drag-start box).
+		let bw = (this.mousedownBounds && this.mousedownBounds.width > 0)
+			? Number(this.mousedownBounds.width)
+			: Number(layer.width);
+		let bh = (this.mousedownBounds && this.mousedownBounds.height > 0)
+			? Number(this.mousedownBounds.height)
+			: Number(layer.height);
+		if (!isFinite(bw) || bw < 1) bw = 1;
+		if (!isFinite(bh) || bh < 1) bh = 1;
+		// Never use a stub 1×1 box as the scale base — that maps any drag to size 999.
+		if (layoutW > bw) bw = layoutW;
+		if (layoutH > bh) bh = layoutH;
+		this._point_resize_base_width = bw;
+		this._point_resize_base_height = bh;
+		this._point_resize_base_scale_x = sx;
+		this._point_resize_base_scale_y = sy;
+		this._point_resize_base_x = layer.x;
+		this._point_resize_base_y = layer.y;
 		this._point_resize_layer_id = layer.id;
 		this._point_resize_last_scale = 1;
+		this._point_resize_skew = false;
 	}
 
 	/**
-	 * Apply point-text scale from the drag-start snapshot to real font sizes.
-	 * Uses uniform scale from width+height so handles stay proportional.
+	 * Live preview: geometric scale_x/y (fast, no meta churn).
+	 * Proportional => uniform scale. Non-uniform (Shift skew) => independent axes.
 	 */
-	apply_point_text_resize(layer, currentWidth, currentHeight) {
+	apply_point_text_resize(layer, currentWidth, currentHeight, options = {}) {
 		if (!layer || layer.type !== 'text' || !this._point_resize_snapshot) return null;
+		if (is_box_text(layer)) return null;
 		if (this._point_resize_layer_id != null && layer.id !== this._point_resize_layer_id) return null;
 		const baseW = Math.max(1, this._point_resize_base_width || 1);
 		const baseH = Math.max(1, this._point_resize_base_height || 1);
 		const w = Math.max(1, currentWidth != null ? currentWidth : (layer.width || baseW));
 		const h = Math.max(1, currentHeight != null ? currentHeight : (layer.height || baseH));
-		const scale = Math.max(0.05, Math.sqrt(Math.abs((w / baseW) * (h / baseH))));
-		this._point_resize_last_scale = scale;
-		const lines = this.bake_point_text_scale(layer, scale, { commit: true });
-		if (lines && lines[0] && lines[0][0] && lines[0][0].meta && lines[0][0].meta.size != null) {
-			const size = lines[0][0].meta.size;
-			try {
-				for (const tool of (config.TOOLS || [])) {
-					if (tool.name === 'text' && tool.attributes && tool.attributes.size) {
-						if (typeof tool.attributes.size === 'object') tool.attributes.size.value = size;
-						else tool.attributes.size = size;
-					}
+		const rx = w / baseW;
+		const ry = h / baseH;
+		const baseScaleX = this._point_resize_base_scale_x != null ? this._point_resize_base_scale_x : 1;
+		const baseScaleY = this._point_resize_base_scale_y != null ? this._point_resize_base_scale_y : 1;
+
+		const forceSkew = options.skew === true;
+		const forceUniform = options.skew === false;
+		const skew = forceUniform ? false : (forceSkew || Math.abs(rx - ry) > 0.02);
+		this._point_resize_skew = skew;
+
+		if (!layer.params) layer.params = {};
+		if (skew) {
+			layer.params.scale_x = Math.max(0.01, baseScaleX * Math.max(0.05, rx));
+			layer.params.scale_y = Math.max(0.01, baseScaleY * Math.max(0.05, ry));
+			this._point_resize_last_scale = Math.max(0.05, ry);
+		} else {
+			const uniform = Math.max(0.05, (Math.abs(rx) + Math.abs(ry)) / 2);
+			layer.params.scale_x = Math.max(0.01, baseScaleX * uniform);
+			layer.params.scale_y = Math.max(0.01, baseScaleY * uniform);
+			this._point_resize_last_scale = uniform;
+		}
+		// Live-update Size control (~2 dp) from snapshot × vertical/uniform scale
+		try {
+			const snap = this._point_resize_snapshot;
+			const span0 = snap && snap[0] && snap[0][0] ? snap[0][0] : null;
+			const baseSize = (span0 && span0.meta && span0.meta.size != null) ? Number(span0.meta.size) : null;
+			if (baseSize != null && isFinite(baseSize)) {
+				this._sync_size_attribute(baseSize * this._point_resize_last_scale, layer);
+			}
+		} catch (e) { /* ignore */ }
+		return null;
+	}
+
+	_sync_size_attribute(size, layer = null) {
+		if (size == null || !isFinite(size)) return;
+		const rounded = Math.round(Number(size) * 100) / 100;
+		try {
+			// CONTRACT (point-text resize / Type Size):
+			//   span meta.size === layer.params.size === config.TOOLS[text].attributes.size
+			//   (rounded ≤2 dp). Size UI is ONLY on the Type tool options bar — never Select.
+			//   Select/any transform must still write TOOLS (+ params) so Select→Type mounts
+			//   the baked size; when Type bar is up, also push uiNumberInput set_value.
+			if (layer) {
+				if (!layer.params) layer.params = {};
+				layer.params.size = rounded;
+			}
+			for (const tool of (config.TOOLS || [])) {
+				if (tool.name === 'text' && tool.attributes && tool.attributes.size != null) {
+					if (typeof tool.attributes.size === 'object') tool.attributes.size.value = rounded;
+					else tool.attributes.size = rounded;
 				}
-			} catch (e) { /* ignore */ }
+			}
+			// Live DOM: prefer uiNumberInput API (widget holds internal state; attr alone is ignored)
+			const $size = (typeof $ !== 'undefined')
+				? $('#action_attributes .item.size .ui_number_input, #action_attributes #size.ui_number_input')
+				: null;
+			if ($size && $size.length && typeof $size.uiNumberInput === 'function') {
+				try { $size.uiNumberInput('set_value', rounded); } catch (e) { /* ignore */ }
+			} else {
+				const input = document.querySelector(
+					'#action_attributes .item.size input, #action_attributes #size_input, #action_attributes #size input'
+				);
+				if (input) {
+					input.value = String(rounded);
+					input.setAttribute('value', String(rounded));
+				}
+			}
+		} catch (e) { /* ignore */ }
+	}
+
+	/**
+	 * Bake live geometric scale into real span font sizes (Photoshop point text).
+	 * Proportional: bake size, clear scales.
+	 * Skew: bake size from vertical scale; keep residual horizontal scale (PS horizontal scale).
+	 * Always refits layer bounds to glyphs afterward when editor is available.
+	 */
+	bake_point_text_resize_commit(layer) {
+		if (!layer || layer.type !== 'text' || !this._point_resize_snapshot) return null;
+		if (is_box_text(layer)) return null;
+		const sx = (layer.params && layer.params.scale_x != null) ? layer.params.scale_x : 1;
+		const sy = (layer.params && layer.params.scale_y != null) ? layer.params.scale_y : 1;
+		const baseScaleX = this._point_resize_base_scale_x != null ? this._point_resize_base_scale_x : 1;
+		const baseScaleY = this._point_resize_base_scale_y != null ? this._point_resize_base_scale_y : 1;
+		const absoluteSx = Math.max(0.05, sx);
+		const absoluteSy = Math.max(0.05, sy);
+		const skew = this._point_resize_skew || Math.abs(absoluteSx - absoluteSy) > 0.02 * Math.max(absoluteSx, absoluteSy);
+
+		let lines = null;
+		if (!layer.params) layer.params = {};
+		if (skew) {
+			// Height drives font size; leftover X/Y ratio is horizontal scale.
+			lines = this.bake_point_text_scale(layer, absoluteSy, { commit: true });
+			layer.params.scale_x = Math.max(0.01, absoluteSx / absoluteSy);
+			layer.params.scale_y = 1;
+		} else {
+			const uniform = Math.max(0.05, (absoluteSx + absoluteSy) / 2);
+			lines = this.bake_point_text_scale(layer, uniform, { commit: true });
+			layer.params.scale_x = 1;
+			layer.params.scale_y = 1;
+		}
+
+		if (lines && lines[0] && lines[0][0] && lines[0][0].meta && lines[0][0].meta.size != null) {
+			// Mirror into params + TOOLS + Type Size DOM (contract in _sync_size_attribute).
+			this._sync_size_attribute(lines[0][0].meta.size, layer);
+		}
+
+		// Fit bounds to glyphs so transform does not leave pad or clip.
+		const editor = this.get_editor(layer);
+		if (editor) {
+			let ctx = editor.editingCtx;
+			if (!ctx && app.GUI && app.GUI.canvas_ctx) ctx = app.GUI.canvas_ctx;
+			if (!ctx) {
+				const c = document.getElementById('canvas_minipaint');
+				ctx = c ? c.getContext('2d') : document.createElement('canvas').getContext('2d');
+			}
+			editor.hasValueChanged = true;
+			editor.calculate_text_placement(ctx, layer);
+			// Temporarily clear snapshot so resize_to_dynamic_bounds is allowed.
+			const snap = this._point_resize_snapshot;
+			this._point_resize_snapshot = null;
+			this.resize_to_dynamic_bounds(layer, editor);
+			this._point_resize_snapshot = snap;
 		}
 		return lines;
+	}
+
+	/**
+	 * Full commit helper for Select tool / W-H inputs: apply + bake + return update payload.
+	 * Mutates layer data/params/x/y/width/height to the final committed state.
+	 */
+	commit_point_text_resize(layer, width, height, options = {}) {
+		if (!layer || layer.type !== 'text' || is_box_text(layer)) return null;
+		if (!this._point_resize_snapshot) {
+			this.begin_point_text_resize(layer);
+		}
+		this.apply_point_text_resize(layer, width, height, options);
+		const baked = this.bake_point_text_resize_commit(layer);
+		const result = {
+			x: layer.x,
+			y: layer.y,
+			width: layer.width,
+			height: layer.height,
+			params: JSON.parse(JSON.stringify(layer.params || {})),
+			data: baked ? JSON.parse(JSON.stringify(baked)) : JSON.parse(JSON.stringify(layer.data || []))
+		};
+		this.end_point_text_resize();
+		return result;
 	}
 
 	end_point_text_resize() {
 		this._point_resize_snapshot = null;
 		this._point_resize_base_width = null;
 		this._point_resize_base_height = null;
+		this._point_resize_base_scale_x = null;
+		this._point_resize_base_scale_y = null;
+		this._point_resize_base_x = null;
+		this._point_resize_base_y = null;
 		this._point_resize_layer_id = null;
+		this._point_resize_skew = false;
 	}
 
 	is_point_text_transform_active(layer) {
-		// Live ctx.scale preview disabled when we bake real font sizes during drag.
-		// Returning false avoids double-scaling (fonts *and* canvas scale).
-		return false;
+		// Live preview uses params.scale_x/y; bake on mouseup clears them.
+		return !!(layer && layer.params && (
+			(layer.params.scale_x != null && Math.abs(layer.params.scale_x - 1) > 0.001) ||
+			(layer.params.scale_y != null && Math.abs(layer.params.scale_y - 1) > 0.001)
+		));
 	}
 
 	resize_to_dynamic_bounds(layer, editor) {
 		// During Move-handle scaling, the drag owns width/height.
 		if (this._point_resize_snapshot) return;
-		if (layer && layer.type === 'text' && layer.params && layer.params.boundary === 'dynamic' && editor) {
-			// Grow from the anchor (x,y); never mutate other layers.
-			const new_width = Math.max(1, Math.ceil(editor.textBoundaryWidth + 1));
-			const new_height = Math.max(1, Math.ceil(editor.textBoundaryHeight + 1));
+		// During Select-tool moving, the drag owns layer position.
+		if (app.GUI && app.GUI.GUI_tools && app.GUI.GUI_tools.tools_modules['select'] && app.GUI.GUI_tools.tools_modules['select'].object && app.GUI.GUI_tools.tools_modules['select'].object.moving) {
+			return;
+		}
+		if (layer && layer.type === 'text' && is_point_text(layer) && editor) {
+			if (!editor.textBoundaryWidth || !editor.textBoundaryHeight || editor.hasValueChanged) {
+				let ctx = editor.editingCtx;
+				if (!ctx && app.GUI && app.GUI.canvas_ctx) ctx = app.GUI.canvas_ctx;
+				if (!ctx) {
+					const c = document.getElementById('canvas_minipaint');
+					ctx = c ? c.getContext('2d') : document.createElement('canvas').getContext('2d');
+				}
+				editor.calculate_text_placement(ctx, layer);
+			}
+			const sx = (layer.params.scale_x != null) ? layer.params.scale_x : 1;
+			const sy = (layer.params.scale_y != null) ? layer.params.scale_y : 1;
+			const new_width = Math.max(1, Math.ceil(editor.textBoundaryWidth * sx + 1));
+			const new_height = Math.max(1, Math.ceil(editor.textBoundaryHeight * sy + 1));
+			const halign = normalize_halign(layer.params.halign);
+			if (layer.params.anchor_x == null) {
+				if (halign === 'center') {
+					layer.params.anchor_x = layer.x + layer.width / 2;
+				} else if (halign === 'right') {
+					layer.params.anchor_x = layer.x + layer.width;
+				} else {
+					layer.params.anchor_x = layer.x;
+				}
+			}
+			if (layer.params.anchor_y == null) {
+				layer.params.anchor_y = layer.y;
+			}
+			const anchor_x = layer.params.anchor_x;
+			let new_x = layer.x;
+			if (halign === 'center') {
+				new_x = Math.round(anchor_x - new_width / 2);
+			} else if (halign === 'right') {
+				new_x = Math.round(anchor_x - new_width);
+			} else {
+				new_x = Math.round(anchor_x);
+			}
+			if (layer.x !== new_x) layer.x = new_x;
 			if (layer.width !== new_width) layer.width = new_width;
 			if (layer.height !== new_height) layer.height = new_height;
+			editor.lastCalculatedLayerWidth = new_width;
+			editor.lastCalculatedLayerHeight = new_height;
 		}
 	}
 
@@ -3121,11 +4883,17 @@ class Text_class extends Base_tools_class {
 			return;
 
 		const isActiveLayerAndTextTool = layer === config.layer && config.TOOL.name === 'text';
-		const isBoxBoundary = layer.params && layer.params.boundary === 'box';
+		const isBoxBoundary = is_box_text(layer);
 		const pointTransforming = this.is_point_text_transform_active(layer);
-		editor.selection.set_visible(isActiveLayerAndTextTool);
-		// Caret for point & paragraph while active with Type tool
-		editor.selection.set_cursor_visible(isActiveLayerAndTextTool && (this.selecting || this.creating || this.focused));
+		const isEditing = this.focused || this.selecting || this.creating;
+
+		if (layer === config.layer && !pointTransforming && !isBoxBoundary) {
+			this.resize_to_dynamic_bounds(layer, editor);
+		}
+
+		editor.selection.set_visible(isActiveLayerAndTextTool && isEditing);
+		// Caret for point & paragraph while active and editing with Type tool
+		editor.selection.set_cursor_visible(isActiveLayerAndTextTool && isEditing);
 		ctx.save();
 		if (isBoxBoundary && layer.width > 0 && layer.height > 0) {
 			// Clip overflowing paragraph text inside the box
@@ -3139,20 +4907,32 @@ class Text_class extends Base_tools_class {
 		editor._livePointScale = null;
 		ctx.restore();
 		// Don't snap dynamic bounds while a transform drag is controlling width/height
-		if (layer === config.layer && !pointTransforming) {
+		if (layer === config.layer && !pointTransforming && !isBoxBoundary) {
 			this.resize_to_dynamic_bounds(layer, editor);
 		}
-		if (isActiveLayerAndTextTool && !isBoxBoundary && (this.focused || this.selecting || this.creating)) {
+		if (isActiveLayerAndTextTool && !isBoxBoundary && isEditing) {
 			this.draw_point_text_chrome(ctx, layer, editor);
 		}
-		// Point text: no wrap-box chrome/handles. Paragraph/box: dashed box + square handles.
+
 		if (this._selection_config) {
-			const showBoxChrome = isActiveLayerAndTextTool && isBoxBoundary;
-			this._selection_config.enable_borders = showBoxChrome;
-			this._selection_config.enable_controls = showBoxChrome;
-			this._selection_config.enable_rotation = showBoxChrome;
-			this._selection_config.border_style = showBoxChrome ? 'dashed_light' : null;
-			this._selection_config.handle_style = showBoxChrome ? 'bw_square' : null;
+			if (isActiveLayerAndTextTool) {
+				// While using the Type tool:
+				// - Paragraph (box) text always shows dashed_light border with bw_square corner handles
+				// - Point text does not use box selection borders (it uses baseline + anchor square chrome)
+				this._selection_config.enable_borders = isBoxBoundary;
+				this._selection_config.enable_controls = isBoxBoundary;
+				this._selection_config.enable_rotation = false;
+				this._selection_config.border_style = isBoxBoundary ? 'dashed_light' : null;
+				this._selection_config.handle_style = isBoxBoundary ? 'bw_square' : null;
+				this._selection_config.keep_ratio = false;
+			} else {
+				this._selection_config.enable_borders = false;
+				this._selection_config.enable_controls = false;
+				this._selection_config.enable_rotation = false;
+				this._selection_config.border_style = null;
+				this._selection_config.handle_style = null;
+				this._selection_config.keep_ratio = false;
+			}
 		}
 		if (!this.resizing && isActiveLayerAndTextTool && isBoxBoundary) {
 			this.selection.x = layer.x;
@@ -3160,7 +4940,7 @@ class Text_class extends Base_tools_class {
 			this.selection.width = layer.width;
 			this.selection.height = layer.height;
 			this.selection.rotate = layer.rotate;
-		} else {
+		} else if (!this.resizing) {
 			this.selection.x = -100000;
 			this.selection.y = -100000;
 			this.selection.width = 0;
@@ -3219,6 +4999,9 @@ class Text_class extends Base_tools_class {
 	 */
 	seed_placeholder_text(layer, editor, { selectAll = true } = {}) {
 		if (!layer || !editor) return;
+		if (!layer.params) layer.params = {};
+		layer.params.scale_x = 1;
+		layer.params.scale_y = 1;
 		load_font_family({ family: metaDefaults.family }, () => {
 			this.hasValueChanged = true;
 			if (this.Base_layers) this.Base_layers.render();
@@ -3233,32 +5016,106 @@ class Text_class extends Base_tools_class {
 			editor.selection.set_position(0, 0, false);
 			editor.selection.set_position(lastLine, editor.document.get_line_character_count(lastLine), true);
 		}
+		this.resize_to_dynamic_bounds(layer, editor);
 		this.focusedValue = JSON.stringify(editor.document.lines);
+		this.focusedX = layer.x;
+		this.focusedY = layer.y;
 		this.focusedWidth = layer.width;
 		this.focusedHeight = layer.height;
-		this.resize_to_dynamic_bounds(layer, editor);
+	}
+
+	/**
+	 * Fill paragraph box text layer with as much Lorem Ipsum as the box will hold.
+	 */
+	fill_box_with_lorem_ipsum(layer, editor, { selectAll = true } = {}) {
+		if (!layer || !editor) return;
+		if (!layer.params) layer.params = {};
+		layer.params.scale_x = 1;
+		layer.params.scale_y = 1;
+		load_font_family({ family: metaDefaults.family }, () => {
+			this.hasValueChanged = true;
+			if (this.Base_layers) this.Base_layers.render();
+		});
+		const meta = this.build_default_span_meta();
+		const words = LOREM_PARAGRAPH.split(/\s+/);
+		let wordIndex = 0;
+		let currentText = '';
+		let bestText = words[0] || 'Lorem';
+
+		let ctx = editor.editingCtx;
+		if (!ctx && app.GUI && app.GUI.canvas_ctx) ctx = app.GUI.canvas_ctx;
+		if (!ctx) {
+			const c = document.getElementById('canvas_minipaint');
+			ctx = c ? c.getContext('2d') : document.createElement('canvas').getContext('2d');
+		}
+
+		// Progressively add words chunk-by-chunk and measure height
+		const targetH = Math.max(20, layer.height);
+		const maxWords = 500;
+		let added = 0;
+		while (added < maxWords) {
+			const nextWord = words[wordIndex % words.length];
+			wordIndex++;
+			added++;
+			const testText = currentText ? (currentText + ' ' + nextWord) : nextWord;
+			editor.document.lines = [[{ text: testText, meta: JSON.parse(JSON.stringify(meta)) }]];
+			editor.calculate_text_placement(ctx, layer);
+			const h = editor.textBoundaryHeight || 0;
+			if (h > targetH && currentText) {
+				// Exceeded box height
+				break;
+			}
+			currentText = testText;
+			bestText = testText;
+		}
+
+		editor.document.lines = [[{ text: bestText, meta }]];
+		editor.hasValueChanged = true;
+		layer.data = editor.document.lines;
+		editor.set_lines(editor.document.lines, false);
+		if (selectAll) {
+			const lastLine = editor.document.lines.length - 1;
+			editor.selection.set_position(0, 0, false);
+			editor.selection.set_position(lastLine, editor.document.get_line_character_count(lastLine), true);
+		}
+		editor.calculate_text_placement(ctx, layer);
+		this.focusedValue = JSON.stringify(editor.document.lines);
+		this.focusedX = layer.x;
+		this.focusedY = layer.y;
+		this.focusedWidth = layer.width;
+		this.focusedHeight = layer.height;
 	}
 
 	/**
 	 * Point-text chrome: black square anchor at baseline start + light underline.
 	 */
 	draw_point_text_chrome(ctx, layer, editor) {
-		if (!layer || !editor || !layer.params || layer.params.boundary !== 'dynamic') return;
+		if (!layer || !editor || !is_point_text(layer)) return;
 		if (!editor.lineRenderInfo || !editor.lineRenderInfo.wrapSizes || !editor.lineRenderInfo.wrapSizes.length) return;
 		const wrap0 = editor.lineRenderInfo.wrapSizes[0];
 		const line0 = editor.lineRenderInfo.lines && editor.lineRenderInfo.lines[0];
+		const sx = (layer.params.scale_x != null) ? layer.params.scale_x : 1;
+		const sy = (layer.params.scale_y != null) ? layer.params.scale_y : 1;
 		const offsets = line0 && line0.wraps && line0.wraps[0] ? line0.wraps[0].characterOffsets : [0, 0];
-		const textWidth = Math.max(0, (offsets[offsets.length - 1] || 0));
-		const ax = layer.x + 1;
-		const baselineY = layer.y + 1 + wrap0.offset + wrap0.baseline;
+		const textWidth = Math.max(0, (offsets[offsets.length - 1] || 0) * sx);
+		const halign = normalize_halign(layer.params.halign);
+		let ax = layer.x + 1;
+		if (layer.params.anchor_x != null) {
+			ax = layer.params.anchor_x + 1;
+		} else if (halign === 'center') {
+			ax = layer.x + 1 + textWidth / 2;
+		} else if (halign === 'right') {
+			ax = layer.x + 1 + textWidth;
+		}
+		const baselineY = layer.y + 1 + (wrap0.offset + wrap0.baseline) * sy;
 		const underlineY = baselineY + 2;
-		// Light baseline under the text
+		// Light baseline under the text (spans the text bounds)
 		ctx.save();
 		ctx.strokeStyle = 'rgba(0,0,0,0.2)';
 		ctx.lineWidth = 1;
 		ctx.beginPath();
-		ctx.moveTo(ax, underlineY);
-		ctx.lineTo(ax + Math.max(textWidth, 8), underlineY);
+		ctx.moveTo(layer.x + 1, underlineY);
+		ctx.lineTo(layer.x + 1 + Math.max(textWidth, 8), underlineY);
 		ctx.stroke();
 		// Black filled square anchor at the point
 		const s = 5;
@@ -3342,6 +5199,14 @@ class Text_class extends Base_tools_class {
 				}]];
 			}
 
+			// Harden boundary + direction so align/layout never no-op on legacy layers
+			if (layer.params) {
+				layer.params.boundary = normalize_text_boundary(layer.params.boundary);
+				if (!layer.params.text_direction) layer.params.text_direction = 'ltr';
+				if (!layer.params.wrap_direction) layer.params.wrap_direction = 'ttb';
+				if (layer.params.halign) layer.params.halign = normalize_halign(layer.params.halign);
+			}
+
 			editor.set_lines(layer.data);
 			editor.Base_layers = this.Base_layers;
 			editor.layer = layer;
@@ -3366,22 +5231,140 @@ class Text_class extends Base_tools_class {
 		return editor;
 	}
 
-	get_text_layer_at_mouse(e) {
-		const layers_sorted = this.Base_layers.get_sorted_layers();
-		if (config.layer && config.layer.type === 'text') {
-			layers_sorted.unshift(config.layer);
+	is_point_in_text_layer(layer, px, py, margin = 8) {
+		if (!layer || layer.type !== 'text') return false;
+		const w = Math.max(1, layer.width || 0);
+		const h = Math.max(1, layer.height || 0);
+		let lx = px;
+		let ly = py;
+		if (layer.rotate) {
+			const cx = layer.x + w / 2;
+			const cy = layer.y + h / 2;
+			const rad = -(layer.rotate * Math.PI) / 180;
+			const cosA = Math.cos(rad);
+			const sinA = Math.sin(rad);
+			const dx = px - cx;
+			const dy = py - cy;
+			lx = cx + (dx * cosA - dy * sinA);
+			ly = cy + (dx * sinA + dy * cosA);
 		}
+		return (
+			lx >= layer.x - margin &&
+			lx <= layer.x + w + margin &&
+			ly >= layer.y - margin &&
+			ly <= layer.y + h + margin
+		);
+	}
+
+	get_text_layer_at_mouse(e) {
 		const mouse = this.get_mouse_info(e);
-		const clickableMargin = 5;
+		const clickableMargin = 8;
+		// Prefer the currently selected text layer first
+		if (config.layer && config.layer.type === 'text') {
+			if (this.is_point_in_text_layer(config.layer, mouse.x, mouse.y, clickableMargin)) {
+				return config.layer;
+			}
+		}
+		const layers_sorted = this.Base_layers.get_sorted_layers();
 		for (let layer of layers_sorted) {
-			if (layer.type === 'text') {
-				// TODO - account for rotation
-				if (mouse.x >= layer.x - clickableMargin && mouse.x <= layer.x + layer.width + clickableMargin && mouse.y >= layer.y - clickableMargin && mouse.y <= layer.y + layer.height + clickableMargin) {
+			if (layer.type === 'text' && layer !== config.layer) {
+				if (this.is_point_in_text_layer(layer, mouse.x, mouse.y, clickableMargin)) {
 					return layer;
 				}
 			}
 		}
 		return null;
+	}
+
+	select_all_text(editor) {
+		const ed = editor || (config.layer ? this.get_editor(config.layer) : null);
+		if (!ed || !ed.document || !config.layer) return;
+		this.focused = true;
+		if (this.textarea) {
+			this.textarea.value = '';
+		}
+		ed.selection.set_position(0, 0, false);
+		const lastLine = Math.max(0, ed.document.lines.length - 1);
+		const lastChar = ed.document.get_line_character_count(lastLine);
+		ed.selection.set_position(lastLine, lastChar, true);
+		ed.selection.isActiveSideEnd = true;
+		ed.selection.set_visible(true);
+		ed.selection.set_cursor_visible(true);
+		this.focus_textarea();
+		this.update_tool_attributes(config.layer, ed);
+		this.Base_layers.render();
+	}
+
+	async enter_edit_mode(layer, event = null, { selectAll = false } = {}) {
+		if (!layer || layer.type !== 'text') return;
+		this.layer = layer;
+		if (config.layer && config.layer.id !== layer.id) {
+			await app.State.do_action(
+				new app.Actions.Select_layer_action(layer.id, true)
+			);
+		}
+		this.focused = true;
+		this.selecting = false;
+		const editor = this.get_editor(layer);
+		if (editor) {
+			if (is_point_text(layer)) {
+				if (layer.params.anchor_x == null) {
+					const halign = normalize_halign(layer.params.halign);
+					if (halign === 'center') {
+						layer.params.anchor_x = layer.x + layer.width / 2;
+					} else if (halign === 'right') {
+						layer.params.anchor_x = layer.x + layer.width;
+					} else {
+						layer.params.anchor_x = layer.x;
+					}
+				}
+				if (layer.params.anchor_y == null) {
+					layer.params.anchor_y = layer.y;
+				}
+			}
+			this.focusedValue = JSON.stringify(editor.document.lines);
+			this.focusedX = layer.x;
+			this.focusedY = layer.y;
+			this.focusedWidth = layer.width;
+			this.focusedHeight = layer.height;
+			if (selectAll) {
+				this.select_all_text(editor);
+			} else if (event) {
+				const mouse = this.get_mouse_info(event);
+				const local = this.mouse_to_local(layer, mouse);
+				editor.trigger_cursor_start(layer, local.x, local.y);
+				editor.trigger_cursor_end();
+				// If double-clicked a word, select that word
+				const pos = editor.selection.get_position();
+				const wordStart = editor.document.get_word_start_position(pos.line, pos.character, true);
+				const wordEnd = editor.document.get_word_end_position(pos.line, pos.character, true);
+				if (wordStart && wordEnd && (wordStart.character !== wordEnd.character || wordStart.line !== wordEnd.line)) {
+					editor.selection.set_position(wordStart.line, wordStart.character, false);
+					editor.selection.set_position(wordEnd.line, wordEnd.character, true);
+					editor.selection.isActiveSideEnd = true;
+				}
+			} else {
+				const lastLine = Math.max(0, editor.document.lines.length - 1);
+				const lastChar = editor.document.get_line_character_count(lastLine);
+				editor.selection.set_position(lastLine, lastChar, false);
+			}
+			editor.selection.set_visible(true);
+			editor.selection.set_cursor_visible(true);
+			this.update_tool_attributes(layer, editor);
+		}
+		this.focus_textarea();
+		this.Base_layers.render();
+	}
+
+	on_leave() {
+		this.commit_text_changes();
+		this.focused = false;
+		this.selecting = false;
+		this.creating = false;
+		if (this.textarea) {
+			this.textarea.blur();
+		}
+		return [];
 	}
 
 }
