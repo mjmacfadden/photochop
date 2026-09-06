@@ -1,6 +1,5 @@
 import app from './../../app.js';
 import config from './../../config.js';
-import Dialog_class from './../../libs/popup.js';
 import Base_layers_class from './../../core/base-layers.js';
 import Helper_class from './../../libs/helpers.js';
 import alertify from './../../../../node_modules/alertifyjs/build/alertify.min.js';
@@ -8,7 +7,6 @@ import alertify from './../../../../node_modules/alertifyjs/build/alertify.min.j
 class Layer_adjustment_class {
 
 	constructor() {
-		this.POP = new Dialog_class();
 		this.Base_layers = new Base_layers_class();
 		this.Helper = new Helper_class();
 
@@ -89,6 +87,14 @@ class Layer_adjustment_class {
 					{ name: 'exposure', title: 'Exposure:', value: 0, range: [-20, 20], step: 0.01 },
 					{ name: 'offset', title: 'Offset:', value: 0, range: [-0.5, 0.5], step: 0.001 },
 					{ name: 'gamma', title: 'Gamma Correction:', value: 1, range: [0.1, 3], step: 0.01 }
+				]
+			},
+			'blur': {
+				title: 'Gaussian Blur',
+				name: 'Gaussian Blur',
+				default_params: { value: 5 },
+				params: [
+					{ name: 'value', title: 'Radius (px):', value: 5, range: [0, 50], step: 0.5 }
 				]
 			},
 			'threshold': {
@@ -172,6 +178,10 @@ class Layer_adjustment_class {
 		this.create_or_edit('exposure');
 	}
 
+	blur() {
+		this.create_or_edit('blur');
+	}
+
 	threshold() {
 		this.create_or_edit('threshold');
 	}
@@ -230,7 +240,7 @@ class Layer_adjustment_class {
 		}
 	}
 
-	edit(layer_id) {
+	edit(layer_id, options = {}) {
 		if (layer_id == null && config.layer) {
 			layer_id = config.layer.id;
 		}
@@ -244,41 +254,22 @@ class Layer_adjustment_class {
 			this.Base_layers.select(layer.id);
 		}
 
-		const normType = this.normalize_type(layer.adjustment_type);
-		const conf = this.get_config(normType);
-		const initialParams = JSON.parse(JSON.stringify(layer.params || conf.default_params));
+		// Properties panel is the only UI for adjustment settings (create + edit).
+		// No modal/popup for adjustments. `force_modal` is accepted for API
+		// compatibility but ignored — popups for adjustments are retired.
+		void options.force_modal;
 
-		const dialogParams = conf.params.map(p => ({
-			...p,
-			value: (initialParams && initialParams[p.name] !== undefined) ? initialParams[p.name] : p.value
-		}));
+		if (app.GUI && app.GUI.GUI_properties
+			&& typeof app.GUI.GUI_properties.show_for_layer === 'function') {
+			app.GUI.GUI_properties.show_for_layer(layer.id);
+			return;
+		}
 
-		const _this = this;
-		const settings = {
-			title: conf.title,
-			preview: false,
-			params: dialogParams,
-			on_change: function (params) {
-				layer.params = { ...params };
-				_this.Base_layers.invalidate({ document: true });
-				_this.Base_layers.render(true);
-			},
-			on_finish: function (params) {
-				layer.params = initialParams;
-				app.State.do_action(
-					new app.Actions.Update_layer_action(layer.id, {
-						params: { ...params }
-					})
-				);
-			},
-			on_cancel: function () {
-				layer.params = initialParams;
-				_this.Base_layers.invalidate({ document: true });
-				_this.Base_layers.render(true);
-			}
-		};
-
-		this.POP.show(settings);
+		// Properties GUI not mounted yet — still ensure the Adjustments block
+		// / Properties tab is visible if the GUI helpers exist.
+		if (app.GUI && typeof app.GUI.activate_adjustments_tab === 'function') {
+			app.GUI.activate_adjustments_tab('properties');
+		}
 	}
 
 }

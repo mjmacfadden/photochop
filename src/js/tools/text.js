@@ -4397,6 +4397,11 @@ class Text_class extends Base_tools_class {
 		if (Object.keys(meta).length) {
 			this.apply_params_to_layer_or_selection(meta);
 		}
+		// Two-way bind: options bar → Properties Type controls
+		if (app.GUI && app.GUI.GUI_properties
+			&& typeof app.GUI.GUI_properties.on_text_attributes_changed === 'function') {
+			try { app.GUI.GUI_properties.on_text_attributes_changed(); } catch (e) { /* ignore */ }
+		}
 		return returnValue;
 	}
 
