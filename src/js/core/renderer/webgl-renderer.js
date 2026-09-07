@@ -4,7 +4,8 @@
  * GPU-accelerated layer compositing using WebGL2 (with WebGL1 fallback).
  * Renders layers as textured quads with opacity, visibility, layer masks,
  * blend modes (source-over, multiply, screen, overlay, darken, lighten,
- * difference), and a subset of adjustment layers.
+ * difference, hard-light, color-dodge), adjustment layers, and CSS-like
+ * layer.filters (baked on texture upload).
  *
  * Architecture:
  *   CPU document (config.layers) --> GPU textures --> WebGL compositing --> offscreen canvas
@@ -50,6 +51,8 @@ var BLEND_OVERLAY = 3;
 var BLEND_DARKEN = 4;
 var BLEND_LIGHTEN = 5;
 var BLEND_DIFFERENCE = 6;
+var BLEND_HARD_LIGHT = 7;
+var BLEND_COLOR_DODGE = 8;
 
 var GPU_BLEND_MODES = {
 	'source-over': BLEND_NORMAL,
@@ -59,6 +62,19 @@ var GPU_BLEND_MODES = {
 	'darken': BLEND_DARKEN,
 	'lighten': BLEND_LIGHTEN,
 	'difference': BLEND_DIFFERENCE,
+	'hard-light': BLEND_HARD_LIGHT,
+	'color-dodge': BLEND_COLOR_DODGE,
+};
+
+// Layer.filters names that can be baked via Canvas2D CSS filter on upload
+var GPU_LAYER_FILTER_NAMES = {
+	'brightness': true,
+	'contrast': true,
+	'hue-rotate': true,
+	'saturate': true,
+	'grayscale': true,
+	'invert': true,
+	'sepia': true,
 };
 
 // Adjustment type ids for the fragment shader
@@ -178,7 +194,23 @@ vec3 blend_channel(vec3 cb, vec3 cs, float mode) {
 	if (mode < 5.5) {
 		return max(cb, cs);
 	}
-	return abs(cb - cs);
+	if (mode < 6.5) {
+		return abs(cb - cs);
+	}
+	if (mode < 7.5) {
+		// hard-light = overlay with src/dst swapped
+		return vec3(
+			cs.r <= 0.5 ? (2.0 * cb.r * cs.r) : (1.0 - 2.0 * (1.0 - cb.r) * (1.0 - cs.r)),
+			cs.g <= 0.5 ? (2.0 * cb.g * cs.g) : (1.0 - 2.0 * (1.0 - cb.g) * (1.0 - cs.g)),
+			cs.b <= 0.5 ? (2.0 * cb.b * cs.b) : (1.0 - 2.0 * (1.0 - cb.b) * (1.0 - cs.b))
+		);
+	}
+	// color-dodge
+	return vec3(
+		cs.r >= 1.0 ? 1.0 : min(1.0, cb.r / max(1.0 - cs.r, 0.0001)),
+		cs.g >= 1.0 ? 1.0 : min(1.0, cb.g / max(1.0 - cs.g, 0.0001)),
+		cs.b >= 1.0 ? 1.0 : min(1.0, cb.b / max(1.0 - cs.b, 0.0001))
+	);
 }
 
 vec3 hue_rotate(vec3 color, float angleDeg) {
@@ -375,8 +407,9 @@ class WebGL_renderer_class {
 	 * GPU-supported: source-over / multiply / screen / overlay / darken /
 	 * lighten / difference, optional layer masks, and a subset of adjustment
 	 * layers (brightness/contrast, hue-sat, exposure, grayscale, invert,
-	 * sepia, threshold) at source-over. Still deferred to Canvas 2D: layer
-	 * filters, unsupported adjustments/blends, source-atop clipping.
+	 * sepia, threshold) at source-over, plus CSS-like layer.filters baked on
+	 * upload. Still deferred to Canvas 2D: blur/shadow/glow filters,
+	 * unsupported adjustments/blends, source-atop clipping.
 	 *
 	 * @param {Object[]} layers - sorted layers (bottom to top)
 	 * @param {number|null} disabled_filter_id - id of the currently disabled
@@ -396,19 +429,9 @@ class WebGL_renderer_class {
 				continue;
 			}
 
-			//active filters need the 2D filter pipeline
-			var filters = layer.filters;
-			if (filters && filters.length) {
-				for (var f = 0; f < filters.length; f++) {
-					var filter = filters[f];
-					if (!filter || filter.disabled === true || filter.visible === false) continue;
-					if (Array.isArray(disabled_filter_id)) {
-						if (disabled_filter_id.includes(filter.id) || disabled_filter_id.includes(filter.name)) continue;
-					} else if (filter.id === disabled_filter_id || filter.name === disabled_filter_id) {
-						continue;
-					}
-					return false;
-				}
+			// CSS-like color filters can bake into the GPU texture; blur/shadow/etc. stay 2D
+			if (!this._layer_filters_gpu_ok(layer, disabled_filter_id)) {
+				return false;
 			}
 
 			var composition = layer.composition == null ? 'source-over' : layer.composition;
@@ -432,6 +455,87 @@ class WebGL_renderer_class {
 	 * @param {Object} layer
 	 * @returns {boolean}
 	 */
+
+	/**
+	 * True when every active layer.filters entry is a GPU-bakeable CSS color filter
+	 * (or there are no active filters).
+	 * @param {Object} layer
+	 * @param {number|string|Array|null} disabled_filter_id
+	 * @returns {boolean}
+	 */
+	_layer_filters_gpu_ok(layer, disabled_filter_id) {
+		var filters = layer.filters;
+		if (!filters || !filters.length) return true;
+		for (var f = 0; f < filters.length; f++) {
+			var filter = filters[f];
+			if (!filter || filter.disabled === true || filter.visible === false) continue;
+			if (Array.isArray(disabled_filter_id)) {
+				if (disabled_filter_id.includes(filter.id) || disabled_filter_id.includes(filter.name)) continue;
+			} else if (filter.id === disabled_filter_id || filter.name === disabled_filter_id) {
+				continue;
+			}
+			var name = filter.name === 'drop-shadow' ? 'shadow' : filter.name;
+			if (!name || !GPU_LAYER_FILTER_NAMES[name]) {
+				return false;
+			}
+		}
+		return true;
+	}
+
+	/**
+	 * Build CSS filter string + cache signature for bakeable layer.filters.
+	 * @param {Object} layer
+	 * @param {number|string|Array|null} disabled_filter_id
+	 * @returns {{css: string, signature: string}|null}
+	 */
+	_layer_filters_css(layer, disabled_filter_id) {
+		var filters = layer.filters;
+		if (!filters || !filters.length) return null;
+		var parts = [];
+		var sig = [];
+		for (var f = 0; f < filters.length; f++) {
+			var filter = filters[f];
+			if (!filter || filter.disabled === true || filter.visible === false) continue;
+			if (Array.isArray(disabled_filter_id)) {
+				if (disabled_filter_id.includes(filter.id) || disabled_filter_id.includes(filter.name)) continue;
+			} else if (filter.id === disabled_filter_id || filter.name === disabled_filter_id) {
+				continue;
+			}
+			var name = filter.name;
+			var params = filter.params || {};
+			var value = params.value;
+			var css = null;
+			if (name === 'brightness') {
+				var b = (value !== undefined) ? Number(value) : 0;
+				css = 'brightness(' + (b / 100 + 1) + ')';
+			} else if (name === 'contrast') {
+				var c = (value !== undefined) ? Number(value) : 0;
+				css = 'contrast(' + (c / 100 + 1) + ')';
+			} else if (name === 'hue-rotate') {
+				var h = (value !== undefined) ? Number(value) : 0;
+				css = 'hue-rotate(' + h + 'deg)';
+			} else if (name === 'saturate') {
+				var s = (value !== undefined) ? Number(value) : 0;
+				css = 'saturate(' + (s / 100 + 1) + ')';
+			} else if (name === 'grayscale') {
+				var g = (value !== undefined) ? Number(value) : 100;
+				css = 'grayscale(' + (g / 100) + ')';
+			} else if (name === 'invert') {
+				var iv = (value !== undefined) ? Number(value) : 100;
+				css = 'invert(' + (iv / 100) + ')';
+			} else if (name === 'sepia') {
+				var sv = (value !== undefined) ? Number(value) : 100;
+				css = 'sepia(' + (sv / 100) + ')';
+			} else {
+				return null;
+			}
+			parts.push(css);
+			sig.push(name + ':' + JSON.stringify(params));
+		}
+		if (!parts.length) return null;
+		return { css: parts.join(' '), signature: sig.join('|') };
+	}
+
 	_gpu_supports_adjustment(layer) {
 		var composition = layer.composition == null ? 'source-over' : layer.composition;
 		if (composition !== 'source-over') {
@@ -1136,6 +1240,13 @@ class WebGL_renderer_class {
 		var source = this._get_layer_source(layer);
 		if (!source) return null;
 
+		var filterInfo = this._layer_filters_css(layer, null);
+		var filterSig = filterInfo ? filterInfo.signature : '';
+		if (filterInfo && filterInfo.css && filterInfo.css !== 'none') {
+			source = this._bake_css_filter(source, filterInfo.css, layer);
+			if (!source) return null;
+		}
+
 		if (source instanceof HTMLImageElement) {
 			if (!source.complete || source.naturalWidth <= 0 || source.naturalHeight <= 0) {
 				return null;
@@ -1160,12 +1271,14 @@ class WebGL_renderer_class {
 			!layer.render_function &&
 			!layer.link_canvas &&
 			cached.width === srcWidth &&
-			cached.height === srcHeight) {
+			cached.height === srcHeight &&
+			(cached.filterSig || '') === filterSig) {
 			// Reuse existing texture
 			return cached;
 		}
 
-		if (cached && layer.link_canvas && cached.width === srcWidth && cached.height === srcHeight) {
+		if (cached && layer.link_canvas && cached.width === srcWidth && cached.height === srcHeight
+			&& (cached.filterSig || '') === filterSig) {
 			try {
 				gl.activeTexture(gl.TEXTURE0);
 				gl.bindTexture(gl.TEXTURE_2D, cached.texture);
@@ -1219,10 +1332,45 @@ class WebGL_renderer_class {
 			width: srcWidth,
 			height: srcHeight,
 			pad: source._pad || 0,
+			filterSig: filterSig,
 		};
 
 		this.textureCache[id] = texInfo;
 		return texInfo;
+	}
+
+	/**
+	 * Apply a CSS filter string onto a copy of source for GPU upload.
+	 * @param {HTMLCanvasElement|HTMLImageElement} source
+	 * @param {string} cssFilter
+	 * @param {Object} layer
+	 * @returns {HTMLCanvasElement|null}
+	 */
+	_bake_css_filter(source, cssFilter, layer) {
+		var w = source.naturalWidth || source.width || layer.width || 0;
+		var h = source.naturalHeight || source.height || layer.height || 0;
+		if (!w || !h) return null;
+		if (!this._filterBakeCanvas) {
+			this._filterBakeCanvas = document.createElement('canvas');
+		}
+		var canvas = this._filterBakeCanvas;
+		if (canvas.width !== w || canvas.height !== h) {
+			canvas.width = w;
+			canvas.height = h;
+		}
+		var ctx = canvas.getContext('2d');
+		ctx.setTransform(1, 0, 0, 1, 0, 0);
+		ctx.clearRect(0, 0, w, h);
+		ctx.filter = cssFilter;
+		try {
+			ctx.drawImage(source, 0, 0, w, h);
+		} catch (e) {
+			ctx.filter = 'none';
+			return null;
+		}
+		ctx.filter = 'none';
+		if (source._pad) canvas._pad = source._pad;
+		return canvas;
 	}
 
 	/**
