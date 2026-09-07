@@ -1371,6 +1371,12 @@ button img{
 .status_bar .status_item span{
 	color: #cccccc;
 }
+.status_bar .status_item.status_mem_warn,
+.status_bar .status_item.status_mem_warn span{
+	color: #e6a800;
+	font-weight: 600;
+}
+
 .status_bar .status_divider{
 	width: 1px;
 	height: 12px;

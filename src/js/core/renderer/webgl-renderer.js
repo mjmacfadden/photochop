@@ -5,8 +5,8 @@
  * Renders layers as textured quads with opacity, visibility, layer masks,
  * blend modes (source-over, multiply, screen, overlay, darken, lighten,
  * difference, hard-light, color-dodge, soft-light, color-burn, exclusion),
- * adjustment layers, and CSS-like layer.filters including blur/shadow
- * (baked on texture upload with padding).
+ * adjustment layers, and CSS-like layer.filters including blur/shadow/
+ * outer-glow (CSS bake) plus stroke/inner-glow (Canvas2D bake) with padding.
  *
  * Architecture:
  *   CPU document (config.layers) --> GPU textures --> WebGL compositing --> offscreen canvas
@@ -29,10 +29,11 @@
  *     blend / Porter-Duff modes (including source-atop clipping)
  *
  * Still Canvas2D-only (can_render_layers returns false):
- *   - Complex filters (inner/outer glow, stroke, custom effect stacks)
  *   - Unsupported adjustment types / non-source-over adjustments
  *   - Blend modes other than the GPU set below
- *   - source-atop clipping groups and other Porter-Duff modes
+ *   - source-atop when the clip base has alpha-expanding filters
+ *     (shadow / outer_glow / blur / stroke) — falls back for correctness
+ *   - Other Porter-Duff modes beyond source-over / source-atop / GPU blends
  */
 
 import { is_group, is_effectively_visible } from "./../../libs/layer-tree.js";
@@ -57,6 +58,7 @@ var BLEND_COLOR_DODGE = 8;
 var BLEND_SOFT_LIGHT = 9;
 var BLEND_COLOR_BURN = 10;
 var BLEND_EXCLUSION = 11;
+var BLEND_SOURCE_ATOP = 12;
 
 var GPU_BLEND_MODES = {
 	'source-over': BLEND_NORMAL,
@@ -71,6 +73,7 @@ var GPU_BLEND_MODES = {
 	'soft-light': BLEND_SOFT_LIGHT,
 	'color-burn': BLEND_COLOR_BURN,
 	'exclusion': BLEND_EXCLUSION,
+	'source-atop': BLEND_SOURCE_ATOP,
 };
 
 // Layer.filters names that can be baked via Canvas2D CSS filter on upload.
@@ -85,6 +88,18 @@ var GPU_LAYER_FILTER_NAMES = {
 	'sepia': true,
 	'blur': true,
 	'shadow': true,
+	'outer_glow': true,
+	// stroke / inner_glow bake via Canvas2D multipass (not a single CSS filter)
+	'stroke': true,
+	'inner_glow': true,
+};
+
+// Filters that expand alpha / silhouette — unsafe as a source-atop clip base on GPU
+var GPU_CLIP_BASE_UNSAFE_FILTERS = {
+	'blur': true,
+	'shadow': true,
+	'outer_glow': true,
+	'stroke': true,
 };
 
 // Adjustment type ids for the fragment shader
@@ -342,14 +357,27 @@ void main() {
 
 	float as = src.a;
 	float ab = dst.a;
+	vec3 Cs = src.rgb;
+	vec3 Cb = dst.rgb;
+
+	// Porter-Duff source-atop (clipping mask): αo = αb
+	if (u_blendMode > 11.5 && u_blendMode < 12.5) {
+		if (ab <= 0.0001) {
+			gl_FragColor = vec4(0.0);
+			return;
+		}
+		float ao = ab;
+		vec3 Co = (as * ab * Cs + ab * (1.0 - as) * Cb) / ao;
+		gl_FragColor = vec4(Co, ao);
+		return;
+	}
+
 	float ao = as + ab * (1.0 - as);
 	if (ao <= 0.0001) {
 		gl_FragColor = vec4(0.0);
 		return;
 	}
 
-	vec3 Cs = src.rgb;
-	vec3 Cb = dst.rgb;
 	vec3 B = blend_channel(Cb, Cs, u_blendMode);
 	vec3 Co = (as * (1.0 - ab) * Cs + ab * (1.0 - as) * Cb + as * ab * B) / ao;
 	gl_FragColor = vec4(Co, ao);
@@ -439,14 +467,14 @@ class WebGL_renderer_class {
 	 *
 	 * GPU-supported: source-over / multiply / screen / overlay / darken /
 	 * lighten / difference / hard-light / color-dodge / soft-light /
-	 * color-burn / exclusion, optional layer masks, and a subset of
-	 * adjustment layers (brightness/contrast, hue-sat, exposure, grayscale,
-	 * invert, sepia, threshold) at source-over, plus CSS-like layer.filters
-	 * (incl. blur/shadow) baked on upload with padding. Still deferred to
-	 * Canvas 2D: glow/stroke and other complex filters, unsupported
-	 * adjustments/blends, source-atop clipping.
+	 * color-burn / exclusion / source-atop (simple clipping), optional layer
+	 * masks, and a subset of adjustment layers (brightness/contrast, hue-sat,
+	 * exposure, grayscale, invert, sepia, threshold) at source-over, plus
+	 * CSS-like layer.filters (blur/shadow/outer_glow) and stroke/inner_glow
+	 * baked on upload with padding. Still deferred to Canvas 2D: unsupported
+	 * adjustments/blends, source-atop when the clip base expands alpha.
 	 *
-	 * @param {Object[]} layers - sorted layers (bottom to top)
+	 * @param {Object[]} layers - sorted top-first (index 0 = top)
 	 * @param {number|null} disabled_filter_id - id of the currently disabled
 	 *   filter (matched the same way the Canvas 2D pipeline skips it)
 	 * @returns {boolean}
@@ -464,7 +492,6 @@ class WebGL_renderer_class {
 				continue;
 			}
 
-			// CSS-like color filters can bake into the GPU texture; blur/shadow/etc. stay 2D
 			if (!this._layer_filters_gpu_ok(layer, disabled_filter_id)) {
 				return false;
 			}
@@ -472,6 +499,15 @@ class WebGL_renderer_class {
 			var composition = layer.composition == null ? 'source-over' : layer.composition;
 			if (!Object.prototype.hasOwnProperty.call(GPU_BLEND_MODES, composition)) {
 				return false;
+			}
+
+			// source-atop clips to FB alpha. If the clip base has baked
+			// alpha-expanding filters (shadow/glow/blur/stroke), fall back so
+			// we do not clip to the expanded silhouette.
+			if (composition === 'source-atop') {
+				if (!this._source_atop_gpu_ok(layers, i, disabled_filter_id)) {
+					return false;
+				}
 			}
 
 			// Masked layers are GPU-supported when mask.link / link_canvas exists.
@@ -487,13 +523,60 @@ class WebGL_renderer_class {
 	}
 
 	/**
+	 * layers is top-first. For a source-atop layer at index i, walk toward the
+	 * bottom (higher index) past other source-atop siblings to the clip base.
+	 * Reject when that base has alpha-expanding filters.
+	 */
+	_source_atop_gpu_ok(layers, clipIndex, disabled_filter_id) {
+		var base = null;
+		for (var j = clipIndex + 1; j < layers.length; j++) {
+			var cand = layers[j];
+			if (cand == null || cand.type == null || is_group(cand) || !is_effectively_visible(cand))
+				continue;
+			var comp = cand.composition == null ? 'source-over' : cand.composition;
+			if (comp === 'source-atop') {
+				continue;
+			}
+			base = cand;
+			break;
+		}
+		if (!base) {
+			// Clipped with no base — Canvas2D also produces odd results; stay safe.
+			return false;
+		}
+		if (base.type === 'adjustment') {
+			return false;
+		}
+		return !this._layer_has_unsafe_clip_filters(base, disabled_filter_id);
+	}
+
+	_layer_has_unsafe_clip_filters(layer, disabled_filter_id) {
+		var filters = layer.filters;
+		if (!filters || !filters.length) return false;
+		for (var f = 0; f < filters.length; f++) {
+			var filter = filters[f];
+			if (!filter || filter.disabled === true || filter.visible === false) continue;
+			if (Array.isArray(disabled_filter_id)) {
+				if (disabled_filter_id.includes(filter.id) || disabled_filter_id.includes(filter.name)) continue;
+			} else if (filter.id === disabled_filter_id || filter.name === disabled_filter_id) {
+				continue;
+			}
+			var name = filter.name === 'drop-shadow' ? 'shadow' : filter.name;
+			if (name && GPU_CLIP_BASE_UNSAFE_FILTERS[name]) {
+				return true;
+			}
+		}
+		return false;
+	}
+
+	/**
 	 * @param {Object} layer
 	 * @returns {boolean}
 	 */
 
 	/**
-	 * True when every active layer.filters entry is a GPU-bakeable CSS color filter
-	 * (or there are no active filters).
+	 * True when every active layer.filters entry is GPU-bakeable
+	 * (CSS color/spatial or stroke/inner_glow multipass).
 	 * @param {Object} layer
 	 * @param {number|string|Array|null} disabled_filter_id
 	 * @returns {boolean}
@@ -519,9 +602,10 @@ class WebGL_renderer_class {
 
 	/**
 	 * Build CSS filter string + cache signature for bakeable layer.filters.
+	 * stroke / inner_glow are handled by _layer_effect_filters (not CSS).
 	 * @param {Object} layer
 	 * @param {number|string|Array|null} disabled_filter_id
-	 * @returns {{css: string, signature: string}|null}
+	 * @returns {{css: string, signature: string, pad: number}|null}
 	 */
 	_layer_filters_css(layer, disabled_filter_id) {
 		var filters = layer.filters;
@@ -538,6 +622,10 @@ class WebGL_renderer_class {
 				continue;
 			}
 			var name = filter.name === 'drop-shadow' ? 'shadow' : filter.name;
+			// Multipass effects — not part of the CSS filter string
+			if (name === 'stroke' || name === 'inner_glow') {
+				continue;
+			}
 			var params = filter.params || {};
 			var value = params.value;
 			var css = null;
@@ -580,6 +668,14 @@ class WebGL_renderer_class {
 				var color = this._shadow_css_color(params.color || '#000000', opacity);
 				css = 'drop-shadow(' + sx + 'px ' + sy + 'px ' + sr + 'px ' + color + ')';
 				pad = Math.max(pad, Math.ceil(Math.max(Math.abs(sx), Math.abs(sy)) + sr * 3));
+			} else if (name === 'outer_glow') {
+				var ogr = (value !== undefined) ? Number(value) : 10;
+				var ogOpacity = (params.opacity !== undefined) ? Number(params.opacity) : 75;
+				if (!isFinite(ogr) || ogr < 0) ogr = 0;
+				if (!isFinite(ogOpacity)) ogOpacity = 75;
+				var ogColor = this._shadow_css_color(params.color || '#ffff00', ogOpacity);
+				css = 'drop-shadow(0px 0px ' + ogr + 'px ' + ogColor + ')';
+				pad = Math.max(pad, Math.ceil(ogr * 3));
 			} else {
 				return null;
 			}
@@ -588,6 +684,44 @@ class WebGL_renderer_class {
 		}
 		if (!parts.length) return null;
 		return { css: parts.join(' '), signature: sig.join('|'), pad: pad };
+	}
+
+	/**
+	 * Collect stroke / inner_glow filters for Canvas2D multipass bake.
+	 * @returns {{effects: Object[], signature: string, pad: number}|null}
+	 */
+	_layer_effect_filters(layer, disabled_filter_id) {
+		var filters = layer.filters;
+		if (!filters || !filters.length) return null;
+		var effects = [];
+		var sig = [];
+		var pad = 0;
+		for (var f = 0; f < filters.length; f++) {
+			var filter = filters[f];
+			if (!filter || filter.disabled === true || filter.visible === false) continue;
+			if (Array.isArray(disabled_filter_id)) {
+				if (disabled_filter_id.includes(filter.id) || disabled_filter_id.includes(filter.name)) continue;
+			} else if (filter.id === disabled_filter_id || filter.name === disabled_filter_id) {
+				continue;
+			}
+			var name = filter.name;
+			var params = filter.params || {};
+			if (name === 'stroke') {
+				var size = (params.size !== undefined) ? Number(params.size) : 3;
+				var position = params.position || 'outside';
+				if (!isFinite(size) || size < 0) size = 0;
+				if (position === 'outside' || position === 'center') {
+					pad = Math.max(pad, Math.ceil(size) + 1);
+				}
+				effects.push(filter);
+				sig.push('stroke:' + JSON.stringify(params));
+			} else if (name === 'inner_glow') {
+				effects.push(filter);
+				sig.push('inner_glow:' + JSON.stringify(params));
+			}
+		}
+		if (!effects.length) return null;
+		return { effects: effects, signature: sig.join('|'), pad: pad };
 	}
 
 	/**
@@ -1339,10 +1473,17 @@ class WebGL_renderer_class {
 		if (!source) return null;
 
 		var filterInfo = this._layer_filters_css(layer, null);
-		var filterSig = filterInfo ? filterInfo.signature : '';
+		var effectInfo = this._layer_effect_filters(layer, null);
+		var filterSig = (filterInfo ? filterInfo.signature : '') +
+			(effectInfo ? ('#' + effectInfo.signature) : '');
 		var filterPad = filterInfo && filterInfo.pad ? filterInfo.pad : 0;
+		var effectPad = effectInfo && effectInfo.pad ? effectInfo.pad : 0;
 		if (filterInfo && filterInfo.css && filterInfo.css !== 'none') {
 			source = this._bake_css_filter(source, filterInfo.css, layer, filterPad);
+			if (!source) return null;
+		}
+		if (effectInfo && effectInfo.effects && effectInfo.effects.length) {
+			source = this._bake_effect_filters(source, effectInfo.effects, layer, effectPad);
 			if (!source) return null;
 		}
 
@@ -1488,6 +1629,198 @@ class WebGL_renderer_class {
 		canvas._pad = totalPad;
 		return canvas;
 	}
+
+	/**
+	 * Bake stroke / inner_glow onto a layer-local source so the WebGL stack
+	 * can keep compositing. Algorithms mirror Effects_stroke / Effects_inner_glow
+	 * but operate in texture space (no document x/y).
+	 * @param {HTMLCanvasElement|HTMLImageElement} source
+	 * @param {Object[]} effects
+	 * @param {Object} layer
+	 * @param {number} [pad]
+	 * @returns {HTMLCanvasElement|null}
+	 */
+	_bake_effect_filters(source, effects, layer, pad) {
+		var w = source.naturalWidth || source.width || layer.width || 0;
+		var h = source.naturalHeight || source.height || layer.height || 0;
+		if (!w || !h) return null;
+		var srcPad = source._pad || 0;
+		var spatialPad = Math.max(0, pad || 0);
+		var totalPad = srcPad + spatialPad;
+		var outW = Math.max(1, Math.round(w + spatialPad * 2));
+		var outH = Math.max(1, Math.round(h + spatialPad * 2));
+
+		if (!this._effectBakeCanvas) {
+			this._effectBakeCanvas = document.createElement('canvas');
+		}
+		var canvas = this._effectBakeCanvas;
+		if (canvas.width !== outW || canvas.height !== outH) {
+			canvas.width = outW;
+			canvas.height = outH;
+		}
+		var ctx = canvas.getContext('2d');
+		ctx.setTransform(1, 0, 0, 1, 0, 0);
+		ctx.clearRect(0, 0, outW, outH);
+		try {
+			ctx.drawImage(source, spatialPad, spatialPad);
+		} catch (e) {
+			return null;
+		}
+
+		var sil = document.createElement('canvas');
+		sil.width = outW;
+		sil.height = outH;
+		var sctx = sil.getContext('2d');
+		sctx.drawImage(canvas, 0, 0);
+
+		for (var i = 0; i < effects.length; i++) {
+			var filter = effects[i];
+			var name = filter.name;
+			var params = filter.params || {};
+			if (name === 'stroke') {
+				this._bake_stroke_onto(ctx, sil, params, outW, outH);
+			} else if (name === 'inner_glow') {
+				this._bake_inner_glow_onto(ctx, sil, params, outW, outH);
+			}
+		}
+
+		canvas._pad = totalPad;
+		return canvas;
+	}
+
+	_effect_css_color(color, opacity, fallback) {
+		var alpha = Math.max(0, Math.min(1, (opacity == null ? 100 : opacity) / 100));
+		if (color && typeof color === 'string' && color.startsWith('#')) {
+			var hex = color.replace('#', '');
+			if (hex.length === 3) {
+				hex = hex.split('').map(function (c) { return c + c; }).join('');
+			}
+			var r = parseInt(hex.substring(0, 2), 16) || 0;
+			var g = parseInt(hex.substring(2, 4), 16) || 0;
+			var b = parseInt(hex.substring(4, 6), 16) || 0;
+			return 'rgba(' + r + ', ' + g + ', ' + b + ', ' + alpha + ')';
+		}
+		return color || fallback || ('rgba(0,0,0,' + alpha + ')');
+	}
+
+	_bake_stroke_onto(ctx, sil, params, w, h) {
+		var rawSize = (params.size !== undefined) ? Number(params.size) : 3;
+		if (!isFinite(rawSize) || rawSize <= 0) return;
+		var position = params.position || 'outside';
+		var opacity = (params.opacity !== undefined) ? Number(params.opacity) : 100;
+		if (!isFinite(opacity) || opacity <= 0) return;
+		var color = this._effect_css_color(params.color || '#000000', opacity, 'rgba(0,0,0,1)');
+
+		ctx.save();
+		ctx.filter = 'none';
+
+		if (position === 'outside' || position === 'center') {
+			var outerSize = position === 'center' ? Math.max(1, Math.ceil(rawSize / 2)) : rawSize;
+			var silCanvas = document.createElement('canvas');
+			silCanvas.width = w;
+			silCanvas.height = h;
+			var silCtx = silCanvas.getContext('2d');
+			silCtx.drawImage(sil, 0, 0);
+			silCtx.globalCompositeOperation = 'source-in';
+			silCtx.fillStyle = color;
+			silCtx.fillRect(0, 0, w, h);
+
+			var outerCanvas = document.createElement('canvas');
+			outerCanvas.width = w;
+			outerCanvas.height = h;
+			var octx = outerCanvas.getContext('2d');
+			for (var r = 1; r <= outerSize; r++) {
+				var diag = Math.round(r * 0.7071);
+				octx.drawImage(silCanvas, r, 0);
+				octx.drawImage(silCanvas, -r, 0);
+				octx.drawImage(silCanvas, 0, r);
+				octx.drawImage(silCanvas, 0, -r);
+				if (diag > 0) {
+					octx.drawImage(silCanvas, diag, diag);
+					octx.drawImage(silCanvas, -diag, diag);
+					octx.drawImage(silCanvas, diag, -diag);
+					octx.drawImage(silCanvas, -diag, -diag);
+				}
+			}
+			octx.globalCompositeOperation = 'destination-out';
+			octx.drawImage(sil, 0, 0);
+			ctx.drawImage(outerCanvas, 0, 0);
+		}
+
+		if (position === 'inside' || position === 'center') {
+			var innerSize = position === 'center' ? Math.max(1, Math.floor(rawSize / 2)) : rawSize;
+			if (innerSize > 0) {
+				var maskCanvas = document.createElement('canvas');
+				maskCanvas.width = w;
+				maskCanvas.height = h;
+				var mctx = maskCanvas.getContext('2d');
+				mctx.fillStyle = '#000000';
+				mctx.fillRect(0, 0, w, h);
+				mctx.globalCompositeOperation = 'destination-out';
+				mctx.drawImage(sil, 0, 0);
+
+				var innerCanvas = document.createElement('canvas');
+				innerCanvas.width = w;
+				innerCanvas.height = h;
+				var ictx = innerCanvas.getContext('2d');
+				for (var r2 = 1; r2 <= innerSize; r2++) {
+					var diag2 = Math.round(r2 * 0.7071);
+					ictx.drawImage(maskCanvas, r2, 0);
+					ictx.drawImage(maskCanvas, -r2, 0);
+					ictx.drawImage(maskCanvas, 0, r2);
+					ictx.drawImage(maskCanvas, 0, -r2);
+					if (diag2 > 0) {
+						ictx.drawImage(maskCanvas, diag2, diag2);
+						ictx.drawImage(maskCanvas, -diag2, diag2);
+						ictx.drawImage(maskCanvas, diag2, -diag2);
+						ictx.drawImage(maskCanvas, -diag2, -diag2);
+					}
+				}
+				ictx.globalCompositeOperation = 'destination-in';
+				ictx.drawImage(sil, 0, 0);
+				ictx.globalCompositeOperation = 'source-in';
+				ictx.fillStyle = color;
+				ictx.fillRect(0, 0, w, h);
+				ctx.drawImage(innerCanvas, 0, 0);
+			}
+		}
+		ctx.restore();
+	}
+
+	_bake_inner_glow_onto(ctx, sil, params, w, h) {
+		var radius = (params.value !== undefined) ? Number(params.value) : 10;
+		var opacity = (params.opacity !== undefined) ? Number(params.opacity) : 75;
+		if (!isFinite(radius) || radius <= 0 || !isFinite(opacity) || opacity <= 0) return;
+		var color = this._effect_css_color(params.color || '#ffffff', opacity, 'rgba(255,255,255,1)');
+
+		var maskCanvas = document.createElement('canvas');
+		maskCanvas.width = w;
+		maskCanvas.height = h;
+		var mctx = maskCanvas.getContext('2d');
+		mctx.fillStyle = '#000000';
+		mctx.fillRect(0, 0, w, h);
+		mctx.globalCompositeOperation = 'destination-out';
+		mctx.drawImage(sil, 0, 0);
+
+		var glowCanvas = document.createElement('canvas');
+		glowCanvas.width = w;
+		glowCanvas.height = h;
+		var gctx = glowCanvas.getContext('2d');
+		gctx.filter = 'blur(' + radius + 'px)';
+		gctx.drawImage(maskCanvas, 0, 0);
+		gctx.filter = 'none';
+		gctx.globalCompositeOperation = 'destination-in';
+		gctx.drawImage(sil, 0, 0);
+		gctx.globalCompositeOperation = 'source-in';
+		gctx.fillStyle = color;
+		gctx.fillRect(0, 0, w, h);
+
+		ctx.save();
+		ctx.filter = 'none';
+		ctx.drawImage(glowCanvas, 0, 0);
+		ctx.restore();
+	}
+
 
 	/**
 	 * Get the renderable source (canvas or Image) for a layer.
