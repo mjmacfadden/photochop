@@ -32,6 +32,8 @@ export class Select_layer_action extends Base_action {
 		this.old_layer = old_layer;
 
 		if (old_layer !== new_layer) {
+			// New layer selection: allow auto-focus Properties for adjustments
+			if (app.GUI) app.GUI._adj_tab_user_sticky = false;
 			const textTool = (app.GUI && app.GUI.GUI_tools && app.GUI.GUI_tools.tools_modules['text'])
 				? app.GUI.GUI_tools.tools_modules['text'].object
 				: null;
@@ -116,9 +118,17 @@ export class Select_layer_action extends Base_action {
 	_sync_properties_panel() {
 		const layer = config.layer;
 		if (layer && layer.type === 'adjustment'
-			&& app.GUI && app.GUI.GUI_properties
-			&& typeof app.GUI.GUI_properties.show_for_layer === 'function') {
-			app.GUI.GUI_properties.show_for_layer(layer.id);
+			&& app.GUI && app.GUI.GUI_properties) {
+			// User clicked Adjustments: keep that tab (same-layer re-sync must not yank).
+			// Selecting a *different* layer clears _adj_tab_user_sticky in do().
+			// Creating/editing via show_for_layer still forces Properties.
+			if (app.GUI._adj_tab_user_sticky) {
+				if (typeof app.GUI.GUI_properties.render_properties === 'function') {
+					app.GUI.GUI_properties.render_properties();
+				}
+			} else if (typeof app.GUI.GUI_properties.show_for_layer === 'function') {
+				app.GUI.GUI_properties.show_for_layer(layer.id);
+			}
 		} else if (app.GUI && app.GUI.GUI_properties
 			&& typeof app.GUI.GUI_properties.render_properties === 'function') {
 			app.GUI.GUI_properties.render_properties();

@@ -279,22 +279,27 @@ class Base_gui_class {
 	}
 
 	init_panel_tabs() {
-		const tabColor = document.getElementById('tab_btn_color');
-		const tabSwatches = document.getElementById('tab_btn_swatches');
-
-		if (tabColor && tabSwatches) {
-			tabColor.addEventListener('click', (e) => {
+		// Event delegation on stable block containers so tab clicks survive
+		// jquery.translate.js $this.html(...) recreating .trn descendants.
+		const colorsBlock = document.querySelector('.sidebar_right .colors.block');
+		if (colorsBlock && !colorsBlock.dataset.panelTabsDelegated) {
+			colorsBlock.dataset.panelTabsDelegated = '1';
+			colorsBlock.addEventListener('click', (e) => {
+				const btn = e.target && e.target.closest
+					? e.target.closest('#tab_btn_color, #tab_btn_swatches')
+					: null;
+				if (!btn || !colorsBlock.contains(btn)) return;
 				e.preventDefault();
 				e.stopPropagation();
-				this.activate_colors_tab('color');
+				if (btn.id === 'tab_btn_swatches') {
+					this.activate_colors_tab('swatches');
+				} else {
+					this.activate_colors_tab('color');
+				}
 			});
+		}
 
-			tabSwatches.addEventListener('click', (e) => {
-				e.preventDefault();
-				e.stopPropagation();
-				this.activate_colors_tab('swatches');
-			});
-
+		if (document.getElementById('tab_btn_color') && document.getElementById('tab_btn_swatches')) {
 			let savedTab = 'color';
 			try { savedTab = localStorage.getItem('vantage_active_color_tab') || 'color'; } catch (e) {}
 			if (savedTab === 'swatches') {
@@ -347,20 +352,32 @@ class Base_gui_class {
 	}
 
 	init_adjustments_panel_tabs() {
-		const tabAdj = document.getElementById('tab_btn_adjustments');
-		const tabProps = document.getElementById('tab_btn_properties');
-		if (!tabAdj || !tabProps) return;
+		const adjBlock = document.getElementById('adjustments_base')
+			|| document.querySelector('.sidebar_right .adjustments.block');
+		if (!adjBlock) return;
 
-		tabAdj.addEventListener('click', (e) => {
-			e.preventDefault();
-			e.stopPropagation();
-			this.activate_adjustments_tab('adjustments');
-		});
-		tabProps.addEventListener('click', (e) => {
-			e.preventDefault();
-			e.stopPropagation();
-			this.activate_adjustments_tab('properties');
-		});
+		if (!adjBlock.dataset.panelTabsDelegated) {
+			adjBlock.dataset.panelTabsDelegated = '1';
+			adjBlock.addEventListener('click', (e) => {
+				const btn = e.target && e.target.closest
+					? e.target.closest('#tab_btn_adjustments, #tab_btn_properties')
+					: null;
+				if (!btn || !adjBlock.contains(btn)) return;
+				e.preventDefault();
+				e.stopPropagation();
+				// fromUser: keep Adjustments sticky vs programmatic Properties focus
+				if (btn.id === 'tab_btn_properties') {
+					this.activate_adjustments_tab('properties', { fromUser: true });
+				} else {
+					this.activate_adjustments_tab('adjustments', { fromUser: true });
+				}
+			});
+		}
+
+		if (!document.getElementById('tab_btn_adjustments')
+			|| !document.getElementById('tab_btn_properties')) {
+			return;
+		}
 
 		let savedTab = 'adjustments';
 		try { savedTab = localStorage.getItem('vantage_active_adj_tab') || 'adjustments'; } catch (e) {}
@@ -372,8 +389,22 @@ class Base_gui_class {
 	/**
 	 * Switch between Adjustments / Properties tabs in the shared sidebar block.
 	 * @param {'adjustments'|'properties'} tab
+	 * @param {{fromUser?: boolean}} [options]
+	 *   fromUser: true when the user clicked a tab. Selecting/creating an
+	 *   adjustment still focuses Properties via show_for_layer (programmatic).
+	 *   A user click on Adjustments sets a sticky preference so an immediate
+	 *   _sync_properties_panel / show_for_layer for the *same* layer does not
+	 *   yank the tab back to Properties.
 	 */
-	activate_adjustments_tab(tab) {
+	activate_adjustments_tab(tab, options = {}) {
+		const fromUser = !!(options && options.fromUser);
+		if (fromUser) {
+			this._adj_tab_user_sticky = (tab === 'adjustments');
+		} else if (tab === 'properties') {
+			// Programmatic Properties focus (select/create adjustment, Window menu)
+			this._adj_tab_user_sticky = false;
+		}
+
 		const tabAdj = document.getElementById('tab_btn_adjustments');
 		const tabProps = document.getElementById('tab_btn_properties');
 		const paneAdj = document.getElementById('toggle_adjustments');
