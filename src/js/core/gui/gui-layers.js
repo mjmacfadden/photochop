@@ -153,19 +153,9 @@ class GUI_layers_class {
 			}
 			else if (target.id == 'filter_name') {
 				var filterName = target.dataset.filter;
+				var filterId = target.dataset.id;
 				_this.Base_layers.select(target.dataset.pid);
-				if (app.GUI && app.GUI.modules && app.GUI.modules['layer/styles']) {
-					app.GUI.modules['layer/styles'].open(filterName, target.dataset.id);
-				} else {
-					var effects = _this.Effects_browser.get_effects_list();
-					var key = filterName.toLowerCase();
-					for (var i in effects) {
-						if(effects[i].title.toLowerCase() == key){
-							var function_name = _this.Effects_browser.get_function_from_path(key);
-							effects[i].object[function_name](target.dataset.id);
-						}
-					}
-				}
+				_this.open_layer_filter(filterName, filterId);
 			}
 			else if (target.closest('.mask_link_icon') != null) {
 				var layer_id = parseInt(target.closest('.mask_link_icon').dataset.id);
@@ -821,6 +811,51 @@ class GUI_layers_class {
 	}
 
 	/**
+	 * Layer Style effects open the Layer Style dialog; other filters (blur, etc.)
+	 * open their own Effects dialog so they can be re-edited non-destructively.
+	 */
+	open_layer_filter(filterName, filter_id) {
+		var styleEffects = ['stroke', 'inner_glow', 'outer_glow', 'shadow', 'drop-shadow'];
+		if (styleEffects.indexOf(filterName) !== -1) {
+			if (app.GUI && app.GUI.modules && app.GUI.modules['layer/styles']) {
+				var openName = filterName === 'drop-shadow' ? 'shadow' : filterName;
+				app.GUI.modules['layer/styles'].open(openName, filter_id);
+			}
+			return;
+		}
+
+		// Prefer direct module lookup (effects/common/<name>)
+		if (app.GUI && app.GUI.modules) {
+			var modulePaths = [
+				'effects/common/' + filterName,
+				'effects/' + filterName
+			];
+			for (var mi = 0; mi < modulePaths.length; mi++) {
+				var mod = app.GUI.modules[modulePaths[mi]];
+				if (!mod) continue;
+				var fn = this.Effects_browser.get_function_from_path(modulePaths[mi]);
+				if (typeof mod[fn] === 'function') {
+					mod[fn](filter_id);
+					return;
+				}
+			}
+		}
+
+		// Fallback: Effects_browser list match by title / path suffix
+		var effects = this.Effects_browser.get_effects_list();
+		var key = (filterName || '').toLowerCase();
+		for (var i in effects) {
+			var titleMatch = effects[i].title.toLowerCase() == key;
+			var pathMatch = effects[i].key && effects[i].key.split('/').pop().toLowerCase() == key;
+			if (titleMatch || pathMatch) {
+				var function_name = this.Effects_browser.get_function_from_path(effects[i].key);
+				effects[i].object[function_name](filter_id);
+				return;
+			}
+		}
+	}
+
+	/**
 	 * shows the Fx popup menu anchored above the given button
 	 */
 	show_fx_menu(button_el) {
@@ -870,6 +905,41 @@ class GUI_layers_class {
 				app.GUI.modules['layer/styles'].open('shadow');
 			}
 		}, true);
+
+		// Non-style filters on the active layer: click to re-edit their own dialogs
+		var styleNames = ['stroke', 'inner_glow', 'outer_glow', 'shadow', 'drop-shadow'];
+		var layer = config.layer;
+		if (layer && layer.filters && layer.filters.length) {
+			var titleMap = {
+				'blur': 'Gaussian Blur',
+				'brightness': 'Brightness',
+				'contrast': 'Contrast',
+				'grayscale': 'Grayscale',
+				'hue-rotate': 'Hue Rotate',
+				'saturate': 'Saturate',
+				'sepia': 'Sepia',
+				'invert': 'Invert'
+			};
+			var listed = false;
+			for (var fi = 0; fi < layer.filters.length; fi++) {
+				var f = layer.filters[fi];
+				if (!f || styleNames.indexOf(f.name) !== -1) continue;
+				if (!listed) {
+					var sep = document.createElement('div');
+					sep.className = 'layer_fx_menu_sep';
+					sep.style.cssText = 'height:1px;margin:4px 8px;background:rgba(255,255,255,0.15);';
+					menu.appendChild(sep);
+					listed = true;
+				}
+				(function (filter) {
+					var label = titleMap[filter.name]
+						|| String(filter.name).replace(/[-_]/g, ' ').replace(/\b\w/g, function (c) { return c.toUpperCase(); });
+					addItem(label + '...', function () {
+						_this.open_layer_filter(filter.name, filter.id);
+					}, true);
+				})(f);
+			}
+		}
 
 		document.body.appendChild(menu);
 

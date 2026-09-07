@@ -150,7 +150,7 @@ Branch work after the initial audit. **Photopea is the interim oracle; Photoshop
 - **PSD import** maps `hue/saturation` `master` (and legacy top-level) to **both** channels (no longer hue≠0 drops sat).
 - **PSD export** writes `hue/saturation` from `hue-saturation` **and** legacy `hue-rotate` / `saturate` layers.
 - **Sepia** exports as `photo filter` (warm brown + density); `photo filter` imports approximate as `sepia`.
-- **Blur** — removed from New Adjustment Layer; lives under **Effects → Common Filters → Gaussian Blur** (destructive layer filter). No PSD adjustment export.
+- **Blur** — removed from New Adjustment Layer; lives under **Effects → Common Filters → Gaussian Blur** (non-destructive `layer.filters` entry; re-editable via the filter row / Effects dialog). No PSD adjustment export.
 - **Exposure** — first-class adjustment (`exposure` / `offset` / `gamma`); canvas compositor (not CSS); PSD import/export via ag-psd `type: 'exposure'`.
 
 ### Still open / unchanged
