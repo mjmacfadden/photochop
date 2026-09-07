@@ -8,7 +8,6 @@ import alertify from './../../../../node_modules/alertifyjs/build/alertify.min.j
 import canvasToBlob from './../../../../node_modules/blueimp-canvas-to-blob/js/canvas-to-blob.min.js';
 import filesaver from './../../../../node_modules/file-saver/dist/FileSaver.min.js';
 import Tools_settings_class from "../tools/settings";
-import { export_psd } from './../../libs/psd.js';
 
 var instance = null;
 
@@ -583,7 +582,8 @@ class File_save_class {
 			//psd - Photoshop Document
 			if (this.Helper.strpos(fname, '.psd') == false)
 				fname = fname + ".psd";
-			await export_psd(config.layers, config.WIDTH, config.HEIGHT, { filename: fname });
+			var psdMod = await import(/* webpackChunkName: "psd" */ './../../libs/psd.js');
+			await psdMod.export_psd(config.layers, config.WIDTH, config.HEIGHT, { filename: fname });
 		}
 		else if (type == 'JSON') {
 			//json - full data with layers

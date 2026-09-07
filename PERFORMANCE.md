@@ -20,3 +20,7 @@
 - Defer additional optional feature code after replacing the eager dynamic module registry.
 - Consolidate pointer-event routing after behavior work is stable; every tool currently registers and self-gates document-level mouse/touch listeners.
 - Review the 16 dependency advisories reported by `npm install` before any version upgrades; they are not changed automatically by this work.
+
+## Perf spike (landed via PR #25)
+
+Foundation branch `feature/perf-spike`: measure-first plan in `docs/perf-spike.md`, harness `scripts/perf-baseline.mjs`, lazy `ag-psd` / `psd.js` on first PSD open/save. WebGL slice landed mask sampling + multiply/screen/overlay shaders (Canvas2D fallback for filters / other blends). Interactive half-res + GPU adjustments (brightness/contrast, hue-sat, exposure, grayscale/invert/sepia/threshold) + darken/lighten/difference landed. Follow-on: docs/perf-next.md.
