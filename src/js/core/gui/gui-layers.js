@@ -580,8 +580,6 @@ class GUI_layers_class {
 		var menu = document.createElement('div');
 		menu.id = 'mask_context_menu';
 		menu.className = 'mask_context_menu';
-		menu.style.left = x + 'px';
-		menu.style.top = y + 'px';
 
 		var _this = this;
 		var button = function (label, callback, extraClass = '') {
@@ -692,6 +690,36 @@ class GUI_layers_class {
 		}
 
 		document.body.appendChild(menu);
+
+		// Fit in viewport (same approach as Fx/adj popup menus): measure then
+		// flip above/left of the click when needed, then clamp to edges.
+		var menuRect = menu.getBoundingClientRect();
+		var pad = 10;
+		var vw = window.innerWidth;
+		var vh = window.innerHeight;
+		var left = x;
+		var top = y;
+		if (left + menuRect.width > vw - pad) {
+			left = x - menuRect.width;
+		}
+		if (left < pad) {
+			left = pad;
+		}
+		if (left + menuRect.width > vw - pad) {
+			left = Math.max(pad, vw - menuRect.width - pad);
+		}
+		if (top + menuRect.height > vh - pad) {
+			top = y - menuRect.height;
+		}
+		if (top < pad) {
+			top = pad;
+		}
+		if (top + menuRect.height > vh - pad) {
+			top = Math.max(pad, vh - menuRect.height - pad);
+		}
+		menu.style.left = Math.round(left) + 'px';
+		menu.style.top = Math.round(top) + 'px';
+
 		this.mask_context_menu = menu;
 		this.mask_context_menu_open = true;
 	}
