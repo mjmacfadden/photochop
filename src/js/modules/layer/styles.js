@@ -173,8 +173,8 @@ class Layer_styles_class {
 			fields = `
 				<div class="ls_row">
 					<span class="ls_label">Size:</span>
-					<input type="range" class="ls_range" id="ls_stroke_size" min="1" max="100" value="${size}" />
-					<input type="number" class="ls_num" id="ls_num_stroke_size" min="1" max="100" value="${size}" />
+					<input type="range" class="ls_range" id="ls_stroke_size" min="1" max="100" value="${size}" data-default="3" title="Double-click to reset" />
+					<input type="number" class="ls_num" id="ls_num_stroke_size" min="1" max="100" value="${size}" data-default="3" title="Double-click to reset" />
 					<span class="ls_unit">px</span>
 				</div>
 				<div class="ls_row">
@@ -187,8 +187,8 @@ class Layer_styles_class {
 				</div>
 				<div class="ls_row">
 					<span class="ls_label">Opacity:</span>
-					<input type="range" class="ls_range" id="ls_stroke_opacity" min="0" max="100" value="${opacity}" />
-					<input type="number" class="ls_num" id="ls_num_stroke_opacity" min="0" max="100" value="${opacity}" />
+					<input type="range" class="ls_range" id="ls_stroke_opacity" min="0" max="100" value="${opacity}" data-default="100" title="Double-click to reset" />
+					<input type="number" class="ls_num" id="ls_num_stroke_opacity" min="0" max="100" value="${opacity}" data-default="100" title="Double-click to reset" />
 					<span class="ls_unit">%</span>
 				</div>
 				<div class="ls_row">
@@ -202,14 +202,14 @@ class Layer_styles_class {
 			fields = `
 				<div class="ls_row">
 					<span class="ls_label">Size:</span>
-					<input type="range" class="ls_range" id="ls_inner_glow_value" min="0" max="100" value="${val}" />
-					<input type="number" class="ls_num" id="ls_num_inner_glow_value" min="0" max="100" value="${val}" />
+					<input type="range" class="ls_range" id="ls_inner_glow_value" min="0" max="100" value="${val}" data-default="10" title="Double-click to reset" />
+					<input type="number" class="ls_num" id="ls_num_inner_glow_value" min="0" max="100" value="${val}" data-default="10" title="Double-click to reset" />
 					<span class="ls_unit">px</span>
 				</div>
 				<div class="ls_row">
 					<span class="ls_label">Opacity:</span>
-					<input type="range" class="ls_range" id="ls_inner_glow_opacity" min="0" max="100" value="${opacity}" />
-					<input type="number" class="ls_num" id="ls_num_inner_glow_opacity" min="0" max="100" value="${opacity}" />
+					<input type="range" class="ls_range" id="ls_inner_glow_opacity" min="0" max="100" value="${opacity}" data-default="75" title="Double-click to reset" />
+					<input type="number" class="ls_num" id="ls_num_inner_glow_opacity" min="0" max="100" value="${opacity}" data-default="75" title="Double-click to reset" />
 					<span class="ls_unit">%</span>
 				</div>
 				<div class="ls_row">
@@ -223,14 +223,14 @@ class Layer_styles_class {
 			fields = `
 				<div class="ls_row">
 					<span class="ls_label">Size:</span>
-					<input type="range" class="ls_range" id="ls_outer_glow_value" min="0" max="100" value="${val}" />
-					<input type="number" class="ls_num" id="ls_num_outer_glow_value" min="0" max="100" value="${val}" />
+					<input type="range" class="ls_range" id="ls_outer_glow_value" min="0" max="100" value="${val}" data-default="10" title="Double-click to reset" />
+					<input type="number" class="ls_num" id="ls_num_outer_glow_value" min="0" max="100" value="${val}" data-default="10" title="Double-click to reset" />
 					<span class="ls_unit">px</span>
 				</div>
 				<div class="ls_row">
 					<span class="ls_label">Opacity:</span>
-					<input type="range" class="ls_range" id="ls_outer_glow_opacity" min="0" max="100" value="${opacity}" />
-					<input type="number" class="ls_num" id="ls_num_outer_glow_opacity" min="0" max="100" value="${opacity}" />
+					<input type="range" class="ls_range" id="ls_outer_glow_opacity" min="0" max="100" value="${opacity}" data-default="75" title="Double-click to reset" />
+					<input type="number" class="ls_num" id="ls_num_outer_glow_opacity" min="0" max="100" value="${opacity}" data-default="75" title="Double-click to reset" />
 					<span class="ls_unit">%</span>
 				</div>
 				<div class="ls_row">
@@ -246,26 +246,26 @@ class Layer_styles_class {
 			fields = `
 				<div class="ls_row">
 					<span class="ls_label">Offset X:</span>
-					<input type="range" class="ls_range" id="ls_shadow_x" min="-100" max="100" value="${x}" />
-					<input type="number" class="ls_num" id="ls_num_shadow_x" min="-100" max="100" value="${x}" />
+					<input type="range" class="ls_range" id="ls_shadow_x" min="-100" max="100" value="${x}" data-default="5" title="Double-click to reset" />
+					<input type="number" class="ls_num" id="ls_num_shadow_x" min="-100" max="100" value="${x}" data-default="5" title="Double-click to reset" />
 					<span class="ls_unit">px</span>
 				</div>
 				<div class="ls_row">
 					<span class="ls_label">Offset Y:</span>
-					<input type="range" class="ls_range" id="ls_shadow_y" min="-100" max="100" value="${y}" />
-					<input type="number" class="ls_num" id="ls_num_shadow_y" min="-100" max="100" value="${y}" />
+					<input type="range" class="ls_range" id="ls_shadow_y" min="-100" max="100" value="${y}" data-default="5" title="Double-click to reset" />
+					<input type="number" class="ls_num" id="ls_num_shadow_y" min="-100" max="100" value="${y}" data-default="5" title="Double-click to reset" />
 					<span class="ls_unit">px</span>
 				</div>
 				<div class="ls_row">
 					<span class="ls_label">Radius:</span>
-					<input type="range" class="ls_range" id="ls_shadow_value" min="0" max="100" value="${val}" />
-					<input type="number" class="ls_num" id="ls_num_shadow_value" min="0" max="100" value="${val}" />
+					<input type="range" class="ls_range" id="ls_shadow_value" min="0" max="100" value="${val}" data-default="10" title="Double-click to reset" />
+					<input type="number" class="ls_num" id="ls_num_shadow_value" min="0" max="100" value="${val}" data-default="10" title="Double-click to reset" />
 					<span class="ls_unit">px</span>
 				</div>
 				<div class="ls_row">
 					<span class="ls_label">Opacity:</span>
-					<input type="range" class="ls_range" id="ls_shadow_opacity" min="0" max="100" value="${opacity}" />
-					<input type="number" class="ls_num" id="ls_num_shadow_opacity" min="0" max="100" value="${opacity}" />
+					<input type="range" class="ls_range" id="ls_shadow_opacity" min="0" max="100" value="${opacity}" data-default="25" title="Double-click to reset" />
+					<input type="number" class="ls_num" id="ls_num_shadow_opacity" min="0" max="100" value="${opacity}" data-default="25" title="Double-click to reset" />
 					<span class="ls_unit">%</span>
 				</div>
 				<div class="ls_row">
@@ -326,6 +326,21 @@ class Layer_styles_class {
 
 		// Link range inputs with number inputs bidirectionally
 		const ranges = controls.querySelectorAll('input[type="range"]');
+		const resetRangePair = (el) => {
+			const defRaw = el.getAttribute('data-default');
+			if (defRaw === null || defRaw === '') return;
+			const defVal = parseFloat(defRaw);
+			if (isNaN(defVal)) return;
+			const isNum = el.classList.contains('ls_num');
+			const key = isNum ? el.id.replace('ls_num_', '') : el.id.replace('ls_', '');
+			const rangeInput = controls.querySelector('#ls_' + key);
+			const numInput = controls.querySelector('#ls_num_' + key);
+			if (rangeInput) rangeInput.value = defVal;
+			if (numInput) numInput.value = defVal;
+			this.read_current_controls();
+			this.update_preview();
+		};
+
 		ranges.forEach(range => {
 			const key = range.id.replace('ls_', '');
 			const numInput = controls.querySelector('#ls_num_' + key);
@@ -338,6 +353,10 @@ class Layer_styles_class {
 				if (numInput) numInput.value = range.value;
 				this.read_current_controls();
 				this.update_preview();
+			});
+			range.addEventListener('dblclick', (e) => {
+				e.preventDefault();
+				resetRangePair(range);
 			});
 		});
 
@@ -359,6 +378,10 @@ class Layer_styles_class {
 			};
 			num.addEventListener('input', syncFromNumber);
 			num.addEventListener('change', syncFromNumber);
+			num.addEventListener('dblclick', (e) => {
+				e.preventDefault();
+				resetRangePair(num);
+			});
 		});
 
 		const otherInputs = controls.querySelectorAll('input[type="color"], select');

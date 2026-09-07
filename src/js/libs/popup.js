@@ -444,6 +444,23 @@ class Dialog_class {
 			});
 		}
 
+		// Double-click range → reset to configured default (data-default)
+		this.el.querySelectorAll('input[type="range"][data-default]').forEach((range) => {
+			range.addEventListener('dblclick', (event) => {
+				event.preventDefault();
+				var defRaw = range.getAttribute('data-default');
+				var defVal = parseFloat(defRaw);
+				if (isNaN(defVal)) return;
+				range.value = defVal;
+				var pv = range.parentNode && range.parentNode.parentNode
+					? range.parentNode.parentNode.querySelector('.range_value')
+					: null;
+				if (pv) pv.innerHTML = Math.round(defVal * 100) / 100;
+				this.preview_handler();
+				this.onChangeEvent();
+			});
+		});
+
 		//load preview before onload so layer_active_small is ready for on_load handler
 		if (this.preview !== false) {
 			//get canvas from layer
@@ -568,9 +585,11 @@ class Dialog_class {
 						step = parameter.step;
 					if (parameter.range != undefined) {
 						//range
+						var defVal = (parameter.default !== undefined) ? parameter.default : parameter.value;
 						html += '<td><input type="range" name="' + parameter.name + '" id="pop_data_' + parameter.name
 							+ '" value="' + parameter.value + '" min="' + parameter.range[0] + '" max="'
 							+ parameter.range[1] + '" step="' + step
+							+ '" data-default="' + defVal + '" title="Double-click to reset'
 							+ '" oninput="document.getElementById(\'pv' + i + '\').innerHTML = '
 							+ 'Math.round(this.value*100) / 100;POP.preview_handler();" '
 							+'onchange="POP.onChangeEvent();" /></td>';

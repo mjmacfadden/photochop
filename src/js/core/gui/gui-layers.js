@@ -65,7 +65,7 @@ var template = `
 					<button type="button" class="layer_opacity_popup_btn" id="layer_opacity_popup_btn" title="Adjust Opacity">▾</button>
 				</div>
 				<div class="layer_opacity_slider_popup hidden" id="layer_opacity_slider_popup">
-					<input type="range" class="layer_opacity_range" id="layer_opacity_range" min="0" max="100" value="100" />
+					<input type="range" class="layer_opacity_range" id="layer_opacity_range" min="0" max="100" value="100" data-default="100" title="Double-click to reset" />
 				</div>
 			</div>
 		</div>
@@ -341,6 +341,21 @@ class GUI_layers_class {
 						})
 					);
 				}
+			});
+			opRange.addEventListener('dblclick', function (e) {
+				e.preventDefault();
+				if (!config.layer || config.layer.id == null) return;
+				var defVal = parseInt(this.getAttribute('data-default') || '100', 10);
+				if (isNaN(defVal)) defVal = 100;
+				var prev = (config.layer.opacity != null) ? Math.round(config.layer.opacity) : 100;
+				if (prev === defVal) return;
+				this.value = defVal;
+				if (opNumber) opNumber.value = defVal;
+				app.State.do_action(
+					new app.Actions.Update_layer_action(config.layer.id, {
+						opacity: defVal
+					})
+				);
 			});
 		}
 

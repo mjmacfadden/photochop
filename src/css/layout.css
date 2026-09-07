@@ -625,6 +625,8 @@ body.tool-pan.pan-dragging #canvas_minipaint{
 }
 .adjustment_btn svg{
 	display: block;
+	width: 18px;
+	height: 18px;
 	pointer-events: none;
 }
 
