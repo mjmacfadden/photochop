@@ -15,6 +15,7 @@ import Layer_raster_class from './../../modules/layer/raster.js';
 import Layer_group_class from './../../modules/layer/group.js';
 import Layer_delete_class from './../../modules/layer/delete.js';
 import Tools_translate_class from './../../modules/tools/translate.js';
+import { get_adjustment_icon } from './adjustment-icons.js';
 import { is_group, get_tree_rows, get_parent_id, would_cycle } from './../../libs/layer-tree.js';
 
 var template = `
@@ -1052,7 +1053,7 @@ class GUI_layers_class {
 			return '<svg class="thumb_icon thumb_folder" viewBox="0 0 16 16" fill="currentColor"><path d="M1.5 3.5h5l1.2 1.5H14.5v8H1.5v-9.5z" fill="none" stroke="currentColor" stroke-width="1.2"/><path d="M1.5 6.5h13" stroke="currentColor" stroke-width="1.2"/></svg>';
 		}
 		if (layer.type === 'adjustment') {
-			return '<svg class="thumb_icon thumb_adjustment" viewBox="0 0 16 16" fill="currentColor"><circle cx="8" cy="8" r="6" fill="none" stroke="currentColor" stroke-width="1.3"/><path d="M8 2 A6 6 0 0 1 8 14 Z" fill="currentColor"/></svg>';
+			return get_adjustment_icon(layer.adjustment_type, { className: 'thumb_icon thumb_adjustment' });
 		}
 		if (layer.type === 'text') {
 			return '<svg class="thumb_icon thumb_text" viewBox="0 0 16 16" fill="currentColor"><path d="M2 2h12v3h-1V3H9v10h2v1H5v-1h2V3H3v2H2V2z"/></svg>';
