@@ -3,11 +3,16 @@
  *
  * GPU-accelerated layer compositing using WebGL2 (with WebGL1 fallback).
  * Renders layers as textured quads with opacity, visibility, layer masks,
- * and a subset of blend modes (source-over, multiply, screen, overlay).
+ * blend modes (source-over, multiply, screen, overlay, darken, lighten,
+ * difference), and a subset of adjustment layers.
  *
  * Architecture:
  *   CPU document (config.layers) --> GPU textures --> WebGL compositing --> offscreen canvas
  *   Offscreen canvas --> drawImage onto main canvas (for overlays)
+ *
+ * Interactive quality:
+ *   set_composite_scale(0.5) renders the offscreen FB at half document
+ *   resolution; the caller upscales with drawImage. Full scale (1) on idle.
  *
  * Key design decisions:
  *   - Document model remains CPU-side (config.layers is authoritative)
@@ -16,13 +21,15 @@
  *   - Falls back gracefully if WebGL is unavailable
  *   - Handles context loss by rebuilding from CPU document
  *   - Mask sampling is document-space (linked rotation supported)
- *   - multiply/screen/overlay sample the current framebuffer via copyTexImage2D
- *     and composite in the fragment shader (Canvas2D remains the correctness
- *     fallback for filters, adjustments, and unsupported blend modes)
+ *   - Non-normal blends + adjustments sample the current framebuffer via
+ *     copyTexImage2D and composite in the fragment shader
+ *   - Canvas2D remains the correctness fallback for filters and unsupported
+ *     blend / Porter-Duff modes (including source-atop clipping)
  *
  * Still Canvas2D-only (can_render_layers returns false):
- *   - Layer filters / adjustment layers
- *   - Blend modes other than source-over / multiply / screen / overlay
+ *   - Layer filters (effect stack on raster layers)
+ *   - Unsupported adjustment types / non-source-over adjustments
+ *   - Blend modes other than the GPU set below
  *   - source-atop clipping groups and other Porter-Duff modes
  */
 
@@ -40,13 +47,29 @@ var BLEND_NORMAL = 0;
 var BLEND_MULTIPLY = 1;
 var BLEND_SCREEN = 2;
 var BLEND_OVERLAY = 3;
+var BLEND_DARKEN = 4;
+var BLEND_LIGHTEN = 5;
+var BLEND_DIFFERENCE = 6;
 
 var GPU_BLEND_MODES = {
 	'source-over': BLEND_NORMAL,
 	'multiply': BLEND_MULTIPLY,
 	'screen': BLEND_SCREEN,
 	'overlay': BLEND_OVERLAY,
+	'darken': BLEND_DARKEN,
+	'lighten': BLEND_LIGHTEN,
+	'difference': BLEND_DIFFERENCE,
 };
+
+// Adjustment type ids for the fragment shader
+var ADJ_NONE = 0;
+var ADJ_BRIGHTNESS_CONTRAST = 1;
+var ADJ_HUE_SAT = 2;
+var ADJ_EXPOSURE = 3;
+var ADJ_GRAYSCALE = 4;
+var ADJ_INVERT = 5;
+var ADJ_SEPIA = 6;
+var ADJ_THRESHOLD = 7;
 
 var VERT_SHADER = `
 attribute vec2 a_position;
@@ -91,6 +114,9 @@ uniform float u_opacity;
 uniform float u_blendMode;
 uniform float u_hasMask;
 uniform float u_needsDst;
+uniform float u_isAdjustment;
+uniform float u_adjType;
+uniform vec4 u_adjParams;
 uniform vec4 u_maskRect;
 uniform vec2 u_layerTopLeft;
 uniform vec2 u_layerCenter;
@@ -107,8 +133,6 @@ float mask_alpha_at(vec2 docPos) {
 
 	vec2 samplePos = docPos;
 	if (u_maskRotate != 0.0) {
-		// Inverse-rotate around layer center so a linked mask stays locked
-		// to the layer (matches Canvas2D multiply_alpha_by_mask_world).
 		float c = cos(-u_maskRotate);
 		float s = sin(-u_maskRotate);
 		vec2 d = docPos - u_layerCenter;
@@ -141,27 +165,114 @@ vec3 blend_channel(vec3 cb, vec3 cs, float mode) {
 	if (mode < 2.5) {
 		return cb + cs - cb * cs;
 	}
-	// overlay
-	return vec3(
-		cb.r <= 0.5 ? (2.0 * cb.r * cs.r) : (1.0 - 2.0 * (1.0 - cb.r) * (1.0 - cs.r)),
-		cb.g <= 0.5 ? (2.0 * cb.g * cs.g) : (1.0 - 2.0 * (1.0 - cb.g) * (1.0 - cs.g)),
-		cb.b <= 0.5 ? (2.0 * cb.b * cs.b) : (1.0 - 2.0 * (1.0 - cb.b) * (1.0 - cs.b))
+	if (mode < 3.5) {
+		return vec3(
+			cb.r <= 0.5 ? (2.0 * cb.r * cs.r) : (1.0 - 2.0 * (1.0 - cb.r) * (1.0 - cs.r)),
+			cb.g <= 0.5 ? (2.0 * cb.g * cs.g) : (1.0 - 2.0 * (1.0 - cb.g) * (1.0 - cs.g)),
+			cb.b <= 0.5 ? (2.0 * cb.b * cs.b) : (1.0 - 2.0 * (1.0 - cb.b) * (1.0 - cs.b))
+		);
+	}
+	if (mode < 4.5) {
+		return min(cb, cs);
+	}
+	if (mode < 5.5) {
+		return max(cb, cs);
+	}
+	return abs(cb - cs);
+}
+
+vec3 hue_rotate(vec3 color, float angleDeg) {
+	float angle = angleDeg * 3.14159265 / 180.0;
+	float s = sin(angle);
+	float c = cos(angle);
+	mat3 mh = mat3(
+		vec3(0.213 + 0.787 * c - 0.213 * s, 0.213 - 0.213 * c + 0.143 * s, 0.213 - 0.213 * c - 0.787 * s),
+		vec3(0.715 - 0.715 * c - 0.715 * s, 0.715 + 0.285 * c + 0.140 * s, 0.715 - 0.715 * c + 0.715 * s),
+		vec3(0.072 - 0.072 * c + 0.928 * s, 0.072 - 0.072 * c - 0.283 * s, 0.072 + 0.928 * c + 0.072 * s)
 	);
+	return clamp(mh * color, 0.0, 1.0);
+}
+
+vec3 apply_adjustment(vec3 color) {
+	float t = u_adjType;
+	vec4 p = u_adjParams;
+	if (t < 0.5) {
+		return color;
+	}
+	if (t < 1.5) {
+		color *= p.x;
+		color = (color - 0.5) * p.y + 0.5;
+		return clamp(color, 0.0, 1.0);
+	}
+	if (t < 2.5) {
+		color = hue_rotate(color, p.x);
+		float luma = dot(color, vec3(0.2126, 0.7152, 0.0722));
+		color = mix(vec3(luma), color, p.y);
+		color *= p.z;
+		return clamp(color, 0.0, 1.0);
+	}
+	if (t < 3.5) {
+		vec3 v = color * p.x + p.y;
+		v = max(v, vec3(0.0));
+		float invG = p.z;
+		v = vec3(pow(v.r, invG), pow(v.g, invG), pow(v.b, invG));
+		return clamp(v, 0.0, 1.0);
+	}
+	if (t < 4.5) {
+		float luma = dot(color, vec3(0.2126, 0.7152, 0.0722));
+		return mix(color, vec3(luma), p.x);
+	}
+	if (t < 5.5) {
+		return mix(color, 1.0 - color, p.x);
+	}
+	if (t < 6.5) {
+		vec3 sep = vec3(
+			dot(color, vec3(0.393, 0.769, 0.189)),
+			dot(color, vec3(0.349, 0.686, 0.168)),
+			dot(color, vec3(0.272, 0.534, 0.131))
+		);
+		return clamp(mix(color, sep, p.x), 0.0, 1.0);
+	}
+	float lum = dot(color, vec3(0.2126, 0.7152, 0.0722));
+	float vv = lum >= p.x ? 1.0 : 0.0;
+	return vec3(vv);
 }
 
 void main() {
+	vec2 dstUV = vec2(v_docPos.x / u_resolution.x, 1.0 - v_docPos.y / u_resolution.y);
+
+	if (u_isAdjustment > 0.5) {
+		vec4 dst = texture2D(u_dstTexture, dstUV);
+		float maskA = mask_alpha_at(v_docPos);
+		float cov = maskA * u_opacity;
+		vec3 adj = apply_adjustment(dst.rgb);
+
+		if (cov >= 0.999 && u_hasMask < 0.5) {
+			gl_FragColor = vec4(adj, dst.a);
+			return;
+		}
+
+		float as = dst.a * cov;
+		float ab = dst.a;
+		float ao = as + ab * (1.0 - as);
+		if (ao <= 0.0001) {
+			gl_FragColor = vec4(0.0);
+			return;
+		}
+		vec3 Co = (as * adj + ab * (1.0 - as) * dst.rgb) / ao;
+		gl_FragColor = vec4(Co, ao);
+		return;
+	}
+
 	vec4 src = texture2D(u_layerTexture, v_texCoord);
 	float maskA = mask_alpha_at(v_docPos);
 	src.a *= u_opacity * maskA;
 
 	if (u_needsDst < 0.5) {
-		// source-over: let GL blendFunc finish the composite
 		gl_FragColor = src;
 		return;
 	}
 
-	// copyTexImage2D keeps FB bottom-left at UV (0,0); document y=0 is top.
-	vec2 dstUV = vec2(v_docPos.x / u_resolution.x, 1.0 - v_docPos.y / u_resolution.y);
 	vec4 dst = texture2D(u_dstTexture, dstUV);
 
 	float as = src.a;
@@ -244,6 +355,15 @@ class WebGL_renderer_class {
 
 		/** @type {boolean} whether context loss has been detected */
 		this.contextLost = false;
+
+		/** @type {number} interactive composite scale (1 = full, 0.5 = half-res) */
+		this.compositeScale = 1;
+
+		/** @type {number} logical document width (unscaled) */
+		this.logicalWidth = 0;
+
+		/** @type {number} logical document height (unscaled) */
+		this.logicalHeight = 0;
 	}
 
 	// ---- Initialization ----
@@ -252,10 +372,11 @@ class WebGL_renderer_class {
 	 * Reports whether the GPU path can faithfully render the given layer stack.
 	 * The caller falls back to the Canvas 2D pipeline when this returns false.
 	 *
-	 * GPU-supported: source-over / multiply / screen / overlay, optional layer
-	 * masks (document-space sampling + linked rotation). Still deferred to
-	 * Canvas 2D: filters, adjustment layers, and all other blend/Porter-Duff
-	 * modes (including source-atop clipping).
+	 * GPU-supported: source-over / multiply / screen / overlay / darken /
+	 * lighten / difference, optional layer masks, and a subset of adjustment
+	 * layers (brightness/contrast, hue-sat, exposure, grayscale, invert,
+	 * sepia, threshold) at source-over. Still deferred to Canvas 2D: layer
+	 * filters, unsupported adjustments/blends, source-atop clipping.
 	 *
 	 * @param {Object[]} layers - sorted layers (bottom to top)
 	 * @param {number|null} disabled_filter_id - id of the currently disabled
@@ -269,7 +390,10 @@ class WebGL_renderer_class {
 				continue;
 
 			if (layer.type === 'adjustment') {
-				return false;
+				if (!this._gpu_supports_adjustment(layer)) {
+					return false;
+				}
+				continue;
 			}
 
 			//active filters need the 2D filter pipeline
@@ -305,6 +429,90 @@ class WebGL_renderer_class {
 	}
 
 	/**
+	 * @param {Object} layer
+	 * @returns {boolean}
+	 */
+	_gpu_supports_adjustment(layer) {
+		var composition = layer.composition == null ? 'source-over' : layer.composition;
+		if (composition !== 'source-over') {
+			return false;
+		}
+		var info = this._adjustment_shader_params(layer);
+		if (!info) {
+			return false;
+		}
+		if (layer.mask && layer.mask.enabled !== false) {
+			var maskSource = layer.mask.link_canvas || layer.mask.link;
+			if (!maskSource) {
+				return false;
+			}
+		}
+		return true;
+	}
+
+	/**
+	 * Pack adjustment uniforms to match Canvas2D CSS / pixel algorithms.
+	 * @param {Object} layer
+	 * @returns {{type: number, params: number[]}|null}
+	 */
+	_adjustment_shader_params(layer) {
+		var raw = layer.adjustment_type ? String(layer.adjustment_type).toLowerCase().replace(/_/g, '-') : '';
+		var p = layer.params || {};
+		var value = p.value;
+
+		switch (raw) {
+			case 'brightness': {
+				var b = (value !== undefined) ? Number(value) : 0;
+				var c = (p.contrast !== undefined) ? Number(p.contrast) : 0;
+				return { type: ADJ_BRIGHTNESS_CONTRAST, params: [b / 100 + 1, c / 100 + 1, 0, 0] };
+			}
+			case 'contrast': {
+				var cv = (value !== undefined) ? Number(value) : 0;
+				return { type: ADJ_BRIGHTNESS_CONTRAST, params: [1, cv / 100 + 1, 0, 0] };
+			}
+			case 'brightness/contrast':
+			case 'brightness-contrast': {
+				var bb = (p.brightness !== undefined) ? Number(p.brightness) : ((value !== undefined) ? Number(value) : 0);
+				var cc = (p.contrast !== undefined) ? Number(p.contrast) : 0;
+				return { type: ADJ_BRIGHTNESS_CONTRAST, params: [bb / 100 + 1, cc / 100 + 1, 0, 0] };
+			}
+			case 'hue-saturation':
+			case 'hue/saturation':
+			case 'huesaturation': {
+				var hue = (p.hue !== undefined) ? Number(p.hue) : ((value !== undefined) ? Number(value) : 0);
+				var sat = (p.saturation !== undefined) ? Number(p.saturation) : 0;
+				var light = (p.lightness !== undefined) ? Number(p.lightness) : 0;
+				return { type: ADJ_HUE_SAT, params: [hue, sat / 100 + 1, light / 100 + 1, 0] };
+			}
+			case 'exposure': {
+				var exposure = (p.exposure !== undefined) ? Number(p.exposure) : 0;
+				var offset = (p.offset !== undefined) ? Number(p.offset) : 0;
+				var gamma = (p.gamma !== undefined) ? Number(p.gamma) : 1;
+				if (!isFinite(gamma) || gamma <= 0) gamma = 1;
+				return { type: ADJ_EXPOSURE, params: [Math.pow(2, exposure), offset, 1 / gamma, 0] };
+			}
+			case 'grayscale': {
+				var gv = (value !== undefined) ? Number(value) : 100;
+				return { type: ADJ_GRAYSCALE, params: [gv / 100, 0, 0, 0] };
+			}
+			case 'invert': {
+				var iv = (value !== undefined) ? Number(value) : 100;
+				return { type: ADJ_INVERT, params: [iv / 100, 0, 0, 0] };
+			}
+			case 'sepia': {
+				var sv = (value !== undefined) ? Number(value) : 100;
+				return { type: ADJ_SEPIA, params: [sv / 100, 0, 0, 0] };
+			}
+			case 'threshold': {
+				var th = (value !== undefined) ? Number(value) : 128;
+				return { type: ADJ_THRESHOLD, params: [th / 255, 0, 0, 0] };
+			}
+			default:
+				return null;
+		}
+	}
+
+	/**
 	 * @param {string|null|undefined} composition
 	 * @returns {number}
 	 */
@@ -326,6 +534,9 @@ class WebGL_renderer_class {
 	init(width, height) {
 		this.docWidth = width;
 		this.docHeight = height;
+		this.logicalWidth = width;
+		this.logicalHeight = height;
+		this.compositeScale = 1;
 
 		// Store reference to app's GUI_tools for non-image layer rendering
 		this._gui_tools_ref = null;
@@ -432,6 +643,9 @@ class WebGL_renderer_class {
 			u_blendMode: gl.getUniformLocation(program, 'u_blendMode'),
 			u_hasMask: gl.getUniformLocation(program, 'u_hasMask'),
 			u_needsDst: gl.getUniformLocation(program, 'u_needsDst'),
+			u_isAdjustment: gl.getUniformLocation(program, 'u_isAdjustment'),
+			u_adjType: gl.getUniformLocation(program, 'u_adjType'),
+			u_adjParams: gl.getUniformLocation(program, 'u_adjParams'),
 			u_maskRect: gl.getUniformLocation(program, 'u_maskRect'),
 			u_layerTopLeft: gl.getUniformLocation(program, 'u_layerTopLeft'),
 			u_layerCenter: gl.getUniformLocation(program, 'u_layerCenter'),
@@ -551,16 +765,56 @@ class WebGL_renderer_class {
 	}
 
 	/**
-	 * Resize the WebGL offscreen canvas.
+	 * Resize the WebGL offscreen canvas to the logical document size (full quality).
 	 * @param {number} width
 	 * @param {number} height
 	 */
 	resize(width, height) {
-		this.docWidth = width;
-		this.docHeight = height;
+		this.logicalWidth = width;
+		this.logicalHeight = height;
+		this._apply_framebuffer_size();
+	}
+
+	/**
+	 * Interactive quality tier: 1 = full document resolution, 0.5 = half-res.
+	 * Layer textures stay full-res; only the composite FB is downscaled.
+	 * @param {number} scale
+	 */
+	set_composite_scale(scale) {
+		var s = Number(scale);
+		if (!isFinite(s) || s <= 0) s = 1;
+		if (s > 1) s = 1;
+		if (s < 0.25) s = 0.25;
+		if (Math.abs((this.compositeScale || 1) - s) < 0.001) {
+			return;
+		}
+		this.compositeScale = s;
+		this._apply_framebuffer_size();
+	}
+
+	/**
+	 * @returns {number}
+	 */
+	get_composite_scale() {
+		return this.compositeScale || 1;
+	}
+
+	_apply_framebuffer_size() {
+		var scale = this.compositeScale || 1;
+		var lw = this.logicalWidth || this.docWidth || 1;
+		var lh = this.logicalHeight || this.docHeight || 1;
+		var rw = Math.max(1, Math.round(lw * scale));
+		var rh = Math.max(1, Math.round(lh * scale));
+		this.docWidth = rw;
+		this.docHeight = rh;
 		if (this.glCanvas) {
-			this.glCanvas.width = width;
-			this.glCanvas.height = height;
+			if (this.glCanvas.width !== rw || this.glCanvas.height !== rh) {
+				this.glCanvas.width = rw;
+				this.glCanvas.height = rh;
+				// Force dst snapshot realloc on next blend/adj pass
+				this.dstTextureWidth = 0;
+				this.dstTextureHeight = 0;
+			}
 		}
 	}
 
@@ -607,11 +861,19 @@ class WebGL_renderer_class {
 		if (!this.gl || this.contextLost) return;
 
 		var gl = this.gl;
-		this.docWidth = docWidth;
-		this.docHeight = docHeight;
+		this.logicalWidth = docWidth;
+		this.logicalHeight = docHeight;
+		this._apply_framebuffer_size();
 
-		gl.viewport(0, 0, docWidth, docHeight);
-		gl.uniform2f(this.uniforms.u_resolution, docWidth, docHeight);
+		var scale = this.compositeScale || 1;
+		var rw = this.docWidth;
+		var rh = this.docHeight;
+
+		gl.viewport(0, 0, rw, rh);
+		gl.uniform2f(this.uniforms.u_resolution, rw, rh);
+		gl.uniform1f(this.uniforms.u_isAdjustment, 0.0);
+		gl.uniform1f(this.uniforms.u_adjType, ADJ_NONE);
+		gl.uniform4f(this.uniforms.u_adjParams, 0, 0, 0, 0);
 
 		// Bind quad buffers
 		gl.bindBuffer(gl.ARRAY_BUFFER, this.quadVBO);
@@ -630,6 +892,11 @@ class WebGL_renderer_class {
 				// Skip hidden or empty layers
 				if (layer.type == null || is_group(layer) || !is_effectively_visible(layer)) continue;
 
+				if (layer.type === 'adjustment') {
+					this._render_adjustment_layer(layer, rw, rh, scale);
+					continue;
+				}
+
 				// Get or create the layer texture
 				var texInfo = this._get_or_create_texture(layer);
 				if (!texInfo) continue;
@@ -638,8 +905,10 @@ class WebGL_renderer_class {
 				var blendId = this._blend_mode_id(composition);
 				var needsDst = blendId !== BLEND_NORMAL;
 
+				gl.uniform1f(this.uniforms.u_isAdjustment, 0.0);
+
 				if (needsDst) {
-					this._capture_dst_texture(docWidth, docHeight);
+					this._capture_dst_texture(rw, rh);
 					gl.disable(gl.BLEND);
 					gl.activeTexture(gl.TEXTURE1);
 					gl.bindTexture(gl.TEXTURE_2D, this.dstTexture);
@@ -656,35 +925,29 @@ class WebGL_renderer_class {
 				gl.bindTexture(gl.TEXTURE_2D, texInfo.texture);
 				gl.uniform1i(this.uniforms.u_layerTexture, 0);
 
-				this._bind_mask_uniforms(layer);
+				this._bind_mask_uniforms(layer, scale);
 
 				// Set opacity
 				gl.uniform1f(this.uniforms.u_opacity, (layer.opacity || 100) / 100);
 				gl.uniform1f(this.uniforms.u_blendMode, blendId);
 
-				// Set destination rectangle: [x, y, width, height] in document pixels.
-				// Expand by pad so the padded texture maps correctly.
+				// Destination rectangle in scaled framebuffer pixels.
 				var pad = texInfo.pad || 0;
 				var lx = (layer.x || 0);
 				var ly = (layer.y || 0);
 				var lw = (layer.width || 0);
 				var lh = (layer.height || 0);
 				gl.uniform4f(this.uniforms.u_dstRect,
-					lx - pad, ly - pad,
-					lw + pad * 2, lh + pad * 2
+					(lx - pad) * scale, (ly - pad) * scale,
+					(lw + pad * 2) * scale, (lh + pad * 2) * scale
 				);
-				gl.uniform2f(this.uniforms.u_layerTopLeft, lx, ly);
-				gl.uniform2f(this.uniforms.u_layerCenter, lx + lw * 0.5, ly + lh * 0.5);
+				gl.uniform2f(this.uniforms.u_layerTopLeft, lx * scale, ly * scale);
+				gl.uniform2f(this.uniforms.u_layerCenter, (lx + lw * 0.5) * scale, (ly + lh * 0.5) * scale);
 
-				// Set rotation (convert degrees to radians).
-				// Rotation is applied in Y-down document space (same convention as
-				// Canvas 2D ctx.rotate), so no negation is needed even though the
-				// vertex shader flips Y for clip space.
 				gl.uniform1f(this.uniforms.u_rotation,
 					(layer.rotate || 0) * Math.PI / 180
 				);
 
-				// Draw the quad
 				gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
 
 				if (needsDst) {
@@ -694,6 +957,52 @@ class WebGL_renderer_class {
 				console.warn('WebGL render error on layer', layers[i] ? layers[i].id : i, err);
 			}
 		}
+	}
+
+	/**
+	 * Draw a fullscreen adjustment pass that samples the current framebuffer.
+	 * @param {Object} layer
+	 * @param {number} rw framebuffer width
+	 * @param {number} rh framebuffer height
+	 * @param {number} scale composite scale
+	 */
+	_render_adjustment_layer(layer, rw, rh, scale) {
+		var gl = this.gl;
+		var info = this._adjustment_shader_params(layer);
+		if (!info) return;
+
+		this._capture_dst_texture(rw, rh);
+		gl.disable(gl.BLEND);
+		gl.activeTexture(gl.TEXTURE1);
+		gl.bindTexture(gl.TEXTURE_2D, this.dstTexture);
+		gl.uniform1i(this.uniforms.u_dstTexture, 1);
+		gl.uniform1f(this.uniforms.u_needsDst, 1.0);
+		gl.uniform1f(this.uniforms.u_isAdjustment, 1.0);
+		gl.uniform1f(this.uniforms.u_adjType, info.type);
+		gl.uniform4f(this.uniforms.u_adjParams,
+			info.params[0], info.params[1], info.params[2], info.params[3]
+		);
+		gl.uniform1f(this.uniforms.u_opacity, (layer.opacity == null ? 100 : layer.opacity) / 100);
+		gl.uniform1f(this.uniforms.u_blendMode, BLEND_NORMAL);
+		gl.uniform1f(this.uniforms.u_rotation, 0.0);
+
+		// Adjustment covers the document; mask sampling still uses layer bounds.
+		var lx = (layer.x || 0);
+		var ly = (layer.y || 0);
+		var lw = (layer.width != null && layer.width > 0) ? layer.width : (this.logicalWidth || rw);
+		var lh = (layer.height != null && layer.height > 0) ? layer.height : (this.logicalHeight || rh);
+		gl.uniform2f(this.uniforms.u_layerTopLeft, lx * scale, ly * scale);
+		gl.uniform2f(this.uniforms.u_layerCenter, (lx + lw * 0.5) * scale, (ly + lh * 0.5) * scale);
+
+		this._bind_mask_uniforms(layer, scale);
+
+		// Full-document quad in scaled FB space
+		gl.uniform4f(this.uniforms.u_dstRect, 0, 0, rw, rh);
+
+		gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+
+		gl.uniform1f(this.uniforms.u_isAdjustment, 0.0);
+		gl.enable(gl.BLEND);
 	}
 
 	/**
@@ -1041,10 +1350,11 @@ class WebGL_renderer_class {
 	 * Bind mask texture + uniforms for the current layer, or disable mask sampling.
 	 * @param {Object} layer
 	 */
-	_bind_mask_uniforms(layer) {
+	_bind_mask_uniforms(layer, scale) {
 		var gl = this.gl;
 		var mask = layer.mask;
 		var hasMask = mask && mask.enabled !== false && (mask.link_canvas || mask.link);
+		var s = (scale == null || !isFinite(scale) || scale <= 0) ? 1 : scale;
 
 		if (!hasMask) {
 			gl.uniform1f(this.uniforms.u_hasMask, 0.0);
@@ -1070,9 +1380,11 @@ class WebGL_renderer_class {
 		var sh = source.naturalHeight || source.height || 1;
 		var mx = (mask.x != null) ? mask.x : 0;
 		var my = (mask.y != null) ? mask.y : 0;
-		var mw = (mask.width != null && mask.width > 0) ? mask.width : (this.docWidth || sw);
-		var mh = (mask.height != null && mask.height > 0) ? mask.height : (this.docHeight || sh);
-		gl.uniform4f(this.uniforms.u_maskRect, mx, my, mw, mh);
+		var logicalW = this.logicalWidth || this.docWidth || sw;
+		var logicalH = this.logicalHeight || this.docHeight || sh;
+		var mw = (mask.width != null && mask.width > 0) ? mask.width : logicalW;
+		var mh = (mask.height != null && mask.height > 0) ? mask.height : logicalH;
+		gl.uniform4f(this.uniforms.u_maskRect, mx * s, my * s, mw * s, mh * s);
 
 		var rotate = (layer.rotate || 0) * Math.PI / 180;
 		var linkedRotate = (mask.linked !== false && rotate != 0) ? rotate : 0;
@@ -1158,7 +1470,7 @@ class WebGL_renderer_class {
 
 	/**
 	 * Set the WebGL blend equation for the hardware source-over path.
-	 * multiply / screen / overlay are handled in the fragment shader (see
+	 * Non-normal GPU blends are handled in the fragment shader (see
 	 * render_layers) and do not use this helper.
 	 *
 	 * @param {string} composition - Canvas 2D globalCompositeOperation value

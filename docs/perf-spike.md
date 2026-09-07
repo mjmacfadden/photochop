@@ -12,7 +12,7 @@ Related: root `PERFORMANCE.md` (completed worklog).
 1. **Measure 2K/4K fixtures** — establish baseline open / composite / pan-zoom / brush numbers before optimizing.
 2. **PSD memory + lazy `ag-psd`** — keep PSD out of the critical boot path; avoid dual canvas + dataURL on import.
 3. **WebGL mask/blend slice** — only after (1)–(2) show mask/blend paths dominate frame time.
-4. **Interactive quality tier** — lower-fidelity interactive composite while dragging; full quality on commit (deferred until measured).
+4. **Interactive quality tier** — lower-fidelity interactive composite while dragging; full quality on commit (landed — half-res while dragging).
 
 ---
 
@@ -26,9 +26,9 @@ Related: root `PERFORMANCE.md` (completed worklog).
 | Dynamic `import()` of `ag-psd` on first PSD open/save (`ensure_ag_psd`) | Done |
 | Confirm import uses live canvas `link` + `data: null` (no `toDataURL` dual bitmap) | Done (removed unused `safeToDataURL`) |
 | `[PSD][perf]` `performance.now()` logs around ag-psd load / parse / write | Done |
-| Service worker `CACHE_NAME` bump | Done — foundation `v16` → `v17`; this slice `v17` → `v18` (shell `dist/bundle.js` changed) |
+| Service worker `CACHE_NAME` bump | Done — foundation `v16` → `v17`; mask-blend `v17` → `v18`; this land `v18` → `v19` (shell `dist/bundle.js` changed) |
 | WebGL mask/blend slice | Done (partial) — mask sampling + multiply/screen/overlay shaders; see below |
-| Interactive quality tier | Deferred |
+| Interactive quality tier | **DONE** — half-res WebGL while Move/transform/crop drag; full on idle |
 | WebGPU / React rewrite | Out of scope |
 
 ## How to measure
@@ -102,21 +102,27 @@ This foundation PR bumps SW because committed `dist/bundle.js` (APP_SHELL) chang
 | Document-space mask sampling in WebGL frag shader (luminance; outside rect hides) | Done |
 | Linked-mask rotation (inverse-rotate around layer center) | Done |
 | multiply / screen / overlay via shader + `copyTexImage2D` dst snapshot | Done |
-| `can_render_layers` allows masks + those three blends (keeps Canvas2D fallback) | Done |
-| Filters / adjustment layers on GPU | Still deferred (Canvas2D) |
-| Other blend / Porter-Duff modes (darken, source-atop clipping, etc.) | Still Canvas2D-only |
-| Interactive half-res / quality tier while transforming | Still deferred |
+| `can_render_layers` allows masks + GPU blends + supported adjustments | Done |
+| GPU adjustments (brightness/contrast, hue-sat, exposure, grayscale, invert, sepia, threshold) | **DONE** (source-over; Canvas2D fallback otherwise) |
+| WebGL blends darken / lighten / difference | **DONE** |
+| Other blend / Porter-Duff (soft-light, hard-light, color-dodge, source-atop, …) | **DEFERRED** → next branch |
+| Layer filters on GPU | **DEFERRED** → next branch |
 
-**Smoke for Mike:** open a doc with layer masks and/or multiply/screen/overlay — should stay on WebGL (`config.RENDERER === 'webgl'`, no whole-doc Canvas2D fallback). Toggle a layer filter or source-atop clip — expect Canvas2D fallback for that frame. Compare masked edges / blend result vs a known-good save. Hard-reload twice after deploy; SW key should be `photochop-shell-v18`.
+**Smoke for Mike:** open a doc with masks + multiply/screen/overlay/darken; add brightness or hue-sat adj (source-over) — stay on WebGL. Drag Move on a large layer — softer while dragging, sharp on release. Toggle a layer filter or source-atop clip — expect Canvas2D fallback. Hard-reload twice after deploy; SW key should be `photochop-shell-v19`.
 
 ## Deferred (explicit)
 
-- Remaining blend modes + source-atop clipping on GPU
-- Filters / adjustment layers on GPU
-- Interactive quality tier / LOD while transforming
+- Remaining blend modes (soft-light, hard-light, color-dodge, …) + source-atop clipping on GPU
+- Layer filters (effect stack) on GPU
+- Dirty-rect / WebGL composite cache polish (viewport-only reuse)
+- Memory budget UI
 - WebGPU compositor
 - React (or other) UI rewrite
 - Histogram/worker follow-ons beyond what `PERFORMANCE.md` already shipped
 - Committing large binary fixtures
+
+## Next steps
+
+See `docs/perf-next.md` on `feature/perf-gpu-adj` after this PR merges: remaining GPU filters/blends, dirty-rect/cache polish, memory budget UI.
 
 Measure → decide → only then deepen the compositor.

@@ -359,7 +359,23 @@ class Base_layers_class {
 			var webgl_usable = renderer && renderer.type === 'webgl' && renderer.available
 				&& (!renderer.can_render_layers || renderer.can_render_layers(layers_sorted, this.disabled_filter_id));
 			if (webgl_usable) {
+				// Interactive quality tier: half-res composite while Move /
+				// transform / crop is dragging; full res on idle/mouseup.
+				var interactive_quality = false;
+				if (cache.pendingInteractiveLayerId != null) {
+					interactive_quality = true;
+				} else if (config.mouse && config.mouse.is_drag) {
+					var tool_name = (config.TOOL && config.TOOL.name) ? config.TOOL.name : '';
+					if (tool_name === 'select' || tool_name === 'crop') {
+						interactive_quality = true;
+					}
+				}
 				cache.pendingInteractiveLayerId = null;
+				var quality_scale = interactive_quality ? 0.5 : 1;
+				if (typeof renderer.set_composite_scale === 'function') {
+					renderer.set_composite_scale(quality_scale);
+				}
+
 				// ---- WebGL rendering path ----
 				// Renders layers to offscreen WebGL canvas, then composites
 				// onto main canvas. Overlays remain Canvas 2D.
@@ -384,14 +400,15 @@ class Base_layers_class {
 
 				// Composite WebGL output onto main canvas
 				// The WebGL canvas contains the composited layers at document
-				// resolution. Apply the zoomView transform (zoom + pan) so the
+				// resolution (or half-res during interactive transforms).
+				// Apply the zoomView transform (zoom + pan) so the
 				// visible area follows navigator/pan/zoom like the 2D path.
 				var glCanvas = renderer.getCanvas();
 				if (glCanvas) {
 					this.ctx.save();
 					zoomView.apply();
 					this.ctx.filter = "none";
-					this.ctx.imageSmoothingEnabled = (config.ZOOM < 1);
+					this.ctx.imageSmoothingEnabled = (quality_scale < 1) || (config.ZOOM < 1);
 					this.ctx.drawImage(glCanvas, 0, 0, config.WIDTH, config.HEIGHT);
 
 					this.ctx.restore();
