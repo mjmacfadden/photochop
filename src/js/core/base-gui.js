@@ -3,6 +3,7 @@
  * author: Vilius L.
  */
 
+import app from './../app.js';
 import config from './../config.js';
 import Base_layers_class from './base-layers.js';
 import GUI_tools_class from './gui/gui-tools.js';
@@ -263,10 +264,17 @@ class Base_gui_class {
 		}, false);
 		this.check_canvas_offset();
 
-		//confirmation on exit
+		//confirmation on exit — only when a document is dirty
 		var exit_confirm = this.Tools_settings.get_setting('exit_confirm');
 		window.addEventListener('beforeunload', function (e) {
-			if(exit_confirm && (config.layers.length > 1 || _this.Base_layers.is_layer_empty(config.layer.id) == false)){
+			if (!exit_confirm) return undefined;
+			var dirty = false;
+			if (app.Documents && typeof app.Documents.has_any_dirty === 'function') {
+				dirty = app.Documents.has_any_dirty();
+			} else if (app.Documents && app.Documents.documents) {
+				dirty = app.Documents.documents.some(function (d) { return d && d.is_dirty; });
+			}
+			if (dirty) {
 				e.preventDefault();
 				e.returnValue = '';
 			}

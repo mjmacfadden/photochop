@@ -122,7 +122,11 @@ class Base_state_class {
 		if (app.Documents) {
 			const doc = app.Documents.get_active_document();
 			if (doc) {
+				const was_dirty = !!doc.is_dirty;
 				doc.is_dirty = true;
+				if (!was_dirty && typeof app.Documents.render_tabs === 'function') {
+					app.Documents.render_tabs();
+				}
 			}
 		}
 		this.schedule_autosave();

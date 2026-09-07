@@ -25,8 +25,12 @@ import File_open_class from './modules/file/open.js';
 import File_save_class from './modules/file/save.js';
 import Font_manager_class from './core/font-manager.js';
 import * as Actions from './actions/index.js';
+import alertify from './../../node_modules/alertifyjs/build/alertify.min.js';
 
 window.addEventListener('load', function (e) {
+	// Toasts: middle top (keep success/error styles)
+	alertify.set('notifier', 'position', 'top-center');
+
 	// Initiate app
 	var Layers = new Base_layers_class();
 	var Base_tools = new Base_tools_class(true);
