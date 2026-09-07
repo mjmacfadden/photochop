@@ -73,6 +73,7 @@ export class Select_layer_action extends Base_action {
 
 		app.Layers.render();
 		app.GUI.GUI_layers.render_layers();
+		this._sync_properties_panel();
 		if (app.GUI && app.GUI.GUI_tools && typeof app.GUI.GUI_tools.update_transform_indicators === 'function') {
 			app.GUI.GUI_tools.update_transform_indicators();
 		}
@@ -100,8 +101,27 @@ export class Select_layer_action extends Base_action {
 
 		app.Layers.render();
 		app.GUI.GUI_layers.render_layers();
+		this._sync_properties_panel();
 		if (app.GUI && app.GUI.GUI_tools && typeof app.GUI.GUI_tools.update_transform_indicators === 'function') {
 			app.GUI.GUI_tools.update_transform_indicators();
+		}
+	}
+
+	/**
+	 * Selecting an adjustment focuses Properties (auto-shows panel if hidden).
+	 * Text layers only refresh Properties content (Type controls if that tab is
+	 * already open / later opened) — do NOT auto-show for Type tool / text select.
+	 * Other layers refresh to the placeholder.
+	 */
+	_sync_properties_panel() {
+		const layer = config.layer;
+		if (layer && layer.type === 'adjustment'
+			&& app.GUI && app.GUI.GUI_properties
+			&& typeof app.GUI.GUI_properties.show_for_layer === 'function') {
+			app.GUI.GUI_properties.show_for_layer(layer.id);
+		} else if (app.GUI && app.GUI.GUI_properties
+			&& typeof app.GUI.GUI_properties.render_properties === 'function') {
+			app.GUI.GUI_properties.render_properties();
 		}
 	}
 

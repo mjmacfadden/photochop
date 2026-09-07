@@ -13,6 +13,7 @@ import GUI_layers_class from './gui/gui-layers.js';
 import GUI_information_class from './gui/gui-information.js';
 import GUI_details_class from './gui/gui-details.js';
 import GUI_adjustments_class from './gui/gui-adjustments.js';
+import GUI_properties_class from './gui/gui-properties.js';
 import GUI_menu_class from './gui/gui-menu.js';
 import Tools_translate_class from './../modules/tools/translate.js';
 import Tools_settings_class from './../modules/tools/settings.js';
@@ -68,6 +69,7 @@ class Base_gui_class {
 		this.GUI_information = new GUI_information_class(this);
 		this.GUI_details = new GUI_details_class(this);
 		this.GUI_adjustments = new GUI_adjustments_class(this);
+		this.GUI_properties = new GUI_properties_class(this);
 		this.GUI_menu = new GUI_menu_class();
 		this.Tools_translate = new Tools_translate_class();
 		this.Tools_settings = new Tools_settings_class();
@@ -182,6 +184,7 @@ class Base_gui_class {
 		this.GUI_information.render_main_information();
 		this.GUI_details.render_main_details();
 		this.GUI_adjustments.render_main_adjustments();
+		this.GUI_properties.render_main_properties();
 		this.GUI_menu.render_main();
 		this.init_panel_tabs();
 		this.load_saved_changes();
@@ -278,44 +281,112 @@ class Base_gui_class {
 		const wrapper = document.getElementById('toggle_colors_wrapper');
 		const collapseHeader = document.querySelector('.colors.block h2.toggle');
 
-		if (!tabColor || !tabSwatches || !paneColor || !paneSwatches) return;
+		if (tabColor && tabSwatches && paneColor && paneSwatches) {
+			const activateTab = (tab) => {
+				if (wrapper && wrapper.classList.contains('hidden')) {
+					wrapper.classList.remove('hidden');
+					if (collapseHeader) collapseHeader.classList.remove('toggled');
+					this.Helper.setCookie('toggle_colors_wrapper', 1);
+				}
 
-		const activateTab = (tab) => {
-			if (wrapper && wrapper.classList.contains('hidden')) {
-				wrapper.classList.remove('hidden');
-				if (collapseHeader) collapseHeader.classList.remove('toggled');
-				this.Helper.setCookie('toggle_colors_wrapper', 1);
+				if (tab === 'swatches') {
+					tabColor.classList.remove('active');
+					tabSwatches.classList.add('active');
+					paneColor.classList.add('hidden');
+					paneSwatches.classList.remove('hidden');
+					try { localStorage.setItem('vantage_active_color_tab', 'swatches'); } catch (e) {}
+				} else {
+					tabSwatches.classList.remove('active');
+					tabColor.classList.add('active');
+					paneSwatches.classList.add('hidden');
+					paneColor.classList.remove('hidden');
+					try { localStorage.setItem('vantage_active_color_tab', 'color'); } catch (e) {}
+				}
+			};
+
+			tabColor.addEventListener('click', (e) => {
+				e.stopPropagation();
+				activateTab('color');
+			});
+
+			tabSwatches.addEventListener('click', (e) => {
+				e.stopPropagation();
+				activateTab('swatches');
+			});
+
+			let savedTab = 'color';
+			try { savedTab = localStorage.getItem('vantage_active_color_tab') || 'color'; } catch (e) {}
+			if (savedTab === 'swatches') {
+				activateTab('swatches');
 			}
+		}
 
-			if (tab === 'swatches') {
-				tabColor.classList.remove('active');
-				tabSwatches.classList.add('active');
-				paneColor.classList.add('hidden');
-				paneSwatches.classList.remove('hidden');
-				try { localStorage.setItem('vantage_active_color_tab', 'swatches'); } catch (e) {}
-			} else {
-				tabSwatches.classList.remove('active');
-				tabColor.classList.add('active');
-				paneSwatches.classList.add('hidden');
-				paneColor.classList.remove('hidden');
-				try { localStorage.setItem('vantage_active_color_tab', 'color'); } catch (e) {}
-			}
-		};
+		this.init_adjustments_panel_tabs();
+	}
 
-		tabColor.addEventListener('click', (e) => {
+	init_adjustments_panel_tabs() {
+		const tabAdj = document.getElementById('tab_btn_adjustments');
+		const tabProps = document.getElementById('tab_btn_properties');
+		if (!tabAdj || !tabProps) return;
+
+		tabAdj.addEventListener('click', (e) => {
 			e.stopPropagation();
-			activateTab('color');
+			this.activate_adjustments_tab('adjustments');
+		});
+		tabProps.addEventListener('click', (e) => {
+			e.stopPropagation();
+			this.activate_adjustments_tab('properties');
 		});
 
-		tabSwatches.addEventListener('click', (e) => {
-			e.stopPropagation();
-			activateTab('swatches');
-		});
+		let savedTab = 'adjustments';
+		try { savedTab = localStorage.getItem('vantage_active_adj_tab') || 'adjustments'; } catch (e) {}
+		if (savedTab === 'properties') {
+			this.activate_adjustments_tab('properties');
+		}
+	}
 
-		let savedTab = 'color';
-		try { savedTab = localStorage.getItem('vantage_active_color_tab') || 'color'; } catch (e) {}
-		if (savedTab === 'swatches') {
-			activateTab('swatches');
+	/**
+	 * Switch between Adjustments / Properties tabs in the shared sidebar block.
+	 * @param {'adjustments'|'properties'} tab
+	 */
+	activate_adjustments_tab(tab) {
+		const tabAdj = document.getElementById('tab_btn_adjustments');
+		const tabProps = document.getElementById('tab_btn_properties');
+		const paneAdj = document.getElementById('toggle_adjustments');
+		const paneProps = document.getElementById('toggle_properties');
+		const wrapper = document.getElementById('toggle_adjustments_wrapper');
+		const collapseHeader = document.querySelector('.adjustments.block h2.toggle');
+
+		if (!tabAdj || !tabProps || !paneAdj || !paneProps) return;
+
+		if (wrapper && wrapper.classList.contains('hidden')) {
+			wrapper.classList.remove('hidden');
+			if (collapseHeader) collapseHeader.classList.remove('toggled');
+			this.Helper.setCookie('toggle_adjustments_wrapper', 1);
+		}
+
+		// Ensure the Adjustments block itself is visible
+		const block = document.querySelector('.sidebar_right .adjustments.block');
+		if (block && block.classList.contains('hidden')) {
+			block.classList.remove('hidden');
+			this.Helper.setCookie('panel_visible_adjustments', 1);
+		}
+
+		if (tab === 'properties') {
+			tabAdj.classList.remove('active');
+			tabProps.classList.add('active');
+			paneAdj.classList.add('hidden');
+			paneProps.classList.remove('hidden');
+			try { localStorage.setItem('vantage_active_adj_tab', 'properties'); } catch (e) {}
+			if (this.GUI_properties && typeof this.GUI_properties.render_properties === 'function') {
+				this.GUI_properties.render_properties();
+			}
+		} else {
+			tabProps.classList.remove('active');
+			tabAdj.classList.add('active');
+			paneProps.classList.add('hidden');
+			paneAdj.classList.remove('hidden');
+			try { localStorage.setItem('vantage_active_adj_tab', 'adjustments'); } catch (e) {}
 		}
 	}
 

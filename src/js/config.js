@@ -672,16 +672,30 @@ config.TOOLS = [
 				values: ['Free', 'Original', '1:1', '4:5', '5:4', '16:9', '9:16', '3:2', '2:3', 'Custom'],
 			},
 			ratio_w: {
+				title: 'W',
 				value: 1,
 				min: 1,
+				visible: false,
 			},
 			ratio_h: {
+				title: 'H',
 				value: 1,
 				min: 1,
+				visible: false,
 			},
 			guides: {
 				value: 'Rule of Thirds',
 				values: ['Rule of Thirds', 'Grid', 'Diagonal', 'None'],
+			},
+			straighten: {
+				value: false,
+				icon: 'rotate.svg',
+			},
+			angle: {
+				value: 0,
+				min: -45,
+				max: 45,
+				step: 0.1,
 			},
 			commit_crop: true,
 		},
