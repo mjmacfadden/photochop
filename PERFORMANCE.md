@@ -23,4 +23,4 @@
 
 ## Perf spike (in progress)
 
-Foundation branch `feature/perf-spike`: measure-first plan in `docs/perf-spike.md`, harness `scripts/perf-baseline.mjs`, lazy `ag-psd` / `psd.js` on first PSD open/save. WebGL mask/blend slice and interactive quality tier are deferred until baselines exist.
+Foundation branch `feature/perf-spike`: measure-first plan in `docs/perf-spike.md`, harness `scripts/perf-baseline.mjs`, lazy `ag-psd` / `psd.js` on first PSD open/save. WebGL slice landed mask sampling + multiply/screen/overlay shaders (Canvas2D fallback for filters / other blends). Interactive quality tier still deferred.

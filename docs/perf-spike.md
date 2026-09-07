@@ -26,8 +26,8 @@ Related: root `PERFORMANCE.md` (completed worklog).
 | Dynamic `import()` of `ag-psd` on first PSD open/save (`ensure_ag_psd`) | Done |
 | Confirm import uses live canvas `link` + `data: null` (no `toDataURL` dual bitmap) | Done (removed unused `safeToDataURL`) |
 | `[PSD][perf]` `performance.now()` logs around ag-psd load / parse / write | Done |
-| Service worker `CACHE_NAME` bump | Done — `photochop-shell-v16` → `v17` (shell `dist/bundle.js` changed) |
-| WebGL mask/blend slice | Deferred |
+| Service worker `CACHE_NAME` bump | Done — foundation `v16` → `v17`; this slice `v17` → `v18` (shell `dist/bundle.js` changed) |
+| WebGL mask/blend slice | Done (partial) — mask sampling + multiply/screen/overlay shaders; see below |
 | Interactive quality tier | Deferred |
 | WebGPU / React rewrite | Out of scope |
 
@@ -95,9 +95,24 @@ This foundation PR bumps SW because committed `dist/bundle.js` (APP_SHELL) chang
 
 ---
 
+## What landed in the WebGL mask/blend slice
+
+| Item | Status |
+|------|--------|
+| Document-space mask sampling in WebGL frag shader (luminance; outside rect hides) | Done |
+| Linked-mask rotation (inverse-rotate around layer center) | Done |
+| multiply / screen / overlay via shader + `copyTexImage2D` dst snapshot | Done |
+| `can_render_layers` allows masks + those three blends (keeps Canvas2D fallback) | Done |
+| Filters / adjustment layers on GPU | Still deferred (Canvas2D) |
+| Other blend / Porter-Duff modes (darken, source-atop clipping, etc.) | Still Canvas2D-only |
+| Interactive half-res / quality tier while transforming | Still deferred |
+
+**Smoke for Mike:** open a doc with layer masks and/or multiply/screen/overlay — should stay on WebGL (`config.RENDERER === 'webgl'`, no whole-doc Canvas2D fallback). Toggle a layer filter or source-atop clip — expect Canvas2D fallback for that frame. Compare masked edges / blend result vs a known-good save. Hard-reload twice after deploy; SW key should be `photochop-shell-v18`.
+
 ## Deferred (explicit)
 
-- WebGL mask/blend path surgery
+- Remaining blend modes + source-atop clipping on GPU
+- Filters / adjustment layers on GPU
 - Interactive quality tier / LOD while transforming
 - WebGPU compositor
 - React (or other) UI rewrite
