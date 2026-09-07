@@ -234,8 +234,13 @@ class Base_gui_class {
 			if (targets[i].dataset.target == undefined)
 				continue;
 			targets[i].addEventListener('click', function (event) {
+				// Tab buttons inside panel headers switch panes; don't collapse.
+				if (event.target && event.target.closest && event.target.closest('.panel_tab_btn')) {
+					return;
+				}
 				this.classList.toggle('toggled');
 				var target = document.getElementById(this.dataset.target);
+				if (!target) return;
 				target.classList.toggle('hidden');
 				//save
 				if (target.classList.contains('hidden') == false)
@@ -276,52 +281,69 @@ class Base_gui_class {
 	init_panel_tabs() {
 		const tabColor = document.getElementById('tab_btn_color');
 		const tabSwatches = document.getElementById('tab_btn_swatches');
-		const paneColor = document.getElementById('toggle_colors');
-		const paneSwatches = document.getElementById('toggle_swatches');
-		const wrapper = document.getElementById('toggle_colors_wrapper');
-		const collapseHeader = document.querySelector('.colors.block h2.toggle');
 
-		if (tabColor && tabSwatches && paneColor && paneSwatches) {
-			const activateTab = (tab) => {
-				if (wrapper && wrapper.classList.contains('hidden')) {
-					wrapper.classList.remove('hidden');
-					if (collapseHeader) collapseHeader.classList.remove('toggled');
-					this.Helper.setCookie('toggle_colors_wrapper', 1);
-				}
-
-				if (tab === 'swatches') {
-					tabColor.classList.remove('active');
-					tabSwatches.classList.add('active');
-					paneColor.classList.add('hidden');
-					paneSwatches.classList.remove('hidden');
-					try { localStorage.setItem('vantage_active_color_tab', 'swatches'); } catch (e) {}
-				} else {
-					tabSwatches.classList.remove('active');
-					tabColor.classList.add('active');
-					paneSwatches.classList.add('hidden');
-					paneColor.classList.remove('hidden');
-					try { localStorage.setItem('vantage_active_color_tab', 'color'); } catch (e) {}
-				}
-			};
-
+		if (tabColor && tabSwatches) {
 			tabColor.addEventListener('click', (e) => {
+				e.preventDefault();
 				e.stopPropagation();
-				activateTab('color');
+				this.activate_colors_tab('color');
 			});
 
 			tabSwatches.addEventListener('click', (e) => {
+				e.preventDefault();
 				e.stopPropagation();
-				activateTab('swatches');
+				this.activate_colors_tab('swatches');
 			});
 
 			let savedTab = 'color';
 			try { savedTab = localStorage.getItem('vantage_active_color_tab') || 'color'; } catch (e) {}
 			if (savedTab === 'swatches') {
-				activateTab('swatches');
+				this.activate_colors_tab('swatches');
 			}
 		}
 
 		this.init_adjustments_panel_tabs();
+	}
+
+	/**
+	 * Switch between Color / Swatches tabs in the shared sidebar block.
+	 * @param {'color'|'swatches'} tab
+	 */
+	activate_colors_tab(tab) {
+		const tabColor = document.getElementById('tab_btn_color');
+		const tabSwatches = document.getElementById('tab_btn_swatches');
+		const paneColor = document.getElementById('toggle_colors');
+		const paneSwatches = document.getElementById('toggle_swatches');
+		const wrapper = document.getElementById('toggle_colors_wrapper');
+		const collapseHeader = document.querySelector('.colors.block h2.toggle');
+
+		if (!tabColor || !tabSwatches || !paneColor || !paneSwatches) return;
+
+		if (wrapper && wrapper.classList.contains('hidden')) {
+			wrapper.classList.remove('hidden');
+			if (collapseHeader) collapseHeader.classList.remove('toggled');
+			this.Helper.setCookie('toggle_colors_wrapper', 1);
+		}
+
+		const block = document.querySelector('.sidebar_right .colors.block');
+		if (block && block.classList.contains('hidden')) {
+			block.classList.remove('hidden');
+			this.Helper.setCookie('panel_visible_colors', 1);
+		}
+
+		if (tab === 'swatches') {
+			tabColor.classList.remove('active');
+			tabSwatches.classList.add('active');
+			paneColor.classList.add('hidden');
+			paneSwatches.classList.remove('hidden');
+			try { localStorage.setItem('vantage_active_color_tab', 'swatches'); } catch (e) {}
+		} else {
+			tabSwatches.classList.remove('active');
+			tabColor.classList.add('active');
+			paneSwatches.classList.add('hidden');
+			paneColor.classList.remove('hidden');
+			try { localStorage.setItem('vantage_active_color_tab', 'color'); } catch (e) {}
+		}
 	}
 
 	init_adjustments_panel_tabs() {
@@ -330,10 +352,12 @@ class Base_gui_class {
 		if (!tabAdj || !tabProps) return;
 
 		tabAdj.addEventListener('click', (e) => {
+			e.preventDefault();
 			e.stopPropagation();
 			this.activate_adjustments_tab('adjustments');
 		});
 		tabProps.addEventListener('click', (e) => {
+			e.preventDefault();
 			e.stopPropagation();
 			this.activate_adjustments_tab('properties');
 		});
@@ -378,8 +402,12 @@ class Base_gui_class {
 			paneAdj.classList.add('hidden');
 			paneProps.classList.remove('hidden');
 			try { localStorage.setItem('vantage_active_adj_tab', 'properties'); } catch (e) {}
-			if (this.GUI_properties && typeof this.GUI_properties.render_properties === 'function') {
-				this.GUI_properties.render_properties();
+			// Force rebuild so Type controls appear when opening with text selected
+			if (this.GUI_properties) {
+				this.GUI_properties.bound_layer_id = null;
+				if (typeof this.GUI_properties.render_properties === 'function') {
+					this.GUI_properties.render_properties(true);
+				}
 			}
 		} else {
 			tabProps.classList.remove('active');

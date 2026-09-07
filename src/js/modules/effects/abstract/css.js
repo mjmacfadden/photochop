@@ -32,10 +32,14 @@ class Effects_common_class {
 			on_change: function (params, canvas_preview, w, h) {
 				_this.params = params;
 				canvas_preview.filter = _this.preview(params, type);
-				canvas_preview.drawImage(this.layer_active_small,
-					preview_padding, preview_padding,
-					_this.POP.width_mini - preview_padding * 2, _this.POP.height_mini - preview_padding * 2
-				);
+				const pad = preview_padding;
+				const dw = _this.POP.width_mini - pad * 2;
+				const dh = _this.POP.height_mini - pad * 2;
+				if (typeof _this.POP.drawImageContain === 'function') {
+					_this.POP.drawImageContain(canvas_preview, this.layer_active_small, pad, pad, dw, dh);
+				} else {
+					canvas_preview.drawImage(this.layer_active_small, pad, pad, dw, dh);
+				}
 			},
 			on_finish: function (params) {
 				_this.params = params;

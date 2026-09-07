@@ -253,7 +253,7 @@ class Dialog_class {
 				var ctx_right = canvas_right.getContext("2d");
 
 				ctx_right.clearRect(0, 0, this.width_mini, this.height_mini);
-				ctx_right.drawImage(this.layer_active_small,
+				this.drawImageContain(ctx_right, this.layer_active_small,
 					this.preview_padding, this.preview_padding,
 					this.width_mini - this.preview_padding * 2, this.height_mini - this.preview_padding * 2
 				);
@@ -459,29 +459,29 @@ class Dialog_class {
 			this.draw_background(pop_pre, this.width_mini, this.height_mini, 10);
 
 			if (canvas.width > 0 && canvas.height > 0) {
-				pop_pre.scale(this.width_mini / canvas.width, this.height_mini / canvas.height);
-				pop_pre.drawImage(canvas, 0, 0);
-				pop_pre.setTransform(1, 0, 0, 1, 0, 0);
+				this.drawImageContain(pop_pre, canvas, 0, 0, this.width_mini, this.height_mini);
 			}
 
-			//prepare temp canvas for faster repaint
-			this.layer_active_small.width = this.width_mini;
-			this.layer_active_small.height = this.height_mini;
-			this.layer_active_small_ctx.clearRect(0, 0, this.width_mini, this.height_mini);
+			// Keep source pixels at native aspect; callers letterbox into the preview box.
 			if (canvas.width > 0 && canvas.height > 0) {
-				this.layer_active_small_ctx.scale(this.width_mini / canvas.width, this.height_mini / canvas.height);
+				this.layer_active_small.width = canvas.width;
+				this.layer_active_small.height = canvas.height;
+				this.layer_active_small_ctx.clearRect(0, 0, canvas.width, canvas.height);
 				this.layer_active_small_ctx.drawImage(canvas, 0, 0);
-				this.layer_active_small_ctx.setTransform(1, 0, 0, 1, 0, 0);
+			} else {
+				this.layer_active_small.width = this.width_mini;
+				this.layer_active_small.height = this.height_mini;
+				this.layer_active_small_ctx.clearRect(0, 0, this.width_mini, this.height_mini);
 			}
 
 			//draw right background
 			var canvas_right_back = this.el.querySelector('[data-id="pop_post_back"]').getContext("2d");
 			this.draw_background(canvas_right_back, this.width_mini, this.height_mini, 10);
 
-			//copy to right side
+			//copy to right side (letterbox into padded rect)
 			var canvas_right = this.el.querySelector('[data-id="pop_post"]').getContext("2d");
 			canvas_right.clearRect(0, 0, this.width_mini, this.height_mini);
-			canvas_right.drawImage(canvas_left,
+			this.drawImageContain(canvas_right, canvas_left,
 				this.preview_padding, this.preview_padding,
 				this.width_mini - this.preview_padding * 2, this.height_mini - this.preview_padding * 2);
 
@@ -670,6 +670,22 @@ class Dialog_class {
 	strpos(haystack, needle, offset) {
 		var i = (haystack + '').indexOf(needle, (offset || 0));
 		return i === -1 ? false : i;
+	}
+
+	/**
+	 * Draw an image into a destination rect preserving aspect (letterbox/pillarbox).
+	 */
+	drawImageContain(ctx, img, dx, dy, dw, dh) {
+		if (!ctx || !img) return;
+		const iw = img.width || 0;
+		const ih = img.height || 0;
+		if (iw <= 0 || ih <= 0 || dw <= 0 || dh <= 0) return;
+		const scale = Math.min(dw / iw, dh / ih);
+		const w = Math.max(1, iw * scale);
+		const h = Math.max(1, ih * scale);
+		const x = dx + (dw - w) / 2;
+		const y = dy + (dh - h) / 2;
+		ctx.drawImage(img, x, y, w, h);
 	}
 
 	draw_background(canvas, W, H, gap, force) {

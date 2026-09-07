@@ -475,191 +475,93 @@ class Layer_styles_class {
 		this.render_combined_preview(ctx, 20);
 	}
 
+	/**
+	 * Build the Layer Style dialog preview:
+	 * - Full document composition (all layers)
+	 * - FX from this.styles applied only to the target layer
+	 * - Aspect ratio preserved (letterbox / pillarbox in the preview box)
+	 */
 	render_combined_preview(ctx, padding = 20) {
-		if (!ctx || !this.POP.layer_active_small) return;
-		const w = this.POP.width_mini;
-		const h = this.POP.height_mini;
-
+		if (!ctx) return;
+		const w = ctx.canvas ? ctx.canvas.width : (this.POP.width_mini || 225);
+		const h = ctx.canvas ? ctx.canvas.height : (this.POP.height_mini || 200);
 		ctx.clearRect(0, 0, w, h);
 
-		const layerImg = this.POP.layer_active_small;
-		const drawW = w - padding * 2;
-		const drawH = h - padding * 2;
+		const docW = Math.max(1, config.WIDTH || 1);
+		const docH = Math.max(1, config.HEIGHT || 1);
+		const maxW = Math.max(1, w - padding * 2);
+		const maxH = Math.max(1, h - padding * 2);
+		const fit = Math.min(maxW / docW, maxH / docH);
+		const drawW = Math.max(1, Math.round(docW * fit));
+		const drawH = Math.max(1, Math.round(docH * fit));
+		const ox = Math.floor((w - drawW) / 2);
+		const oy = Math.floor((h - drawH) / 2);
 
-		// 1. Collect outer filters for Drop Shadow and Outer Glow
-		let outerFilters = [];
-		if (this.styles.outer_glow && this.styles.outer_glow.enabled) {
-			outerFilters.push('drop-shadow(' + this.Effects_outer_glow.convert_value(null, this.styles.outer_glow.params, 'preview') + ')');
-		}
-		if (this.styles.shadow && this.styles.shadow.enabled) {
-			outerFilters.push('drop-shadow(' + this.Effects_shadow.convert_value(null, this.styles.shadow.params, 'preview') + ')');
-		}
+		const layer = (this.layer_id != null)
+			? this.Base_layers.get_layer(this.layer_id)
+			: config.layer;
+		if (!layer) return;
 
-		// 2. Outer / Center Stroke pass (stamp expansion)
-		if (this.styles.stroke && this.styles.stroke.enabled) {
-			const pos = this.styles.stroke.params.position || 'outside';
-			if (pos === 'outside' || pos === 'center') {
-				const rawSize = this.styles.stroke.params.size ?? 3;
-				const scale = Math.min(w / (config.WIDTH || 1000), h / (config.HEIGHT || 800));
-				let size = pos === 'center' ? Math.max(1, Math.ceil(rawSize / 2)) : rawSize;
-				size = Math.max(1, Math.round(size * scale * 2));
-				const opacity = this.styles.stroke.params.opacity ?? 100;
-				const color = this.Effects_stroke.get_stroke_color(this.styles.stroke.params.color || '#000000', opacity);
-
-				// Silhouette of layerImg in stroke color
-				const silCanvas = document.createElement('canvas');
-				silCanvas.width = w;
-				silCanvas.height = h;
-				const silCtx = silCanvas.getContext('2d');
-				silCtx.drawImage(layerImg, padding, padding, drawW, drawH);
-				silCtx.globalCompositeOperation = 'source-in';
-				silCtx.fillStyle = color;
-				silCtx.fillRect(0, 0, w, h);
-
-				// Fast stamp expansion
-				const strokeCanvas = document.createElement('canvas');
-				strokeCanvas.width = w;
-				strokeCanvas.height = h;
-				const sctx = strokeCanvas.getContext('2d');
-
-				for (let r = 1; r <= size; r++) {
-					const diag = Math.round(r * 0.7071);
-					sctx.drawImage(silCanvas, r, 0);
-					sctx.drawImage(silCanvas, -r, 0);
-					sctx.drawImage(silCanvas, 0, r);
-					sctx.drawImage(silCanvas, 0, -r);
-					if (diag > 0) {
-						sctx.drawImage(silCanvas, diag, diag);
-						sctx.drawImage(silCanvas, -diag, diag);
-						sctx.drawImage(silCanvas, diag, -diag);
-						sctx.drawImage(silCanvas, -diag, -diag);
-					}
-				}
-
-				// Remove interior of layer from outer stroke
-				strokeCanvas.getContext('2d').globalCompositeOperation = 'destination-out';
-				strokeCanvas.getContext('2d').drawImage(layerImg, padding, padding, drawW, drawH);
-
-				ctx.save();
-				if (outerFilters.length > 0) {
-					ctx.filter = outerFilters.join(' ');
-				}
-				ctx.drawImage(strokeCanvas, 0, 0);
-				ctx.restore();
+		const styleNames = ['stroke', 'inner_glow', 'outer_glow', 'shadow', 'drop-shadow'];
+		const originalFilters = layer.filters;
+		const nonStyle = (originalFilters || []).filter((f) => {
+			if (!f) return false;
+			const n = f.name === 'drop-shadow' ? 'shadow' : f.name;
+			return !styleNames.includes(n);
+		});
+		const previewFilters = nonStyle.slice();
+		for (const name of ['stroke', 'inner_glow', 'outer_glow', 'shadow']) {
+			const style = this.styles[name];
+			if (style && style.enabled) {
+				previewFilters.push({
+					id: style.id || ('preview_' + name),
+					name: name,
+					disabled: false,
+					params: { ...style.params }
+				});
 			}
 		}
 
-		// 3. Draw base layer (with Drop Shadow and Outer Glow if not applied on stroke)
-		ctx.save();
-		if (outerFilters.length > 0 && (!this.styles.stroke || !this.styles.stroke.enabled || (this.styles.stroke.params.position === 'inside'))) {
-			ctx.filter = outerFilters.join(' ');
+		// Render at document pixel size (letterbox when blitting). Cap long edge
+		// for large docs so slider previews stay responsive.
+		const maxEdge = 768;
+		const rs = Math.min(1, maxEdge / Math.max(docW, docH));
+		const rw = Math.max(1, Math.round(docW * rs));
+		const rh = Math.max(1, Math.round(docH * rs));
+
+		const docCanvas = document.createElement('canvas');
+		docCanvas.width = rw;
+		docCanvas.height = rh;
+		const docCtx = docCanvas.getContext('2d');
+
+		// When downscaling, draw layers into a full-size buffer then squash once —
+		// avoids fighting render_objects' identity-space clearRect/drawImage.
+		const fullCanvas = (rs < 1) ? document.createElement('canvas') : docCanvas;
+		if (rs < 1) {
+			fullCanvas.width = docW;
+			fullCanvas.height = docH;
 		}
-		ctx.drawImage(layerImg, padding, padding, drawW, drawH);
-		ctx.restore();
+		const fullCtx = fullCanvas.getContext('2d');
+		const tempCanvas = this.Base_layers.create_new_canvas(null, fullCanvas.width, fullCanvas.height);
 
-		// 4. Inner Stroke pass (for inside & center)
-		if (this.styles.stroke && this.styles.stroke.enabled) {
-			const pos = this.styles.stroke.params.position || 'outside';
-			if (pos === 'inside' || pos === 'center') {
-				const rawSize = this.styles.stroke.params.size ?? 3;
-				const scale = Math.min(w / (config.WIDTH || 1000), h / (config.HEIGHT || 800));
-				let size = pos === 'center' ? Math.max(1, Math.floor(rawSize / 2)) : rawSize;
-				size = Math.max(1, Math.round(size * scale * 2));
-				if (size > 0) {
-					const opacity = this.styles.stroke.params.opacity ?? 100;
-					const color = this.Effects_stroke.get_stroke_color(this.styles.stroke.params.color || '#000000', opacity);
-
-					// Layer mask canvas
-					const layerCanvas = document.createElement('canvas');
-					layerCanvas.width = w;
-					layerCanvas.height = h;
-					const lctx = layerCanvas.getContext('2d');
-					lctx.drawImage(layerImg, padding, padding, drawW, drawH);
-
-					// Inverted mask
-					const maskCanvas = document.createElement('canvas');
-					maskCanvas.width = w;
-					maskCanvas.height = h;
-					const mctx = maskCanvas.getContext('2d');
-					mctx.fillStyle = '#000000';
-					mctx.fillRect(0, 0, w, h);
-					mctx.globalCompositeOperation = 'destination-out';
-					mctx.drawImage(layerCanvas, 0, 0);
-
-					// Inward stamp expansion
-					const innerCanvas = document.createElement('canvas');
-					innerCanvas.width = w;
-					innerCanvas.height = h;
-					const ictx = innerCanvas.getContext('2d');
-					for (let r = 1; r <= size; r++) {
-						const diag = Math.round(r * 0.7071);
-						ictx.drawImage(maskCanvas, r, 0);
-						ictx.drawImage(maskCanvas, -r, 0);
-						ictx.drawImage(maskCanvas, 0, r);
-						ictx.drawImage(maskCanvas, 0, -r);
-						if (diag > 0) {
-							ictx.drawImage(maskCanvas, diag, diag);
-							ictx.drawImage(maskCanvas, -diag, diag);
-							ictx.drawImage(maskCanvas, diag, -diag);
-							ictx.drawImage(maskCanvas, -diag, -diag);
-						}
-					}
-					// Clip strictly inside layer
-					ictx.globalCompositeOperation = 'destination-in';
-					ictx.drawImage(layerCanvas, 0, 0);
-					// Colorize
-					ictx.globalCompositeOperation = 'source-in';
-					ictx.fillStyle = color;
-					ictx.fillRect(0, 0, w, h);
-
-					ctx.drawImage(innerCanvas, 0, 0);
-				}
-			}
+		const layers = this.Base_layers.get_sorted_layers();
+		const prevDisabled = this.Base_layers.disabled_filter_id;
+		this.Base_layers.disabled_filter_id = null;
+		layer.filters = previewFilters;
+		try {
+			this.Base_layers.render_objects(fullCtx, tempCanvas, layers, () => {
+				fullCtx.save();
+			});
+		} finally {
+			layer.filters = originalFilters;
+			this.Base_layers.disabled_filter_id = prevDisabled;
 		}
 
-		// 5. Inner Glow pass (strictly clipped inside layer)
-		if (this.styles.inner_glow && this.styles.inner_glow.enabled) {
-			const rawRadius = this.styles.inner_glow.params.value ?? 10;
-			const opacity = this.styles.inner_glow.params.opacity ?? 75;
-			const color = this.Effects_inner_glow.get_glow_color(this.styles.inner_glow.params.color || '#ffffff', opacity);
-
-			if (rawRadius > 0 && opacity > 0) {
-				const scale = Math.min(w / (config.WIDTH || 1000), h / (config.HEIGHT || 800));
-				const radius = Math.max(1, Math.round(rawRadius * scale * 2));
-
-				const layerCanvas = document.createElement('canvas');
-				layerCanvas.width = w;
-				layerCanvas.height = h;
-				const lctx = layerCanvas.getContext('2d');
-				lctx.drawImage(layerImg, padding, padding, drawW, drawH);
-
-				const maskCanvas = document.createElement('canvas');
-				maskCanvas.width = w;
-				maskCanvas.height = h;
-				const mctx = maskCanvas.getContext('2d');
-				mctx.fillStyle = '#000000';
-				mctx.fillRect(0, 0, w, h);
-				mctx.globalCompositeOperation = 'destination-out';
-				mctx.drawImage(layerCanvas, 0, 0);
-
-				const glowCanvas = document.createElement('canvas');
-				glowCanvas.width = w;
-				glowCanvas.height = h;
-				const gctx = glowCanvas.getContext('2d');
-				gctx.filter = `blur(${radius}px)`;
-				gctx.drawImage(maskCanvas, 0, 0);
-				gctx.filter = 'none';
-
-				gctx.globalCompositeOperation = 'destination-in';
-				gctx.drawImage(layerCanvas, 0, 0);
-
-				gctx.globalCompositeOperation = 'source-in';
-				gctx.fillStyle = color;
-				gctx.fillRect(0, 0, w, h);
-
-				ctx.drawImage(glowCanvas, 0, 0);
-			}
+		if (rs < 1) {
+			docCtx.drawImage(fullCanvas, 0, 0, rw, rh);
 		}
+
+		ctx.drawImage(docCanvas, ox, oy, drawW, drawH);
 	}
 
 	save_styles() {
