@@ -63,26 +63,31 @@ class Layer_styles_class {
 			}
 		};
 
+		// Always load ALL existing style filters so siblings survive save when
+		// reopening Layer Style for a single effect (filter_id / initialEffect).
 		if (config.layer.filters) {
 			for (const f of config.layer.filters) {
 				const filterName = f.name === 'drop-shadow' ? 'shadow' : f.name;
 				if (this.styles[filterName]) {
-					if (filter_id != null) {
-						if (f.id == filter_id) {
-							this.styles[filterName].enabled = !f.disabled;
-							this.styles[filterName].id = f.id;
-							this.styles[filterName].params = { ...this.styles[filterName].params, ...f.params };
-						}
-					} else {
-						this.styles[filterName].enabled = !f.disabled;
-						this.styles[filterName].id = f.id;
-						this.styles[filterName].params = { ...this.styles[filterName].params, ...f.params };
-					}
+					this.styles[filterName].enabled = !f.disabled;
+					this.styles[filterName].id = f.id;
+					this.styles[filterName].params = { ...this.styles[filterName].params, ...f.params };
 				}
 			}
 		}
 
-		// Ensure the opened effect is enabled
+		// filter_id / initialEffect only select the active tab; ensure it is on
+		if (filter_id != null && config.layer.filters) {
+			for (const f of config.layer.filters) {
+				if (f.id == filter_id) {
+					const filterName = f.name === 'drop-shadow' ? 'shadow' : f.name;
+					if (this.styles[filterName]) {
+						this.activeTab = filterName;
+					}
+					break;
+				}
+			}
+		}
 		if (this.styles[this.activeTab]) {
 			this.styles[this.activeTab].enabled = true;
 		}

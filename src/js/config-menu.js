@@ -59,16 +59,20 @@ const menuDefinition = [
 				divider: true
 			},
 			{
-				name: 'Export',
-				ellipsis: true,
+				name: 'Save',
 				shortcut: 'Ctrl + S',
-				target: 'file/save.export'
+				target: 'file/save.save_locally'
 			},
 			{
 				name: 'Save As',
 				ellipsis: true,
 				shortcut: 'Ctrl + Shift + S',
 				target: 'file/save.save'
+			},
+			{
+				name: 'Export',
+				ellipsis: true,
+				target: 'file/save.export'
 			},
 			{
 				name: 'Save As Data URL',

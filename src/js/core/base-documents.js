@@ -683,6 +683,9 @@ class Base_documents_class {
 			doc.action_history_index = 0;
 			doc.is_dirty = false;
 			doc.selection = null;
+			doc.save_format = 'JSON';
+			doc.source_filename = filename || (docTitle + '.json');
+			doc.fileHandle = null;
 
 			await this.restore_state(doc);
 			this.render_tabs();
@@ -704,6 +707,9 @@ class Base_documents_class {
 				guides: json.info.guides || [],
 				user_fonts: json.user_fonts || {},
 			});
+			newDoc.save_format = 'JSON';
+			newDoc.source_filename = filename || (docTitle + '.json');
+			newDoc.fileHandle = null;
 
 			this.documents.push(newDoc);
 			this.active_id = newDoc.id;
@@ -742,6 +748,9 @@ class Base_documents_class {
 			doc.action_history_index = 0;
 			doc.is_dirty = false;
 			doc.selection = null;
+			doc.save_format = 'PSD';
+			doc.source_filename = (docTitle && /\.psd$/i.test(docTitle)) ? docTitle : (docTitle + '.psd');
+			doc.fileHandle = null;
 
 			await this.restore_state(doc);
 			this.render_tabs();
@@ -763,6 +772,9 @@ class Base_documents_class {
 				guides: [],
 				user_fonts: {},
 			});
+			newDoc.save_format = 'PSD';
+			newDoc.source_filename = (docTitle && /\.psd$/i.test(docTitle)) ? docTitle : (docTitle + '.psd');
+			newDoc.fileHandle = null;
 
 			this.documents.push(newDoc);
 			this.active_id = newDoc.id;
@@ -801,6 +813,23 @@ class Base_documents_class {
 		const idx = this.documents.findIndex(d => d.id === id);
 		if (idx === -1) return;
 
+		const doc = this.documents[idx];
+		if (doc && doc.is_dirty) {
+			const title = this.Helper.escapeHtml(doc.title || 'Untitled');
+			const ok = await new Promise((resolve) => {
+				alertify.confirm(
+					'Unsaved Changes',
+					'Close <b>' + title + '</b>? Unsaved changes will be lost.',
+					() => resolve(true),
+					() => resolve(false)
+				).set({
+					labels: { ok: 'Close', cancel: 'Cancel' },
+					defaultFocus: 'cancel',
+				});
+			});
+			if (!ok) return;
+		}
+
 		if (this.documents.length === 1) {
 			// Reset single remaining document to blank
 			const doc = this.documents[0];
@@ -811,6 +840,9 @@ class Base_documents_class {
 			doc.action_history_index = 0;
 			doc.is_dirty = false;
 			doc.selection = null;
+			doc.save_format = null;
+			doc.fileHandle = null;
+			doc.source_filename = null;
 
 			var bgCanvas = document.createElement('canvas');
 			bgCanvas.width = 800;
@@ -871,6 +903,26 @@ class Base_documents_class {
 		this.activate_document(this.documents[nextIdx].id);
 	}
 
+	clear_active_dirty() {
+		const doc = this.get_active_document();
+		if (doc) {
+			doc.is_dirty = false;
+			this.render_tabs();
+		}
+	}
+
+	has_any_dirty() {
+		return this.documents.some((d) => d && d.is_dirty);
+	}
+
+	set_active_file_meta(meta = {}) {
+		const doc = this.get_active_document();
+		if (!doc) return;
+		if (meta.save_format) doc.save_format = meta.save_format;
+		if (meta.fileHandle !== undefined) doc.fileHandle = meta.fileHandle;
+		if (meta.source_filename) doc.source_filename = meta.source_filename;
+	}
+
 	update_active_title(title) {
 		const doc = this.get_active_document();
 		if (doc && title) {
@@ -891,9 +943,10 @@ class Base_documents_class {
 			const isActive = doc.id === this.active_id;
 			const zoomPercent = Math.round((isActive ? (config.ZOOM || 1) : (doc.zoom || 1)) * 100);
 			const titleEscaped = this.Helper.escapeHtml(doc.title);
+			const dirtyMark = doc.is_dirty ? ' •' : '';
 			html += `
-				<div class="document_tab ${isActive ? 'active' : ''}" data-id="${doc.id}" title="${titleEscaped} (${doc.width} × ${doc.height})">
-					<span class="tab_title">${titleEscaped}</span>
+				<div class="document_tab ${isActive ? 'active' : ''}${doc.is_dirty ? ' dirty' : ''}" data-id="${doc.id}" title="${titleEscaped} (${doc.width} × ${doc.height})${doc.is_dirty ? ' — unsaved' : ''}">
+					<span class="tab_title">${titleEscaped}${dirtyMark}</span>
 					<span class="tab_zoom">@ ${zoomPercent}%</span>
 					<span class="tab_close" data-id="${doc.id}" title="Close (Ctrl+W)">✕</span>
 				</div>

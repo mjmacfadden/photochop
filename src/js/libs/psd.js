@@ -985,12 +985,22 @@ export async function export_psd(layers, docWidth, docHeight, options = {}) {
 		const tWrite1 = (typeof performance !== 'undefined' && performance.now) ? performance.now() : Date.now();
 		console.log('[PSD][perf]', { writeMs: Math.round(tWrite1 - tWrite0), bytes: buffer && buffer.byteLength });
 		const blob = new Blob([buffer], { type: 'image/vnd.adobe.photoshop' });
+		if (options.returnBlob) {
+			return blob;
+		}
 		filesaver.saveAs(blob, fname);
 		alertify.success(`Exported "${fname}" successfully.`);
+		return blob;
 	} catch (err) {
 		console.error('[PSD] Failed to write PSD:', err);
 		alertify.error('Failed to export PSD: ' + (err.message || 'Unknown error'));
+		if (options.returnBlob) throw err;
 	}
+}
+
+/** Build a PSD Blob for save-locally / File System Access (no download). */
+export async function export_psd_blob(layers, docWidth, docHeight, options = {}) {
+	return await export_psd(layers, docWidth, docHeight, { ...options, returnBlob: true });
 }
 
 /**

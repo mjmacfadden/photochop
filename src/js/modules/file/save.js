@@ -55,17 +55,104 @@ class File_save_class {
 				return;
 
 			if (code == "s" && (event.ctrlKey || event.metaKey)) {
-				if(event.shiftKey){
-					//save as
-					this.save();
-				}
-				else{
-					//export
-					this.export();
-				}
 				event.preventDefault();
+				if (event.shiftKey) {
+					// Save As (JSON / PSD picker)
+					this.save();
+				} else {
+					// Save locally — overwrite opened file when possible
+					this.save_locally();
+				}
 			}
 		}, false);
+	}
+
+	/**
+	 * Save locally: overwrite the opened file when we have a FileSystemFileHandle
+	 * (and known format); otherwise fall through to Save As.
+	 */
+	async save_locally() {
+		const doc = app.Documents ? app.Documents.get_active_document() : null;
+		const format = doc && doc.save_format ? String(doc.save_format).toUpperCase() : null;
+		const handle = doc && doc.fileHandle ? doc.fileHandle : null;
+
+		if (handle && (format === 'PSD' || format === 'JSON')) {
+			try {
+				await this._write_document_to_handle(handle, format);
+				if (app.Documents && typeof app.Documents.clear_active_dirty === 'function') {
+					app.Documents.clear_active_dirty();
+				} else if (doc) {
+					doc.is_dirty = false;
+				}
+				alertify.success('Saved.');
+				return;
+			} catch (err) {
+				console.error('Save locally failed:', err);
+				alertify.error('Save failed: ' + (err && err.message ? err.message : 'Unknown error'));
+				// fall through to Save As
+			}
+		}
+
+		// No handle yet — try File System Access picker once, then remember it
+		if (typeof window.showSaveFilePicker === 'function' && (format === 'PSD' || format === 'JSON')) {
+			try {
+				const ext = format.toLowerCase();
+				let suggested = (doc && (doc.source_filename || doc.title)) || (config.SAVE_NAME || 'image');
+				suggested = String(suggested).replace(/\.(json|psd)$/i, '');
+				const newHandle = await window.showSaveFilePicker({
+					suggestedName: suggested + '.' + ext,
+					types: format === 'PSD' ? [{
+						description: 'Photoshop Document',
+						accept: { 'image/vnd.adobe.photoshop': ['.psd'] },
+					}] : [{
+						description: 'PhotoChop JSON',
+						accept: { 'application/json': ['.json'] },
+					}],
+				});
+				if (app.Documents && typeof app.Documents.set_active_file_meta === 'function') {
+					app.Documents.set_active_file_meta({ fileHandle: newHandle, save_format: format, source_filename: newHandle.name });
+				} else if (doc) {
+					doc.fileHandle = newHandle;
+					doc.save_format = format;
+				}
+				await this._write_document_to_handle(newHandle, format);
+				if (app.Documents && typeof app.Documents.clear_active_dirty === 'function') {
+					app.Documents.clear_active_dirty();
+				} else if (doc) {
+					doc.is_dirty = false;
+				}
+				if (newHandle && newHandle.name) {
+					app.Documents && app.Documents.update_active_title(newHandle.name);
+				}
+				alertify.success('Saved.');
+				return;
+			} catch (err) {
+				if (err && err.name === 'AbortError') return;
+				console.warn('showSaveFilePicker failed, falling back to Save As:', err);
+			}
+		}
+
+		// Nothing to overwrite yet → existing Save As flow
+		this.save();
+	}
+
+	async _write_document_to_handle(handle, format) {
+		const writable = await handle.createWritable();
+		try {
+			if (format === 'JSON') {
+				const data_json = this.export_as_json();
+				await writable.write(new Blob([data_json], { type: 'application/json' }));
+			} else if (format === 'PSD') {
+				const psdMod = await import(/* webpackChunkName: "psd" */ './../../libs/psd.js');
+				const fname = (handle && handle.name) || 'image.psd';
+				const blob = await psdMod.export_psd_blob(config.layers, config.WIDTH, config.HEIGHT, { filename: fname });
+				await writable.write(blob);
+			} else {
+				throw new Error('Unsupported save format: ' + format);
+			}
+		} finally {
+			await writable.close();
+		}
 	}
 
 	/**
@@ -635,6 +722,13 @@ class File_save_class {
 
 		if (app.Documents && fname) {
 			app.Documents.update_active_title(fname);
+			const fmt = (type === 'PSD' || type === 'JSON') ? type : null;
+			if (fmt && typeof app.Documents.set_active_file_meta === 'function') {
+				app.Documents.set_active_file_meta({ save_format: fmt, source_filename: fname });
+			}
+			if (typeof app.Documents.clear_active_dirty === 'function') {
+				app.Documents.clear_active_dirty();
+			}
 		}
 	}
 	
