@@ -447,8 +447,16 @@ class GUI_tools_class {
 		for (const k in attributes) {
 			const item = attributes[k];
 
+			// Conditional attrs (e.g. crop Custom W/H) — skip when hidden
+			if (typeof item == 'object' && item.visible === false) {
+				continue;
+			}
+
 			var title = k[0].toUpperCase() + k.slice(1);
 			title = title.replace("_", " ");
+			if (typeof item == 'object' && item.title) {
+				title = item.title;
+			}
 
 			if (typeof item == 'object' && typeof item.value == 'boolean' && item.icon) {
 				if (currentButtonGroup == null) {
