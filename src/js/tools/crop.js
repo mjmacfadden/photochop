@@ -206,6 +206,27 @@ class Crop_class extends Base_tools_class {
 	}
 
 	/**
+	 * Show Custom ratio W/H attrs only when Aspect is Custom.
+	 * gui-tools skips attrs with visible:false on rebuild (select change
+	 * calls show_action_attributes after on_params_update).
+	 */
+	sync_custom_ratio_visibility() {
+		var params = this.getParams();
+		var aspect = (params.aspect && params.aspect.value) ? params.aspect.value : 'Free';
+		var show = (aspect === 'Custom');
+		var attrs = (config.TOOL && config.TOOL.attributes) ? config.TOOL.attributes : null;
+		if (!attrs) {
+			return;
+		}
+		if (attrs.ratio_w && typeof attrs.ratio_w === 'object') {
+			attrs.ratio_w.visible = show;
+		}
+		if (attrs.ratio_h && typeof attrs.ratio_h === 'object') {
+			attrs.ratio_h.visible = show;
+		}
+	}
+
+	/**
 	 * Apply aspect constraint to width/height (signed, from drag origin).
 	 */
 	apply_ratio_to_drag(width, height, ratio) {
@@ -793,6 +814,9 @@ class Crop_class extends Base_tools_class {
 		var key = data && data.key;
 
 		if (key === 'aspect' || key === 'ratio_w' || key === 'ratio_h') {
+			if (key === 'aspect') {
+				this.sync_custom_ratio_visibility();
+			}
 			this.sync_selection_settings();
 			this.constrain_existing_selection();
 			return;
@@ -987,6 +1011,7 @@ class Crop_class extends Base_tools_class {
 		if (params.angle && typeof params.angle === 'object') {
 			params.angle.value = 0;
 		}
+		this.sync_custom_ratio_visibility();
 		this.sync_selection_settings();
 		this.apply_initial_crop();
 		return [];
