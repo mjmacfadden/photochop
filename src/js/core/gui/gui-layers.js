@@ -15,6 +15,7 @@ import Layer_raster_class from './../../modules/layer/raster.js';
 import Layer_group_class from './../../modules/layer/group.js';
 import Layer_delete_class from './../../modules/layer/delete.js';
 import Tools_translate_class from './../../modules/tools/translate.js';
+import { get_adjustment_icon } from './adjustment-icons.js';
 import { is_group, get_tree_rows, get_parent_id, would_cycle } from './../../libs/layer-tree.js';
 
 var template = `
@@ -64,7 +65,7 @@ var template = `
 					<button type="button" class="layer_opacity_popup_btn" id="layer_opacity_popup_btn" title="Adjust Opacity">▾</button>
 				</div>
 				<div class="layer_opacity_slider_popup hidden" id="layer_opacity_slider_popup">
-					<input type="range" class="layer_opacity_range" id="layer_opacity_range" min="0" max="100" value="100" />
+					<input type="range" class="layer_opacity_range" id="layer_opacity_range" min="0" max="100" value="100" data-default="100" title="Double-click to reset" />
 				</div>
 			</div>
 		</div>
@@ -153,19 +154,9 @@ class GUI_layers_class {
 			}
 			else if (target.id == 'filter_name') {
 				var filterName = target.dataset.filter;
+				var filterId = target.dataset.id;
 				_this.Base_layers.select(target.dataset.pid);
-				if (app.GUI && app.GUI.modules && app.GUI.modules['layer/styles']) {
-					app.GUI.modules['layer/styles'].open(filterName, target.dataset.id);
-				} else {
-					var effects = _this.Effects_browser.get_effects_list();
-					var key = filterName.toLowerCase();
-					for (var i in effects) {
-						if(effects[i].title.toLowerCase() == key){
-							var function_name = _this.Effects_browser.get_function_from_path(key);
-							effects[i].object[function_name](target.dataset.id);
-						}
-					}
-				}
+				_this.open_layer_filter(filterName, filterId);
 			}
 			else if (target.closest('.mask_link_icon') != null) {
 				var layer_id = parseInt(target.closest('.mask_link_icon').dataset.id);
@@ -350,6 +341,21 @@ class GUI_layers_class {
 						})
 					);
 				}
+			});
+			opRange.addEventListener('dblclick', function (e) {
+				e.preventDefault();
+				if (!config.layer || config.layer.id == null) return;
+				var defVal = parseInt(this.getAttribute('data-default') || '100', 10);
+				if (isNaN(defVal)) defVal = 100;
+				var prev = (config.layer.opacity != null) ? Math.round(config.layer.opacity) : 100;
+				if (prev === defVal) return;
+				this.value = defVal;
+				if (opNumber) opNumber.value = defVal;
+				app.State.do_action(
+					new app.Actions.Update_layer_action(config.layer.id, {
+						opacity: defVal
+					})
+				);
 			});
 		}
 
@@ -821,6 +827,51 @@ class GUI_layers_class {
 	}
 
 	/**
+	 * Layer Style effects open the Layer Style dialog; other filters (blur, etc.)
+	 * open their own Effects dialog so they can be re-edited non-destructively.
+	 */
+	open_layer_filter(filterName, filter_id) {
+		var styleEffects = ['stroke', 'inner_glow', 'outer_glow', 'shadow', 'drop-shadow'];
+		if (styleEffects.indexOf(filterName) !== -1) {
+			if (app.GUI && app.GUI.modules && app.GUI.modules['layer/styles']) {
+				var openName = filterName === 'drop-shadow' ? 'shadow' : filterName;
+				app.GUI.modules['layer/styles'].open(openName, filter_id);
+			}
+			return;
+		}
+
+		// Prefer direct module lookup (effects/common/<name>)
+		if (app.GUI && app.GUI.modules) {
+			var modulePaths = [
+				'effects/common/' + filterName,
+				'effects/' + filterName
+			];
+			for (var mi = 0; mi < modulePaths.length; mi++) {
+				var mod = app.GUI.modules[modulePaths[mi]];
+				if (!mod) continue;
+				var fn = this.Effects_browser.get_function_from_path(modulePaths[mi]);
+				if (typeof mod[fn] === 'function') {
+					mod[fn](filter_id);
+					return;
+				}
+			}
+		}
+
+		// Fallback: Effects_browser list match by title / path suffix
+		var effects = this.Effects_browser.get_effects_list();
+		var key = (filterName || '').toLowerCase();
+		for (var i in effects) {
+			var titleMatch = effects[i].title.toLowerCase() == key;
+			var pathMatch = effects[i].key && effects[i].key.split('/').pop().toLowerCase() == key;
+			if (titleMatch || pathMatch) {
+				var function_name = this.Effects_browser.get_function_from_path(effects[i].key);
+				effects[i].object[function_name](filter_id);
+				return;
+			}
+		}
+	}
+
+	/**
 	 * shows the Fx popup menu anchored above the given button
 	 */
 	show_fx_menu(button_el) {
@@ -870,6 +921,41 @@ class GUI_layers_class {
 				app.GUI.modules['layer/styles'].open('shadow');
 			}
 		}, true);
+
+		// Non-style filters on the active layer: click to re-edit their own dialogs
+		var styleNames = ['stroke', 'inner_glow', 'outer_glow', 'shadow', 'drop-shadow'];
+		var layer = config.layer;
+		if (layer && layer.filters && layer.filters.length) {
+			var titleMap = {
+				'blur': 'Gaussian Blur',
+				'brightness': 'Brightness',
+				'contrast': 'Contrast',
+				'grayscale': 'Grayscale',
+				'hue-rotate': 'Hue Rotate',
+				'saturate': 'Saturate',
+				'sepia': 'Sepia',
+				'invert': 'Invert'
+			};
+			var listed = false;
+			for (var fi = 0; fi < layer.filters.length; fi++) {
+				var f = layer.filters[fi];
+				if (!f || styleNames.indexOf(f.name) !== -1) continue;
+				if (!listed) {
+					var sep = document.createElement('div');
+					sep.className = 'layer_fx_menu_sep';
+					sep.style.cssText = 'height:1px;margin:4px 8px;background:rgba(255,255,255,0.15);';
+					menu.appendChild(sep);
+					listed = true;
+				}
+				(function (filter) {
+					var label = titleMap[filter.name]
+						|| String(filter.name).replace(/[-_]/g, ' ').replace(/\b\w/g, function (c) { return c.toUpperCase(); });
+					addItem(label + '...', function () {
+						_this.open_layer_filter(filter.name, filter.id);
+					}, true);
+				})(f);
+			}
+		}
 
 		document.body.appendChild(menu);
 
@@ -982,7 +1068,7 @@ class GUI_layers_class {
 			return '<svg class="thumb_icon thumb_folder" viewBox="0 0 16 16" fill="currentColor"><path d="M1.5 3.5h5l1.2 1.5H14.5v8H1.5v-9.5z" fill="none" stroke="currentColor" stroke-width="1.2"/><path d="M1.5 6.5h13" stroke="currentColor" stroke-width="1.2"/></svg>';
 		}
 		if (layer.type === 'adjustment') {
-			return '<svg class="thumb_icon thumb_adjustment" viewBox="0 0 16 16" fill="currentColor"><circle cx="8" cy="8" r="6" fill="none" stroke="currentColor" stroke-width="1.3"/><path d="M8 2 A6 6 0 0 1 8 14 Z" fill="currentColor"/></svg>';
+			return get_adjustment_icon(layer.adjustment_type, { className: 'thumb_icon thumb_adjustment' });
 		}
 		if (layer.type === 'text') {
 			return '<svg class="thumb_icon thumb_text" viewBox="0 0 16 16" fill="currentColor"><path d="M2 2h12v3h-1V3H9v10h2v1H5v-1h2V3H3v2H2V2z"/></svg>';

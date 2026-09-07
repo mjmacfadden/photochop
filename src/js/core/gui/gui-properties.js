@@ -149,13 +149,18 @@ class GUI_properties_class {
 			const max = (p.range && p.range[1] !== undefined) ? p.range[1] : 100;
 			const step = (p.step !== undefined) ? p.step : 1;
 			const display = this.format_value(val, step);
+			const defVal = (conf.default_params && conf.default_params[p.name] !== undefined)
+				? conf.default_params[p.name]
+				: p.value;
 			html += `
 				<div class="properties_row" data-param="${p.name}">
 					<label class="trn properties_label" for="prop_${p.name}">${p.title}</label>
 					<input type="range" class="properties_range" id="prop_range_${p.name}"
-						name="${p.name}" min="${min}" max="${max}" step="${step}" value="${val}" />
+						name="${p.name}" min="${min}" max="${max}" step="${step}" value="${val}"
+						data-default="${defVal}" title="Double-click to reset" />
 					<input type="number" class="properties_number" id="prop_${p.name}"
-						name="${p.name}" min="${min}" max="${max}" step="${step}" value="${display}" />
+						name="${p.name}" min="${min}" max="${max}" step="${step}" value="${display}"
+						data-default="${defVal}" title="Double-click to reset" />
 				</div>`;
 		}
 		html += '</div>';
@@ -204,6 +209,22 @@ class GUI_properties_class {
 		const ranges = target.querySelectorAll('.properties_range');
 		const numbers = target.querySelectorAll('.properties_number');
 
+		const reset_to_default = (el) => {
+			const defRaw = el.getAttribute('data-default');
+			if (defRaw === null || defRaw === '') return;
+			const defVal = parseFloat(defRaw);
+			if (isNaN(defVal)) return;
+			const name = el.name;
+			this.snapshot_params(layer_id);
+			const range = target.querySelector(`#prop_range_${name}`);
+			const number = target.querySelector(`#prop_${name}`);
+			const step = parseFloat((range && range.step) || (number && number.step) || 1) || 1;
+			if (range) range.value = defVal;
+			if (number) number.value = this.format_value(defVal, step);
+			this.apply_live(layer_id, name, defVal);
+			this.commit_params(layer_id);
+		};
+
 		ranges.forEach((range) => {
 			range.addEventListener('mousedown', () => {
 				this.snapshot_params(layer_id);
@@ -220,6 +241,10 @@ class GUI_properties_class {
 			});
 			range.addEventListener('change', () => {
 				this.commit_params(layer_id);
+			});
+			range.addEventListener('dblclick', (e) => {
+				e.preventDefault();
+				reset_to_default(range);
 			});
 		});
 
@@ -251,6 +276,10 @@ class GUI_properties_class {
 				if (range) range.value = val;
 				this.apply_live(layer_id, name, val);
 				this.commit_params(layer_id);
+			});
+			number.addEventListener('dblclick', (e) => {
+				e.preventDefault();
+				reset_to_default(number);
 			});
 		});
 	}

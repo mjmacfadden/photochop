@@ -69,3 +69,10 @@ Same attributes as the Type tool options bar (`config.TOOLS` → `text`):
 10. Change Size in Properties → canvas + Type options bar update; change Font in options bar → Properties Font/Weight update.
 11. Point text: Justify disabled in Properties (and options bar). Switch Mode to Paragraph → Justify enabled.
 12. Confirm Color/Swatches tabs and Layers panel still behave as before.
+
+## Window menu
+- **Window → Adjustments** — shows the Adjustments block and focuses the Adjustments tab (icon grid). If that tab is already visible, hides the block.
+- **Window → Properties** — shows the Adjustments block and focuses the Properties tab (Type controls when a text layer is selected; adjustment params when an adjustment is selected).
+- **Window → Swatches** / **Colors** — same pattern for the Color/Swatches tabbed block.
+- Sidebar tab headers (Adjustments | Properties) always switch panes without collapsing the panel.
+

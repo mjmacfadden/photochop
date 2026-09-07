@@ -1942,6 +1942,8 @@ body.tool-pan.pan-dragging #canvas_minipaint{
 }
 .adjustment_btn svg{
 	display: block;
+	width: 18px;
+	height: 18px;
 	pointer-events: none;
 }
 
@@ -2396,6 +2398,7 @@ body.tool-pan.pan-dragging #canvas_minipaint{
 	background-color: #2b2b2b;
 	box-sizing: border-box;
 	cursor: pointer;
+	overflow: hidden;
 }
 .layers_list .layer_thumb.active_thumb{
 	border-color: #ffffff;
@@ -2406,6 +2409,8 @@ body.tool-pan.pan-dragging #canvas_minipaint{
 	width: 14px;
 	height: 14px;
 	vertical-align: middle;
+	flex-shrink: 0;
+	display: block;
 }
 .layers_list .thumb_text{
 	color: #cccccc;

@@ -863,7 +863,24 @@ const menuDefinition = [
 				parameter: 'adjustments',
 				check: () => {
 					const node = document.querySelector('.sidebar_right .adjustments.block');
-					return node != null && !node.classList.contains('hidden');
+					const pane = document.getElementById('toggle_adjustments');
+					const wrapper = document.getElementById('toggle_adjustments_wrapper');
+					return node != null && !node.classList.contains('hidden')
+						&& (!wrapper || !wrapper.classList.contains('hidden'))
+						&& pane != null && !pane.classList.contains('hidden');
+				}
+			},
+			{
+				name: 'Properties',
+				target: 'window/toggle.toggle',
+				parameter: 'properties',
+				check: () => {
+					const node = document.querySelector('.sidebar_right .adjustments.block');
+					const pane = document.getElementById('toggle_properties');
+					const wrapper = document.getElementById('toggle_adjustments_wrapper');
+					return node != null && !node.classList.contains('hidden')
+						&& (!wrapper || !wrapper.classList.contains('hidden'))
+						&& pane != null && !pane.classList.contains('hidden');
 				}
 			},
 			{
@@ -872,7 +889,22 @@ const menuDefinition = [
 				parameter: 'colors',
 				check: () => {
 					const node = document.querySelector('.sidebar_right .colors.block');
-					return node != null && !node.classList.contains('hidden');
+					const pane = document.getElementById('toggle_colors');
+					return node != null && !node.classList.contains('hidden')
+						&& pane != null && !pane.classList.contains('hidden');
+				}
+			},
+			{
+				name: 'Swatches',
+				target: 'window/toggle.toggle',
+				parameter: 'swatches',
+				check: () => {
+					const node = document.querySelector('.sidebar_right .colors.block');
+					const pane = document.getElementById('toggle_swatches');
+					const wrapper = document.getElementById('toggle_colors_wrapper');
+					return node != null && !node.classList.contains('hidden')
+						&& (!wrapper || !wrapper.classList.contains('hidden'))
+						&& pane != null && !pane.classList.contains('hidden');
 				}
 			},
 			{
