@@ -638,10 +638,7 @@ class Crop_class extends Base_tools_class {
 		if (this.straighten_line) {
 			var line = this.straighten_line;
 			this.straighten_line = null;
-			if (mouse.click_valid == false) {
-				config.need_render = true;
-				return;
-			}
+			// straighten_line implies mousedown already passed click_valid (same pattern as Move in-progress resize).
 			var len = Math.hypot(line.x2 - line.x1, line.y2 - line.y1);
 			if (len < 4) {
 				// Too short — cancel line, stay armed
