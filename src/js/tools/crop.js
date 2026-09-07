@@ -806,7 +806,7 @@ class Crop_class extends Base_tools_class {
 			this.straighten_line = null;
 			this.sync_selection_settings();
 			if (this.straighten_mode) {
-				alertify.message('Draw a line along the horizon or edge to straighten');
+				alertify.success('Draw a line along the horizon or edge to straighten');
 			}
 			return;
 		}
