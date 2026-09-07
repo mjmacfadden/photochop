@@ -310,6 +310,9 @@ class Base_layers_class {
 		if (config.need_render == true) {
 			const cache = this.Composite_cache;
 			const zoom_changed = this.last_zoom != config.ZOOM;
+			// Capture before clearing — WebGL path reuses the last offscreen
+			// composite on viewport-only pan/zoom (same idea as documentCanvas).
+			const viewport_only = cache.viewportOnly === true;
 			// A direct write to config.need_render is an old, unclassified
 			// invalidation. It must stay conservative. Explicit invalidations can
 			// safely request a viewport-only frame.
@@ -386,17 +389,25 @@ class Base_layers_class {
 				// Apply zoom transform to main canvas for overlays
 				zoomView.apply();
 
-				// WebGL renders layers to its offscreen canvas
-				renderer.clear();
-				renderer.begin_frame();
-				renderer.render_layers(
-					layers_sorted,
-					config.ZOOM,
-					{ x: 0, y: 0 },
-					config.WIDTH,
-					config.HEIGHT
-				);
-				renderer.end_frame();
+				// Viewport-only: reuse last full-scale WebGL composite (pan/zoom).
+				var skip_webgl_rebuild = viewport_only
+					&& !interactive_quality
+					&& typeof renderer.has_cached_composite === 'function'
+					&& renderer.has_cached_composite();
+
+				if (!skip_webgl_rebuild) {
+					// WebGL renders layers to its offscreen canvas
+					renderer.clear();
+					renderer.begin_frame();
+					renderer.render_layers(
+						layers_sorted,
+						config.ZOOM,
+						{ x: 0, y: 0 },
+						config.WIDTH,
+						config.HEIGHT
+					);
+					renderer.end_frame();
+				}
 
 				// Composite WebGL output onto main canvas
 				// The WebGL canvas contains the composited layers at document
