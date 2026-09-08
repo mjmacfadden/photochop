@@ -1,7 +1,7 @@
 # Vantage Point Roadmap — Dethroning Photopea
 
 **Product:** Vantage Point / PhotoChop (package `vantage-point`)  
-**Repo:** https://github.com/mjmacfadden/photochop  
+**Repo:** https://github.com/mjmacfadden/vantage-point  
 **Upstream:** heavily forked miniPaint (MIT)  
 **Audience:** Mike + Tom (founder/engineer working doc)  
 **Date:** 2026-09-01 (America/Chicago)  

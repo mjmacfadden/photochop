@@ -1,9 +1,8 @@
 # Vantage Point
 
 Vantage Point is a client-side browser image editor with strong PSD support via ag-psd.
-The GitHub repo and codename is PhotoChop; the public product name is Vantage Point.
-
 Your files stay on your device. Editing runs in the browser.
+
 
 ## Based on miniPaint
 
@@ -40,7 +39,7 @@ Open via the dev server, or serve the repo root statically (e.g. Live Server) af
 
 ## Repository
 
-https://github.com/mjmacfadden/photochop
+https://github.com/mjmacfadden/vantage-point
 
 ## License
 
