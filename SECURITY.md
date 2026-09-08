@@ -11,7 +11,7 @@
 
 Please report security issues privately via GitHub Security Advisories on this repository:
 
-https://github.com/mjmacfadden/vantage-point/security/advisories
+https://github.com/mjmacfadden/visteras/security/advisories
 
 If Advisories are unavailable, use a private maintainer contact path (GitHub security report / private issue to maintainers). Do not file a public issue with exploit details.
 

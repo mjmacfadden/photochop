@@ -1,6 +1,6 @@
-# Vantage Point
+# Visteras
 
-Vantage Point is a client-side browser image editor with strong PSD support via ag-psd.
+Visteras is a client-side browser image editor with strong PSD support via ag-psd.
 Your files stay on your device. Editing runs in the browser.
 
 
@@ -39,7 +39,7 @@ Open via the dev server, or serve the repo root statically (e.g. Live Server) af
 
 ## Repository
 
-https://github.com/mjmacfadden/vantage-point
+https://github.com/mjmacfadden/visteras
 
 ## License
 

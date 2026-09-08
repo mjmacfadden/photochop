@@ -1,8 +1,8 @@
 {
-  "name": "vantage-point",
+  "name": "visteras",
   "version": "1.0.0",
   "author": "Based on miniPaint by Vilius L.",
-  "description": "Vantage Point - Online image editor.",
+  "description": "Visteras - Online image editor.",
   "keywords": [
     "canvas",
     "drawing",
