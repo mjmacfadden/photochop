@@ -8,6 +8,7 @@ import Effects_shadow_class from '../effects/common/shadow.js';
 import Effects_outer_glow_class from '../effects/common/outer_glow.js';
 import Effects_inner_glow_class from '../effects/common/inner_glow.js';
 import Effects_stroke_class from '../effects/common/stroke.js';
+import Effects_color_overlay_class from '../effects/common/color_overlay.js';
 
 class Layer_styles_class {
 
@@ -20,6 +21,7 @@ class Layer_styles_class {
 		this.Effects_outer_glow = new Effects_outer_glow_class();
 		this.Effects_inner_glow = new Effects_inner_glow_class();
 		this.Effects_stroke = new Effects_stroke_class();
+		this.Effects_color_overlay = new Effects_color_overlay_class();
 
 		this.activeTab = 'shadow';
 		this.layer_id = null;
@@ -42,6 +44,12 @@ class Layer_styles_class {
 				enabled: false,
 				id: null,
 				params: { size: 3, position: 'outside', opacity: 100, color: '#000000' }
+			},
+			color_overlay: {
+				name: 'Color Overlay',
+				enabled: false,
+				id: null,
+				params: { opacity: 100, color: '#ff0000' }
 			},
 			inner_glow: {
 				name: 'Inner Glow',
@@ -122,7 +130,7 @@ class Layer_styles_class {
 		};
 
 		// Disable existing style filters while capturing clean preview base canvas
-		this.Base_layers.disable_filter(['stroke', 'inner_glow', 'outer_glow', 'shadow', 'drop-shadow']);
+		this.Base_layers.disable_filter(['stroke', 'color_overlay', 'inner_glow', 'outer_glow', 'shadow', 'drop-shadow']);
 		this.POP.show(settings);
 		this.Base_layers.disable_filter(null);
 	}
@@ -147,6 +155,7 @@ class Layer_styles_class {
 	generate_sidebar_items() {
 		const items = [
 			{ key: 'stroke', title: 'Stroke' },
+			{ key: 'color_overlay', title: 'Color Overlay' },
 			{ key: 'inner_glow', title: 'Inner Glow' },
 			{ key: 'outer_glow', title: 'Outer Glow' },
 			{ key: 'shadow', title: 'Drop Shadow' }
@@ -199,6 +208,20 @@ class Layer_styles_class {
 				<div class="ls_row">
 					<span class="ls_label">Color:</span>
 					<input type="color" id="ls_stroke_color" value="${style.params.color || '#000000'}" />
+				</div>
+			`;
+		} else if (effectKey === 'color_overlay') {
+			const opacity = style.params.opacity ?? 100;
+			fields = `
+				<div class="ls_row">
+					<span class="ls_label">Opacity:</span>
+					<input type="range" class="ls_range" id="ls_color_overlay_opacity" min="0" max="100" value="${opacity}" data-default="100" title="Double-click to reset" />
+					<input type="number" class="ls_num" id="ls_num_color_overlay_opacity" min="0" max="100" value="${opacity}" data-default="100" title="Double-click to reset" />
+					<span class="ls_unit">%</span>
+				</div>
+				<div class="ls_row">
+					<span class="ls_label">Color:</span>
+					<input type="color" id="ls_color_overlay_color" value="${style.params.color || '#ff0000'}" />
 				</div>
 			`;
 		} else if (effectKey === 'inner_glow') {
@@ -449,6 +472,15 @@ class Layer_styles_class {
 				const color = colorEl?.value || '#000000';
 				style.params = { size, position, opacity, color };
 			}
+		} else if (k === 'color_overlay') {
+			const opacityEl = popup.querySelector('#ls_color_overlay_opacity');
+			const numOpacityEl = popup.querySelector('#ls_num_color_overlay_opacity');
+			const colorEl = popup.querySelector('#ls_color_overlay_color');
+			if (opacityEl || numOpacityEl || colorEl) {
+				const opacity = parseInt((numOpacityEl ? numOpacityEl.value : opacityEl?.value) ?? 100);
+				const color = colorEl?.value || '#ff0000';
+				style.params = { opacity, color };
+			}
 		} else if (k === 'inner_glow') {
 			const valueEl = popup.querySelector('#ls_inner_glow_value');
 			const numValueEl = popup.querySelector('#ls_num_inner_glow_value');
@@ -530,7 +562,7 @@ class Layer_styles_class {
 			: config.layer;
 		if (!layer) return;
 
-		const styleNames = ['stroke', 'inner_glow', 'outer_glow', 'shadow', 'drop-shadow'];
+		const styleNames = ['stroke', 'color_overlay', 'inner_glow', 'outer_glow', 'shadow', 'drop-shadow'];
 		const originalFilters = layer.filters;
 		const nonStyle = (originalFilters || []).filter((f) => {
 			if (!f) return false;
@@ -538,7 +570,7 @@ class Layer_styles_class {
 			return !styleNames.includes(n);
 		});
 		const previewFilters = nonStyle.slice();
-		for (const name of ['stroke', 'inner_glow', 'outer_glow', 'shadow']) {
+		for (const name of ['color_overlay', 'stroke', 'inner_glow', 'outer_glow', 'shadow']) {
 			const style = this.styles[name];
 			if (style && style.enabled) {
 				previewFilters.push({
@@ -601,7 +633,7 @@ class Layer_styles_class {
 		if (!targetLayer) return;
 
 		// List of layer style filter names
-		const styleNames = ['stroke', 'inner_glow', 'outer_glow', 'shadow'];
+		const styleNames = ['color_overlay', 'stroke', 'inner_glow', 'outer_glow', 'shadow'];
 
 		// Remove existing layer style filters
 		let newFilters = (targetLayer.filters || []).filter(

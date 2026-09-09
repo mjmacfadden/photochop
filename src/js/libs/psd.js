@@ -367,7 +367,7 @@ function convert_psd_layer(psdLayer, id, docWidth, docHeight) {
 }
 
 /**
- * Converts PSD layer effects (Drop Shadow, Outer Glow, Inner Glow, Stroke) into Vantage Point filters.
+ * Converts PSD layer effects (Drop Shadow, Outer Glow, Inner Glow, Stroke, Color Overlay) into Vantage Point filters.
  */
 function convert_psd_effects_to_filters(psdLayer) {
 	const filters = [];
@@ -464,6 +464,25 @@ function convert_psd_effects_to_filters(psdLayer) {
 				params: {
 					size: size,
 					position: position,
+					opacity: opacity,
+					color: color,
+				}
+			});
+		}
+	}
+
+	// 5. Color Overlay (solidFill)
+	if (psdLayer.effects.solidFill && Array.isArray(psdLayer.effects.solidFill)) {
+		for (const fill of psdLayer.effects.solidFill) {
+			if (fill.enabled === false) continue;
+			let opacity = fill.opacity != null ? fill.opacity : 1;
+			if (opacity <= 1) opacity = Math.round(opacity * 100);
+			const color = parse_psd_color(fill.color) || '#ff0000';
+
+			filters.push({
+				id: 'filter_' + Math.random().toString(36).substr(2, 9),
+				name: 'color_overlay',
+				params: {
 					opacity: opacity,
 					color: color,
 				}
@@ -1190,7 +1209,7 @@ function export_layer_to_psd(layer, docWidth, docHeight) {
 		}
 	}
 
-	// Export layer effects (Drop Shadow, Outer/Inner Glow, Stroke)
+	// Export layer effects (Drop Shadow, Outer/Inner Glow, Stroke, Color Overlay)
 	if (layer.filters && layer.filters.length > 0) {
 		for (const f of layer.filters) {
 			const p = f.params || {};
@@ -1252,6 +1271,18 @@ function export_layer_to_psd(layer, docWidth, docHeight) {
 					size: { units: 'Pixels', value: p.size != null ? p.size : 3 },
 					position: position,
 					fillType: 'color',
+					opacity: (p.opacity != null ? p.opacity : 100) / 100,
+					color: rgb,
+				});
+			} else if (fname === 'color_overlay') {
+				if (!psdLayer.effects) psdLayer.effects = {};
+				if (!psdLayer.effects.solidFill) psdLayer.effects.solidFill = [];
+				const rgb = hex_to_rgb(p.color || '#ff0000');
+				psdLayer.effects.solidFill.push({
+					enabled: !f.disabled,
+					present: true,
+					showInDialog: true,
+					blendMode: 'normal',
 					opacity: (p.opacity != null ? p.opacity : 100) / 100,
 					color: rgb,
 				});

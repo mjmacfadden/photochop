@@ -89,9 +89,10 @@ var GPU_LAYER_FILTER_NAMES = {
 	'blur': true,
 	'shadow': true,
 	'outer_glow': true,
-	// stroke / inner_glow bake via Canvas2D multipass (not a single CSS filter)
+	// stroke / inner_glow / color_overlay bake via Canvas2D multipass (not a single CSS filter)
 	'stroke': true,
 	'inner_glow': true,
+	'color_overlay': true,
 };
 
 // Filters that expand alpha / silhouette — unsafe as a source-atop clip base on GPU
@@ -623,7 +624,7 @@ class WebGL_renderer_class {
 			}
 			var name = filter.name === 'drop-shadow' ? 'shadow' : filter.name;
 			// Multipass effects — not part of the CSS filter string
-			if (name === 'stroke' || name === 'inner_glow') {
+			if (name === 'stroke' || name === 'inner_glow' || name === 'color_overlay') {
 				continue;
 			}
 			var params = filter.params || {};
@@ -687,7 +688,7 @@ class WebGL_renderer_class {
 	}
 
 	/**
-	 * Collect stroke / inner_glow filters for Canvas2D multipass bake.
+	 * Collect stroke / inner_glow / color_overlay filters for Canvas2D multipass bake.
 	 * @returns {{effects: Object[], signature: string, pad: number}|null}
 	 */
 	_layer_effect_filters(layer, disabled_filter_id) {
@@ -718,6 +719,9 @@ class WebGL_renderer_class {
 			} else if (name === 'inner_glow') {
 				effects.push(filter);
 				sig.push('inner_glow:' + JSON.stringify(params));
+			} else if (name === 'color_overlay') {
+				effects.push(filter);
+				sig.push('color_overlay:' + JSON.stringify(params));
 			}
 		}
 		if (!effects.length) return null;
@@ -1631,7 +1635,7 @@ class WebGL_renderer_class {
 	}
 
 	/**
-	 * Bake stroke / inner_glow onto a layer-local source so the WebGL stack
+	 * Bake stroke / inner_glow / color_overlay onto a layer-local source so the WebGL stack
 	 * can keep compositing. Algorithms mirror Effects_stroke / Effects_inner_glow
 	 * but operate in texture space (no document x/y).
 	 * @param {HTMLCanvasElement|HTMLImageElement} source
@@ -1677,7 +1681,9 @@ class WebGL_renderer_class {
 			var filter = effects[i];
 			var name = filter.name;
 			var params = filter.params || {};
-			if (name === 'stroke') {
+			if (name === 'color_overlay') {
+				this._bake_color_overlay_onto(ctx, sil, params, outW, outH);
+			} else if (name === 'stroke') {
 				this._bake_stroke_onto(ctx, sil, params, outW, outH);
 			} else if (name === 'inner_glow') {
 				this._bake_inner_glow_onto(ctx, sil, params, outW, outH);
@@ -1701,6 +1707,26 @@ class WebGL_renderer_class {
 			return 'rgba(' + r + ', ' + g + ', ' + b + ', ' + alpha + ')';
 		}
 		return color || fallback || ('rgba(0,0,0,' + alpha + ')');
+	}
+
+	_bake_color_overlay_onto(ctx, sil, params, w, h) {
+		var opacity = (params.opacity !== undefined) ? Number(params.opacity) : 100;
+		if (!isFinite(opacity) || opacity <= 0) return;
+		var color = this._effect_css_color(params.color || '#ff0000', opacity, 'rgba(255,0,0,1)');
+
+		var overlayCanvas = document.createElement('canvas');
+		overlayCanvas.width = w;
+		overlayCanvas.height = h;
+		var octx = overlayCanvas.getContext('2d');
+		octx.drawImage(sil, 0, 0);
+		octx.globalCompositeOperation = 'source-in';
+		octx.fillStyle = color;
+		octx.fillRect(0, 0, w, h);
+
+		ctx.save();
+		ctx.filter = 'none';
+		ctx.drawImage(overlayCanvas, 0, 0);
+		ctx.restore();
 	}
 
 	_bake_stroke_onto(ctx, sil, params, w, h) {

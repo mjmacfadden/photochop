@@ -859,7 +859,7 @@ class GUI_layers_class {
 	 * open their own Effects dialog so they can be re-edited non-destructively.
 	 */
 	open_layer_filter(filterName, filter_id) {
-		var styleEffects = ['stroke', 'inner_glow', 'outer_glow', 'shadow', 'drop-shadow'];
+		var styleEffects = ['stroke', 'color_overlay', 'inner_glow', 'outer_glow', 'shadow', 'drop-shadow'];
 		if (styleEffects.indexOf(filterName) !== -1) {
 			if (app.GUI && app.GUI.modules && app.GUI.modules['layer/styles']) {
 				var openName = filterName === 'drop-shadow' ? 'shadow' : filterName;
@@ -932,6 +932,12 @@ class GUI_layers_class {
 			}
 		}, true);
 
+		addItem('Color Overlay...', () => {
+			if (app.GUI && app.GUI.modules && app.GUI.modules['layer/styles']) {
+				app.GUI.modules['layer/styles'].open('color_overlay');
+			}
+		}, true);
+
 		addItem('Inner Glow...', () => {
 			if (app.GUI && app.GUI.modules && app.GUI.modules['layer/styles']) {
 				app.GUI.modules['layer/styles'].open('inner_glow');
@@ -951,7 +957,7 @@ class GUI_layers_class {
 		}, true);
 
 		// Non-style filters on the active layer: click to re-edit their own dialogs
-		var styleNames = ['stroke', 'inner_glow', 'outer_glow', 'shadow', 'drop-shadow'];
+		var styleNames = ['stroke', 'color_overlay', 'inner_glow', 'outer_glow', 'shadow', 'drop-shadow'];
 		var layer = config.layer;
 		if (layer && layer.filters && layer.filters.length) {
 			var titleMap = {
@@ -1240,6 +1246,7 @@ class GUI_layers_class {
 							'shadow': 'Drop Shadow',
 							'drop-shadow': 'Drop Shadow',
 							'stroke': 'Stroke',
+							'color_overlay': 'Color Overlay',
 							'inner_glow': 'Inner Glow',
 							'outer_glow': 'Outer Glow'
 						};
