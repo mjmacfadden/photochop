@@ -86,7 +86,7 @@ class GUI_shortcuts_class {
 				const restoreTool = this.alt_eyedropper_tool;
 				this.alt_eyedropper_tool = null;
 				this._restore_eyedropper_pending = false;
-				app.GUI.GUI_tools.activate_tool(restoreTool, { skip_history: true });
+				app.GUI.GUI_tools.activate_tool(restoreTool, { skip_history: true, hot_swap: true });
 			}
 		});
 		window.addEventListener('blur', () => {
@@ -101,7 +101,7 @@ class GUI_shortcuts_class {
 				const restoreTool = this.alt_eyedropper_tool;
 				this.alt_eyedropper_tool = null;
 				this._restore_eyedropper_pending = false;
-				app.GUI.GUI_tools.activate_tool(restoreTool, { skip_history: true });
+				app.GUI.GUI_tools.activate_tool(restoreTool, { skip_history: true, hot_swap: true });
 			}
 		});
 
@@ -299,7 +299,7 @@ class GUI_shortcuts_class {
 				if (this.space_pan_tool == null && app.GUI && app.GUI.GUI_tools) {
 					this.abort_active_paint_stroke();
 					this.space_pan_tool = app.GUI.GUI_tools.active_tool;
-					app.GUI.GUI_tools.activate_tool('pan', { skip_history: true });
+					app.GUI.GUI_tools.activate_tool('pan', { skip_history: true, hot_swap: true });
 				}
 				return;
 			}
@@ -474,7 +474,7 @@ class GUI_shortcuts_class {
 			this.space_pan_tool = null;
 			event.preventDefault();
 			event.stopImmediatePropagation();
-			app.GUI.GUI_tools.activate_tool(restore_tool, { skip_history: true });
+			app.GUI.GUI_tools.activate_tool(restore_tool, { skip_history: true, hot_swap: true });
 		}, true);
 	}
 
@@ -491,7 +491,7 @@ class GUI_shortcuts_class {
 				if (this.alt_eyedropper_tool == null) {
 					if (config.mouse && config.mouse.is_drag) return;
 					this.alt_eyedropper_tool = currentTool;
-					app.GUI.GUI_tools.activate_tool('pick_color', { skip_history: true });
+					app.GUI.GUI_tools.activate_tool('pick_color', { skip_history: true, hot_swap: true });
 				}
 			}
 		} else {
@@ -502,7 +502,7 @@ class GUI_shortcuts_class {
 					const restoreTool = this.alt_eyedropper_tool;
 					this.alt_eyedropper_tool = null;
 					this._restore_eyedropper_pending = false;
-					app.GUI.GUI_tools.activate_tool(restoreTool, { skip_history: true });
+					app.GUI.GUI_tools.activate_tool(restoreTool, { skip_history: true, hot_swap: true });
 				}
 			}
 		}
