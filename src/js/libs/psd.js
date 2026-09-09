@@ -478,6 +478,9 @@ function convert_psd_effects_to_filters(psdLayer) {
 			let opacity = fill.opacity != null ? fill.opacity : 1;
 			if (opacity <= 1) opacity = Math.round(opacity * 100);
 			const color = parse_psd_color(fill.color) || '#ff0000';
+			const blendMode = fill.blendMode
+				? (PSD_TO_COMPOSITION[fill.blendMode] || 'source-over')
+				: 'source-over';
 
 			filters.push({
 				id: 'filter_' + Math.random().toString(36).substr(2, 9),
@@ -485,6 +488,7 @@ function convert_psd_effects_to_filters(psdLayer) {
 				params: {
 					opacity: opacity,
 					color: color,
+					blendMode: blendMode,
 				}
 			});
 		}
@@ -1278,11 +1282,12 @@ function export_layer_to_psd(layer, docWidth, docHeight) {
 				if (!psdLayer.effects) psdLayer.effects = {};
 				if (!psdLayer.effects.solidFill) psdLayer.effects.solidFill = [];
 				const rgb = hex_to_rgb(p.color || '#ff0000');
+				const blendMode = COMPOSITION_TO_PSD[p.blendMode] || 'normal';
 				psdLayer.effects.solidFill.push({
 					enabled: !f.disabled,
 					present: true,
 					showInDialog: true,
-					blendMode: 'normal',
+					blendMode: blendMode,
 					opacity: (p.opacity != null ? p.opacity : 100) / 100,
 					color: rgb,
 				});

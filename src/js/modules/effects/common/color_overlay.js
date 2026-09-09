@@ -29,7 +29,15 @@ class Effects_color_overlay_class extends Effects_common_class {
 
 		var filter = this.Base_layers.find_filter_by_id(filter_id, 'color_overlay');
 
+		var blend_modes = [
+			"source-over", "darken", "multiply", "color-burn",
+			"lighten", "screen", "color-dodge", "lighter",
+			"overlay", "soft-light", "hard-light",
+			"difference", "exclusion",
+			"hue", "saturation", "color", "luminosity",
+		];
 		var params = [
+			{name: "blendMode", title: "Blend Mode:", value: filter.blendMode ??= "source-over", values: blend_modes},
 			{name: "opacity", title: "Opacity:", value: filter.opacity ??= 100, range: [0, 100]},
 			{name: "color", title: "Color:", value: filter.color ??= "#ff0000", type: 'color'},
 		];
@@ -117,9 +125,11 @@ class Effects_color_overlay_class extends Effects_common_class {
 		octx.fillStyle = color;
 		octx.fillRect(0, 0, w, h);
 
-		// 3. Composite over already-drawn layer
+		// 3. Composite over already-drawn layer (Photoshop Color Overlay blend mode)
+		var blendMode = data.params.blendMode || 'source-over';
 		ctx.save();
 		ctx.filter = 'none';
+		ctx.globalCompositeOperation = blendMode;
 		ctx.drawImage(overlayCanvas, 0, 0);
 		ctx.restore();
 	}

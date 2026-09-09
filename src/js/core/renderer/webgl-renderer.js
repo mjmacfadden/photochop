@@ -1713,6 +1713,7 @@ class WebGL_renderer_class {
 		var opacity = (params.opacity !== undefined) ? Number(params.opacity) : 100;
 		if (!isFinite(opacity) || opacity <= 0) return;
 		var color = this._effect_css_color(params.color || '#ff0000', opacity, 'rgba(255,0,0,1)');
+		var blendMode = params.blendMode || 'source-over';
 
 		var overlayCanvas = document.createElement('canvas');
 		overlayCanvas.width = w;
@@ -1725,6 +1726,7 @@ class WebGL_renderer_class {
 
 		ctx.save();
 		ctx.filter = 'none';
+		ctx.globalCompositeOperation = blendMode;
 		ctx.drawImage(overlayCanvas, 0, 0);
 		ctx.restore();
 	}

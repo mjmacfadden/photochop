@@ -49,7 +49,7 @@ class Layer_styles_class {
 				name: 'Color Overlay',
 				enabled: false,
 				id: null,
-				params: { opacity: 100, color: '#ff0000' }
+				params: { opacity: 100, color: '#ff0000', blendMode: 'source-over' }
 			},
 			inner_glow: {
 				name: 'Inner Glow',
@@ -212,7 +212,36 @@ class Layer_styles_class {
 			`;
 		} else if (effectKey === 'color_overlay') {
 			const opacity = style.params.opacity ?? 100;
+			const blend = style.params.blendMode || 'source-over';
+			const blendOpts = [
+				{ value: 'source-over', label: 'Normal' },
+				{ value: 'darken', label: 'Darken' },
+				{ value: 'multiply', label: 'Multiply' },
+				{ value: 'color-burn', label: 'Color Burn' },
+				{ value: 'lighten', label: 'Lighten' },
+				{ value: 'screen', label: 'Screen' },
+				{ value: 'color-dodge', label: 'Color Dodge' },
+				{ value: 'lighter', label: 'Lighter' },
+				{ value: 'overlay', label: 'Overlay' },
+				{ value: 'soft-light', label: 'Soft Light' },
+				{ value: 'hard-light', label: 'Hard Light' },
+				{ value: 'difference', label: 'Difference' },
+				{ value: 'exclusion', label: 'Exclusion' },
+				{ value: 'hue', label: 'Hue' },
+				{ value: 'saturation', label: 'Saturation' },
+				{ value: 'color', label: 'Color' },
+				{ value: 'luminosity', label: 'Luminosity' },
+			];
+			const blendOptionsHtml = blendOpts.map(o =>
+				`<option value="${o.value}" ${blend === o.value ? 'selected' : ''}>${o.label}</option>`
+			).join('');
 			fields = `
+				<div class="ls_row">
+					<span class="ls_label">Blend Mode:</span>
+					<select id="ls_color_overlay_blendMode">
+						${blendOptionsHtml}
+					</select>
+				</div>
 				<div class="ls_row">
 					<span class="ls_label">Opacity:</span>
 					<input type="range" class="ls_range" id="ls_color_overlay_opacity" min="0" max="100" value="${opacity}" data-default="100" title="Double-click to reset" />
@@ -476,10 +505,12 @@ class Layer_styles_class {
 			const opacityEl = popup.querySelector('#ls_color_overlay_opacity');
 			const numOpacityEl = popup.querySelector('#ls_num_color_overlay_opacity');
 			const colorEl = popup.querySelector('#ls_color_overlay_color');
-			if (opacityEl || numOpacityEl || colorEl) {
+			const blendEl = popup.querySelector('#ls_color_overlay_blendMode');
+			if (opacityEl || numOpacityEl || colorEl || blendEl) {
 				const opacity = parseInt((numOpacityEl ? numOpacityEl.value : opacityEl?.value) ?? 100);
 				const color = colorEl?.value || '#ff0000';
-				style.params = { opacity, color };
+				const blendMode = blendEl?.value || 'source-over';
+				style.params = { opacity, color, blendMode };
 			}
 		} else if (k === 'inner_glow') {
 			const valueEl = popup.querySelector('#ls_inner_glow_value');
