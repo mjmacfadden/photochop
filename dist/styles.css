@@ -2376,7 +2376,7 @@ body.tool-pan.pan-dragging #canvas_minipaint{
 	transition: opacity 0.1s ease;
 }
 .layers_list .visibility:hover{
-	opacity: 0.35;
+	opacity: 0.45;
 }
 .layers_list .visibility:after{
 	position: absolute;
@@ -2387,9 +2387,12 @@ body.tool-pan.pan-dragging #canvas_minipaint{
 	right: 0;
 	background: url('../images/icons/view.svg') no-repeat center center;
 	background-size: 16px auto;
-	filter: invert(0.7);
+	filter: invert(1);
 }
-.layers_list .visible{ opacity: 0.8; }
+/* Compound selector beats base .visibility { opacity: 0 } so visible layers always show the eye. */
+.layers_list .visibility.visible{ opacity: 0.9; }
+.layers_list .visibility.visible:hover{ opacity: 1; }
+.layers_list .visible{ opacity: 0.9; }
 .layers_list .visible:hover{ opacity: 1; }
 .layers_list .layer_thumb{
 	flex-shrink: 0;
