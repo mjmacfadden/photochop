@@ -683,7 +683,7 @@ class File_open_class {
 			json.info.version = "3.0.0";
 		}
 
-		const isLegacyMiniPaint = json.info.about && json.info.about.includes('miniPaint') && !json.info.about.includes('PhotoChop') && !json.info.about.includes('Vantage');
+		const isLegacyMiniPaint = json.info.about && json.info.about.includes('miniPaint') && !json.info.about.includes('PhotoChop') && !json.info.about.includes('Vantage') && !json.info.about.includes('Visteras');
 
 		//migration
 		if(isLegacyMiniPaint && json.image_data && !json.data && semver_compare(json.info.version, '4.0.0') < 0) {

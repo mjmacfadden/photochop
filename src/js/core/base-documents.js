@@ -491,9 +491,9 @@ class Base_documents_class {
 			json.info.version = "3.0.0";
 		}
 
-		const isLegacyMiniPaint = json.info.about && json.info.about.includes('miniPaint') && !json.info.about.includes('PhotoChop') && !json.info.about.includes('Vantage');
+		const isLegacyMiniPaint = json.info.about && json.info.about.includes('miniPaint') && !json.info.about.includes('PhotoChop') && !json.info.about.includes('Vantage') && !json.info.about.includes('Visteras');
 
-		// Migrations - ONLY run on actual legacy miniPaint files, never on PhotoChop / VantagePoint 1.x files
+		// Migrations - ONLY run on actual legacy miniPaint files, never on PhotoChop / Vantage / Visteras files
 		if (isLegacyMiniPaint && json.image_data && !json.data && semver_compare(json.info.version, '4.0.0') < 0) {
 			for (let i in json.layers) {
 				json.layers[i].id = (parseInt(i) + 1);

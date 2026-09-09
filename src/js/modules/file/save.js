@@ -105,7 +105,7 @@ class File_save_class {
 						description: 'Photoshop Document',
 						accept: { 'image/vnd.adobe.photoshop': ['.psd'] },
 					}] : [{
-						description: 'PhotoChop JSON',
+						description: 'Visteras Studio JSON',
 						accept: { 'application/json': ['.json'] },
 					}],
 				});
@@ -774,7 +774,7 @@ class File_save_class {
 		export_data.info = {
 			width: config.WIDTH,
 			height: config.HEIGHT,
-			about: 'Image data with multi-layers. Can be opened using Vantage Point',
+			about: 'Image data with multi-layers. Can be opened using Visteras Studio',
 			date: today,
 			version: VERSION,
 			layer_active: config.layer ? config.layer.id : 1,
