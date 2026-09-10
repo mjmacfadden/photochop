@@ -412,7 +412,7 @@ class GUI_tools_class {
 
 	async activate_tool(key, options = {}) {
 		return app.State.do_action(
-			new app.Actions.Activate_tool_action(key),
+			new app.Actions.Activate_tool_action(key, false, options),
 			options
 		);
 	}

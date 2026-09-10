@@ -94,6 +94,7 @@ class Base_documents_class {
 				id: 1,
 				name: transp ? 'Layer 1' : 'Background',
 				locked: !transp,
+				visible: true,
 				type: 'image',
 				link: bgCanvas,
 				data: bgCanvas.toDataURL(),
@@ -220,6 +221,9 @@ class Base_documents_class {
 					} else if (l.data instanceof HTMLCanvasElement || l.data instanceof HTMLImageElement) {
 						l.link = l.data;
 					}
+				}
+				if (l.visible === undefined || l.visible === null) {
+					l.visible = true;
 				}
 				if (!l.filters) {
 					l.filters = [];
@@ -403,6 +407,9 @@ class Base_documents_class {
 					data: data,
 					filters: [],
 					order: 1,
+					visible: true,
+					opacity: 100,
+					locked: false,
 					width: w,
 					height: h,
 					width_original: w,
@@ -855,6 +862,7 @@ class Base_documents_class {
 				id: 1,
 				name: 'Background',
 				locked: true,
+				visible: true,
 				type: 'image',
 				link: bgCanvas,
 				data: bgCanvas.toDataURL(),

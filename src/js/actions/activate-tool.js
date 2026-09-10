@@ -7,13 +7,15 @@ export class Activate_tool_action extends Base_action {
 	/**
 	 * Groups multiple actions together in the undo/redo history, runs them all at once.
 	 */
-	constructor(key, ignore_same_tool) {
+	constructor(key, ignore_same_tool, options = {}) {
 		super('activate_tool', 'Activate Tool');
 		this.ignore_same_tool = !!ignore_same_tool;
 		this.key = key;
 		this.old_key = null;
 		this.tool_leave_actions = null;
 		this.tool_activate_actions = null;
+		// Hot-swap / temporary overrides (Alt eyedropper, Space pan): keep prior options bar.
+		this.hot_swap = !!(options && (options.hot_swap || options.skip_options_bar));
 	}
 
 	async do() {
@@ -109,8 +111,12 @@ export class Activate_tool_action extends Base_action {
 				}
 			}
 
-			app.GUI.GUI_tools.show_action_attributes();
-			app.GUI.GUI_tools.Helper.setCookie('active_tool', app.GUI.GUI_tools.active_tool);
+			// Leave the previous tool's options bar mounted during temporary hot-swaps
+			// (Alt→eyedropper, Space→pan) so attrs don't flash to pan/eyedropper.
+			if (!this.hot_swap) {
+				app.GUI.GUI_tools.show_action_attributes();
+				app.GUI.GUI_tools.Helper.setCookie('active_tool', app.GUI.GUI_tools.active_tool);
+			}
 
 			// Show brush cursor immediately if switching to a brush tool
 			if (brushTools.includes(config.TOOL.name)) {
@@ -130,7 +136,9 @@ export class Activate_tool_action extends Base_action {
 				if (typeof textToolEarly.sync_size_from_layer === 'function') {
 					textToolEarly.sync_size_from_layer(config.layer);
 				}
-				app.GUI.GUI_tools.show_action_attributes();
+				if (!this.hot_swap) {
+					app.GUI.GUI_tools.show_action_attributes();
+				}
 			}
 		}
 

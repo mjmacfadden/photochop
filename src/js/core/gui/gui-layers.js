@@ -1175,7 +1175,8 @@ class GUI_layers_class {
 					html += '	<span class="group_chevron_spacer"></span>';
 				}
 
-				if (value.visible == true)
+				// Treat undefined/null as visible so JPG/open paths that omit the flag still show the eye.
+				if (value.visible !== false)
 					html += '	<button class="visibility visible trn" id="visibility" data-id="' + value.id + '" title="Hide"></button>';
 				else
 					html += '	<button class="visibility trn" id="visibility" data-id="' + value.id + '" title="Show"></button>';
