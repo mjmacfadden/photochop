@@ -1,7 +1,14 @@
 {
   "version": 1,
   "format": "vpbrush",
-  "categories": ["Classic", "Paint", "Pencil", "Ink", "Airbrush", "Marker"],
+  "categories": [
+    "Classic",
+    "Paint",
+    "Pencil",
+    "Ink",
+    "Airbrush",
+    "Marker"
+  ],
   "brushes": [
     {
       "id": "classic-round",
@@ -9,9 +16,19 @@
       "category": "Classic",
       "engine": "classic",
       "tip": "images/brushes/tips/hard-round.png",
-      "size": { "default": 13, "min": 1, "max": 500, "pressure": false },
-      "opacity": { "default": 100, "pressure": false },
-      "flow": { "default": 100 },
+      "size": {
+        "default": 13,
+        "min": 1,
+        "max": 500,
+        "pressure": false
+      },
+      "opacity": {
+        "default": 100,
+        "pressure": false
+      },
+      "flow": {
+        "default": 100
+      },
       "hardness": 100,
       "spacing": 0.25,
       "preview": "images/brushes/previews/classic-round.png"
@@ -22,9 +39,19 @@
       "category": "Classic",
       "engine": "classic",
       "tip": "images/brushes/tips/soft-round.png",
-      "size": { "default": 30, "min": 1, "max": 500, "pressure": false },
-      "opacity": { "default": 80, "pressure": false },
-      "flow": { "default": 100 },
+      "size": {
+        "default": 30,
+        "min": 1,
+        "max": 500,
+        "pressure": false
+      },
+      "opacity": {
+        "default": 80,
+        "pressure": false
+      },
+      "flow": {
+        "default": 100
+      },
       "hardness": 40,
       "spacing": 0.15,
       "preview": "images/brushes/previews/classic-soft.png"
@@ -35,9 +62,19 @@
       "category": "Paint",
       "engine": "hokusai",
       "hokusai": "Paint",
-      "size": { "default": 24, "min": 1, "max": 500, "pressure": true },
-      "opacity": { "default": 100, "pressure": false },
-      "flow": { "default": 100 },
+      "size": {
+        "default": 13,
+        "min": 1,
+        "max": 500,
+        "pressure": true
+      },
+      "opacity": {
+        "default": 100,
+        "pressure": false
+      },
+      "flow": {
+        "default": 100
+      },
       "hardness": 60,
       "spacing": 0.1,
       "preview": "images/brushes/previews/paint-basic.png"
@@ -48,9 +85,19 @@
       "category": "Paint",
       "engine": "hokusai",
       "hokusai": "Paint",
-      "size": { "default": 40, "min": 1, "max": 500, "pressure": true },
-      "opacity": { "default": 100, "pressure": false },
-      "flow": { "default": 100 },
+      "size": {
+        "default": 13,
+        "min": 1,
+        "max": 500,
+        "pressure": true
+      },
+      "opacity": {
+        "default": 100,
+        "pressure": false
+      },
+      "flow": {
+        "default": 100
+      },
       "hardness": 50,
       "spacing": 0.08,
       "preview": "images/brushes/previews/paint-heavy.png"
@@ -61,9 +108,19 @@
       "category": "Pencil",
       "engine": "hokusai",
       "hokusai": "Pencil",
-      "size": { "default": 4, "min": 1, "max": 200, "pressure": true },
-      "opacity": { "default": 90, "pressure": false },
-      "flow": { "default": 100 },
+      "size": {
+        "default": 4,
+        "min": 1,
+        "max": 200,
+        "pressure": true
+      },
+      "opacity": {
+        "default": 90,
+        "pressure": false
+      },
+      "flow": {
+        "default": 100
+      },
       "hardness": 90,
       "spacing": 0.12,
       "preview": "images/brushes/previews/pencil-sketch.png"
@@ -74,9 +131,19 @@
       "category": "Pencil",
       "engine": "classic",
       "tip": "images/brushes/tips/pencil-hard.png",
-      "size": { "default": 6, "min": 1, "max": 200, "pressure": true },
-      "opacity": { "default": 70, "pressure": false },
-      "flow": { "default": 100 },
+      "size": {
+        "default": 6,
+        "min": 1,
+        "max": 200,
+        "pressure": true
+      },
+      "opacity": {
+        "default": 70,
+        "pressure": false
+      },
+      "flow": {
+        "default": 100
+      },
       "hardness": 55,
       "spacing": 0.18,
       "preview": "images/brushes/previews/pencil-soft.png"
@@ -87,9 +154,19 @@
       "category": "Ink",
       "engine": "hokusai",
       "hokusai": "Ink",
-      "size": { "default": 3, "min": 1, "max": 100, "pressure": true },
-      "opacity": { "default": 100, "pressure": false },
-      "flow": { "default": 100 },
+      "size": {
+        "default": 3,
+        "min": 1,
+        "max": 100,
+        "pressure": true
+      },
+      "opacity": {
+        "default": 100,
+        "pressure": false
+      },
+      "flow": {
+        "default": 100
+      },
       "hardness": 100,
       "spacing": 0.08,
       "preview": "images/brushes/previews/ink-fineliner.png"
@@ -100,9 +177,19 @@
       "category": "Ink",
       "engine": "hokusai",
       "hokusai": "Ink",
-      "size": { "default": 16, "min": 1, "max": 300, "pressure": true },
-      "opacity": { "default": 100, "pressure": false },
-      "flow": { "default": 100 },
+      "size": {
+        "default": 16,
+        "min": 1,
+        "max": 300,
+        "pressure": true
+      },
+      "opacity": {
+        "default": 100,
+        "pressure": false
+      },
+      "flow": {
+        "default": 100
+      },
       "hardness": 85,
       "spacing": 0.1,
       "preview": "images/brushes/previews/ink-brush.png"
@@ -113,9 +200,19 @@
       "category": "Airbrush",
       "engine": "classic",
       "tip": "images/brushes/tips/soft-round.png",
-      "size": { "default": 50, "min": 1, "max": 500, "pressure": true },
-      "opacity": { "default": 40, "pressure": false },
-      "flow": { "default": 60 },
+      "size": {
+        "default": 50,
+        "min": 1,
+        "max": 500,
+        "pressure": true
+      },
+      "opacity": {
+        "default": 40,
+        "pressure": false
+      },
+      "flow": {
+        "default": 60
+      },
       "hardness": 10,
       "spacing": 0.08,
       "preview": "images/brushes/previews/airbrush-soft.png"
@@ -126,9 +223,19 @@
       "category": "Airbrush",
       "engine": "classic",
       "tip": "images/brushes/tips/spray.png",
-      "size": { "default": 40, "min": 1, "max": 500, "pressure": true },
-      "opacity": { "default": 35, "pressure": false },
-      "flow": { "default": 50 },
+      "size": {
+        "default": 40,
+        "min": 1,
+        "max": 500,
+        "pressure": true
+      },
+      "opacity": {
+        "default": 35,
+        "pressure": false
+      },
+      "flow": {
+        "default": 50
+      },
       "hardness": 5,
       "spacing": 0.12,
       "preview": "images/brushes/previews/airbrush-spray.png"
@@ -139,9 +246,19 @@
       "category": "Marker",
       "engine": "classic",
       "tip": "images/brushes/tips/chisel.png",
-      "size": { "default": 22, "min": 1, "max": 300, "pressure": false },
-      "opacity": { "default": 100, "pressure": false },
-      "flow": { "default": 100 },
+      "size": {
+        "default": 22,
+        "min": 1,
+        "max": 300,
+        "pressure": false
+      },
+      "opacity": {
+        "default": 100,
+        "pressure": false
+      },
+      "flow": {
+        "default": 100
+      },
       "hardness": 100,
       "spacing": 0.2,
       "preview": "images/brushes/previews/marker-chisel.png"
@@ -152,9 +269,19 @@
       "category": "Marker",
       "engine": "classic",
       "tip": "images/brushes/tips/felt.png",
-      "size": { "default": 14, "min": 1, "max": 200, "pressure": false },
-      "opacity": { "default": 95, "pressure": false },
-      "flow": { "default": 100 },
+      "size": {
+        "default": 14,
+        "min": 1,
+        "max": 200,
+        "pressure": false
+      },
+      "opacity": {
+        "default": 95,
+        "pressure": false
+      },
+      "flow": {
+        "default": 100
+      },
       "hardness": 75,
       "spacing": 0.15,
       "preview": "images/brushes/previews/marker-felt.png"

@@ -190,7 +190,9 @@ class HokusaiSession {
 	}
 
 	_expandDirty(x, y) {
-		var pad = Math.ceil(this.sizePx * 1.5) + 4;
+		// Pad for pressure-inflated radius (radius_logarithmic inputs) + AA.
+		// Too-tight AABB clips dabs into square blocks of pixels.
+		var pad = Math.ceil(this.sizePx * 2.5) + 8;
 		var x0 = Math.floor(x - pad);
 		var y0 = Math.floor(y - pad);
 		var x1 = Math.ceil(x + pad);
