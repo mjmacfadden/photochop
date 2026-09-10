@@ -514,11 +514,11 @@ class GUI_shortcuts_class {
 			return;
 		}
 		if (this.logo_omarchy) {
-			//switch back to the original Vantage Point logo
-			img.src = 'images/vantage_logo.png';
-			img.alt = 'Vantage Point';
+			//switch back to the original Visteras logo
+			img.src = 'images/visteras_logo.png';
+			img.alt = 'Visteras';
 			var logoLink = document.querySelector('.logo');
-			if (logoLink) logoLink.title = 'Vantage Point';
+			if (logoLink) logoLink.title = 'Visteras Studio';
 		}
 		else {
 			//easter egg: show the Omarchy logo
@@ -564,10 +564,10 @@ class GUI_shortcuts_class {
 				var logoLink = document.querySelector('.logo');
 				if (logoLink) logoLink.title = 'Omarchy';
 			} else {
-				img.src = 'images/vantage_logo.png';
-				img.alt = 'Vantage Point';
+				img.src = 'images/visteras_logo.png';
+				img.alt = 'Visteras';
 				var logoLink = document.querySelector('.logo');
-				if (logoLink) logoLink.title = 'Vantage Point';
+				if (logoLink) logoLink.title = 'Visteras Studio';
 			}
 			//reveal the logo (CSS keeps it hidden until the preference is applied,
 			//so the default logo never flashes when Omarchy is selected)
