@@ -538,6 +538,11 @@ const menuDefinition = [
 						target: 'effects/common/sepia.sepia'
 					},
 					{
+						name: 'Color Overlay',
+						ellipsis: true,
+						target: 'effects/common/color_overlay.color_overlay'
+					},
+					{
 						name: 'Shadow',
 						ellipsis: true,
 						target: 'effects/common/shadow.shadow'
