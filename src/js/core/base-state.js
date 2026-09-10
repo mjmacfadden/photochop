@@ -36,6 +36,7 @@ class Base_state_class {
 		this.action_history_index = 0;
 		this.action_history_max = 50;
 		this.autosave_timer = null;
+		this._action_queue = Promise.resolve();
 
 		this.set_events();
 	}
@@ -60,6 +61,15 @@ class Base_state_class {
 	}
 
 	async do_action(action, options = {}) {
+		// Serialize history mutations so overlapping brush/clone commits cannot
+		// interleave toBlob / link.src / undo bookkeeping out of order.
+		const run = () => this._do_action_unlocked(action, options);
+		const next = (this._action_queue || Promise.resolve()).catch(() => {}).then(run);
+		this._action_queue = next;
+		return next;
+	}
+
+	async _do_action_unlocked(action, options = {}) {
 		let error_during_free = false;
 		try {
 			await action.do();

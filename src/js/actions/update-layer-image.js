@@ -103,20 +103,35 @@ export class Update_layer_image_action extends Base_action {
 
 		// Assign layer properties
 		const committed_canvas = this.canvas;
+		const layer = this.reference_layer;
+		// Monotonic apply id: rapid overlapping strokes can race a newer live
+		// link_canvas. Only the latest apply may clear the bridge on decode.
+		layer._link_apply_gen = (layer._link_apply_gen || 0) + 1;
+		const apply_gen = layer._link_apply_gen;
+		this._link_apply_gen = apply_gen;
+
+		// Never stomp a newer stroke's live bridge canvas with this older commit.
 		if (committed_canvas) {
-			this.reference_layer.link_canvas = committed_canvas;
+			if (layer.link_canvas == null || layer.link_canvas === committed_canvas) {
+				layer.link_canvas = committed_canvas;
+			}
 		}
-		this.reference_layer.link.onload = () => {
-			if (this.reference_layer && this.reference_layer.link_canvas === committed_canvas) {
+		layer.link.onload = () => {
+			if (!this.reference_layer) return;
+			// Stale decode from a superseded commit — leave newer bridge alone.
+			if (this._link_apply_gen !== this.reference_layer._link_apply_gen) {
+				return;
+			}
+			if (this.reference_layer.link_canvas === committed_canvas) {
 				delete this.reference_layer.link_canvas;
 			}
 			app.Layers.notify_layer_data_changed(this.layer_id);
 			config.need_render = true;
 			app.Layers.render();
 		};
-		this.reference_layer.link.src = canvas_data_url;
-		this.old_link_database_id = this.reference_layer._link_database_id;
-		this.reference_layer._link_database_id = this.new_image_id;
+		layer.link.src = canvas_data_url;
+		this.old_link_database_id = layer._link_database_id;
+		layer._link_database_id = this.new_image_id;
 
 		this.canvas = null;
 		config.need_render = true;

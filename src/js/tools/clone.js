@@ -21,6 +21,7 @@ class Clone_class extends Base_tools_class {
 		this.selection_snapshot = null;
 		this.last_mouse_x = null;
 		this.last_mouse_y = null;
+		this._stroke_gen = 0;
 	}
 
 	load() {
@@ -126,7 +127,10 @@ class Clone_class extends Base_tools_class {
 		if (!layer || layer.type !== 'image') {
 			return;
 		}
-		var src = layer.link_canvas || layer.link;
+		var src = layer.link_canvas;
+		if (!src && layer.link && layer.link.complete && layer.link.naturalWidth > 0) {
+			src = layer.link;
+		}
 		if (!src) {
 			alertify.error('Layer image is not ready.');
 			return;
@@ -151,6 +155,7 @@ class Clone_class extends Base_tools_class {
 		var lho = layer.height_original || lh;
 
 		this.started = true;
+		this._stroke_gen = (this._stroke_gen || 0) + 1;
 		this.last_mouse_x = mouse.x;
 		this.last_mouse_y = mouse.y;
 
@@ -178,6 +183,7 @@ class Clone_class extends Base_tools_class {
 		this.constrain_edit_to_selection(this.tmpCanvas, this.selection_snapshot);
 
 		// register tmp canvas for progress redraw
+		config.layer._link_apply_gen = (config.layer._link_apply_gen || 0) + 1;
 		config.layer.link_canvas = this.tmpCanvas;
 		if (this.Base_layers.render_interactive_layer) {
 			this.Base_layers.render_interactive_layer(config.layer.id);
@@ -255,6 +261,7 @@ class Clone_class extends Base_tools_class {
 
 		// Await commit before dropping the temp canvas — shrinking to 1×1
 		// while toBlob is in flight would save a blank image.
+		var stroke_gen = this._stroke_gen;
 		try {
 			await app.State.do_action(
 				new app.Actions.Bundle_action('clone_tool', 'Clone Tool', [
@@ -263,13 +270,16 @@ class Clone_class extends Base_tools_class {
 			);
 		} finally {
 			// Leave link_canvas for Update_layer_image_action Image.onload (same race as brush).
-			this.tmpCanvas = null;
-			this.tmpCanvasCtx = null;
-			this.sourceCanvas = null;
-			this.selection_snapshot = null;
-			this.started = false;
-			this.last_mouse_x = null;
-			this.last_mouse_y = null;
+			// Do not clobber a newer overlapping stroke's tmp canvas / flags.
+			if (this._stroke_gen === stroke_gen) {
+				this.tmpCanvas = null;
+				this.tmpCanvasCtx = null;
+				this.sourceCanvas = null;
+				this.selection_snapshot = null;
+				this.started = false;
+				this.last_mouse_x = null;
+				this.last_mouse_y = null;
+			}
 		}
 	}
 

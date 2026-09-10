@@ -40,6 +40,7 @@ class Brush_class extends Base_tools_class {
 		this._hokusai_init_promise = null;
 		this._raf_id = null;
 		this._raf_dirty = false;
+		this._stroke_gen = 0;
 	}
 
 	load() {
@@ -133,6 +134,7 @@ class Brush_class extends Base_tools_class {
 		}
 
 		this.started = true;
+		this._stroke_gen = (this._stroke_gen || 0) + 1;
 
 		var lw = layer.width_original || layer.width || config.WIDTH;
 		var lh = layer.height_original || layer.height || config.HEIGHT;
@@ -142,13 +144,20 @@ class Brush_class extends Base_tools_class {
 		this.tmpCanvas.height = lh;
 		this.tmpCanvasCtx = this.tmpCanvas.getContext('2d');
 
-		var src = layer.link_canvas || layer.link;
+		// Prefer live bridge so overlapping commits still seed from latest pixels.
+		// Fall back to link only when decode has completed (avoids blank copy).
+		var src = layer.link_canvas;
+		if (!src && layer.link && layer.link.complete && layer.link.naturalWidth > 0) {
+			src = layer.link;
+		}
 		if (src) {
 			this.tmpCanvasCtx.drawImage(src, 0, 0, lw, lh);
 		}
 		this.selection_snapshot = this.copy_layer_snapshot();
 
 		// Keep link_canvas stable for the whole stroke (set once, clear after commit).
+		// Bump apply gen so an in-flight prior Image.onload cannot clear this bridge.
+		config.layer._link_apply_gen = (config.layer._link_apply_gen || 0) + 1;
 		config.layer.link_canvas = this.tmpCanvas;
 
 		var params = this.getParams();
@@ -314,6 +323,7 @@ class Brush_class extends Base_tools_class {
 
 		var layer = config.layer;
 		var canvas = this.tmpCanvas;
+		var stroke_gen = this._stroke_gen;
 		if (canvas && layer && layer.type === 'image') {
 			try {
 				await app.State.do_action(
@@ -325,7 +335,11 @@ class Brush_class extends Base_tools_class {
 				// Keep link_canvas until Update_layer_image_action clears it on
 				// Image.onload. Deleting here races the decode and makes WebGL/2D
 				// briefly (or permanently) fall back to the pre-stroke layer.link.
-				this.reset_stroke_state();
+				// Only reset instance fields if a newer stroke has not already begun
+				// during the await (rapid click / drag overlap).
+				if (this._stroke_gen === stroke_gen) {
+					this.reset_stroke_state();
+				}
 			}
 		} else {
 			this.abort_stroke();
