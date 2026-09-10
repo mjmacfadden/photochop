@@ -41,6 +41,9 @@ class Brush_class extends Base_tools_class {
 		this._raf_id = null;
 		this._raf_dirty = false;
 		this._stroke_gen = 0;
+		// True while mouseup finalizes (Hokusai finish/composite/commit setup).
+		// started is cleared first so toolbar/brush-dropdown stay clickable.
+		this._finalizing = false;
 	}
 
 	load() {
@@ -115,6 +118,12 @@ class Brush_class extends Base_tools_class {
 			if (this.started) {
 				this.mouseup(e);
 			}
+			return;
+		}
+
+		// Previous stroke still finishing WASM composite — don't start another
+		// paint, but UI is already unlocked (started=false) so dropdowns work.
+		if (this._finalizing) {
 			return;
 		}
 
@@ -193,6 +202,7 @@ class Brush_class extends Base_tools_class {
 		var mouse = this.get_mouse_info(e);
 		var point = this.get_layer_local_coords(mouse.x, mouse.y, layer);
 		var size = params.size || 20;
+		var strokeGen = this._stroke_gen;
 
 		this.hokusai_base = document.createElement('canvas');
 		this.hokusai_base.width = this.tmpCanvas.width;
@@ -208,7 +218,9 @@ class Brush_class extends Base_tools_class {
 
 		var self = this;
 		this._hokusai_init_promise = this.ensure_hokusai_session(layer, presetId).then(function (session) {
-			if (!self.started) {
+			// Use stroke gen (not started): mouseup unlocks UI before init finishes
+			// for Sketch/Pencil/Ink cold sessions, but this stroke must still begin.
+			if (self._stroke_gen !== strokeGen) {
 				return;
 			}
 			session.setColorHex(config.COLOR);
@@ -305,46 +317,79 @@ class Brush_class extends Base_tools_class {
 			return;
 		}
 
-		this.cancel_stroke_preview();
-
+		// Shared end-stroke path for classic + every Hokusai preset (Paint,
+		// Heavy Paint, Sketch/Pencil, Fineliner, Ink Brush, …). Unlock the UI
+		// *before* awaiting WASM session init or running finishStroke/composite
+		// — Sketch (Pencil) often recreates the session and used to leave
+		// started=true through that await, freezing the brush dropdown.
+		var strokeGen = this._stroke_gen;
 		var params = this.getParams();
-		if (this.is_hokusai_preset(params)) {
-			// Short strokes can end before WASM session init finishes — wait so we
-			// commit the queued pointers instead of the untouched base canvas.
-			if (this.hokusai_pending && this._hokusai_init_promise) {
-				try {
-					await this._hokusai_init_promise;
-				} catch (err) {
-					this.abort_stroke();
+		var layer = config.layer;
+		var canvas = this.tmpCanvas;
+		var initPromise = this._hokusai_init_promise;
+		var needInitAwait = this.hokusai_pending && !!initPromise;
+		var isHokusai = this.is_hokusai_preset(params);
+
+		this.cancel_stroke_preview();
+		this.started = false;
+		this._finalizing = true;
+
+		try {
+			if (isHokusai) {
+				// Short strokes can end before WASM session init finishes — wait so we
+				// commit the queued pointers instead of the untouched base canvas.
+				if (needInitAwait) {
+					try {
+						await initPromise;
+					} catch (err) {
+						if (this._stroke_gen === strokeGen) {
+							this.abort_stroke();
+						}
+						return;
+					}
+				}
+				// Aborted / superseded while awaiting init (tool switch / on_leave).
+				if (this._stroke_gen !== strokeGen) {
 					return;
 				}
+				if (this.hokusai_session && canvas && this.tmpCanvasCtx) {
+					try {
+						this.hokusai_session.finishStroke();
+						this.composite_hokusai_onto_tmp();
+						this.constrain_edit_to_selection(this.tmpCanvas, this.selection_snapshot);
+					} catch (err) {
+						console.error('Hokusai finishStroke/composite failed', err);
+					}
+				}
 			}
-			if (this.hokusai_session && this.started) {
-				this.hokusai_session.finishStroke();
-				this.composite_hokusai_onto_tmp();
-				this.constrain_edit_to_selection(this.tmpCanvas, this.selection_snapshot);
+
+			if (this._stroke_gen !== strokeGen) {
+				return;
+			}
+
+			// Drop interactive refs BEFORE awaiting toBlob/IndexedDB. Keep the
+			// local canvas + link_canvas bridge for the async commit/onload path.
+			this.tmpCanvas = null;
+			this.tmpCanvasCtx = null;
+			this.selection_snapshot = null;
+			this.hokusai_base = null;
+			this.hokusai_pending = false;
+			this.hokusai_event_queue = [];
+			this._hokusai_init_promise = null;
+			this.last_x = null;
+			this.last_y = null;
+			this.last_size = null;
+		} finally {
+			this._finalizing = false;
+			// Belt-and-suspenders: never leave the interactive lock on.
+			if (this._stroke_gen === strokeGen) {
+				this.started = false;
 			}
 		}
 
-		// Aborted while awaiting Hokusai init (tool switch / on_leave).
-		if (this.started == false) return;
-
-		var layer = config.layer;
-		var canvas = this.tmpCanvas;
-		// Release interactive stroke lock BEFORE awaiting toBlob/IndexedDB so
-		// tool buttons and brush presets are clickable immediately. Keep the
-		// local canvas + link_canvas bridge for the async commit/onload path.
-		this.started = false;
-		this.tmpCanvas = null;
-		this.tmpCanvasCtx = null;
-		this.selection_snapshot = null;
-		this.hokusai_base = null;
-		this.hokusai_pending = false;
-		this.hokusai_event_queue = [];
-		this._hokusai_init_promise = null;
-		this.last_x = null;
-		this.last_y = null;
-		this.last_size = null;
+		if (this._stroke_gen !== strokeGen) {
+			return;
+		}
 
 		if (canvas && layer && layer.type === 'image') {
 			try {
@@ -377,18 +422,21 @@ class Brush_class extends Base_tools_class {
 		this.hokusai_event_queue = [];
 		this._hokusai_init_promise = null;
 		this.started = false;
+		this._finalizing = false;
 		this.last_x = null;
 		this.last_y = null;
 		this.last_size = null;
 	}
 
 	abort_stroke() {
-		if (!this.started && !this.tmpCanvas) return;
+		if (!this.started && !this.tmpCanvas && !this._finalizing) return;
 		var layer = config.layer;
 		var canvas = this.tmpCanvas;
 		if (layer && layer.link_canvas === canvas) {
 			delete layer.link_canvas;
 		}
+		// Invalidate in-flight mouseup finalize for this stroke.
+		this._stroke_gen = (this._stroke_gen || 0) + 1;
 		this.reset_stroke_state();
 		if (this.Base_layers) {
 			this.Base_layers.invalidate
@@ -398,8 +446,9 @@ class Brush_class extends Base_tools_class {
 	}
 
 	on_leave() {
-		// Only abort an *interactive* stroke. Once mouseup cleared started and
-		// handed the canvas to Update_layer_image, leave the link_canvas bridge alone.
+		// Only abort an *interactive* stroke. Once mouseup cleared started
+		// (possibly still _finalizing Hokusai composite/commit), leave the
+		// link_canvas bridge alone so the in-flight stroke can persist.
 		if (this.started) {
 			this.abort_stroke();
 		}
