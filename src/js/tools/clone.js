@@ -115,6 +115,9 @@ class Clone_class extends Base_tools_class {
 		this.sampling = false;
 
 		if (mouse.click_valid == false) {
+			if (this.started) {
+				this.mouseup(e);
+			}
 			return;
 		}
 
@@ -259,28 +262,53 @@ class Clone_class extends Base_tools_class {
 		}
 		this.constrain_edit_to_selection(canvas, this.selection_snapshot);
 
-		// Await commit before dropping the temp canvas — shrinking to 1×1
-		// while toBlob is in flight would save a blank image.
-		var stroke_gen = this._stroke_gen;
+		// Unstick interactive state before awaiting toBlob so tools stay clickable.
+		this.started = false;
+		this.tmpCanvas = null;
+		this.tmpCanvasCtx = null;
+		this.sourceCanvas = null;
+		this.selection_snapshot = null;
+		this.last_mouse_x = null;
+		this.last_mouse_y = null;
+
 		try {
 			await app.State.do_action(
 				new app.Actions.Bundle_action('clone_tool', 'Clone Tool', [
 					new app.Actions.Update_layer_image_action(canvas, layer.id)
 				])
 			);
-		} finally {
-			// Leave link_canvas for Update_layer_image_action Image.onload (same race as brush).
-			// Do not clobber a newer overlapping stroke's tmp canvas / flags.
-			if (this._stroke_gen === stroke_gen) {
-				this.tmpCanvas = null;
-				this.tmpCanvasCtx = null;
-				this.sourceCanvas = null;
-				this.selection_snapshot = null;
-				this.started = false;
-				this.last_mouse_x = null;
-				this.last_mouse_y = null;
+		} catch (err) {
+			if (layer.link_canvas === canvas) {
+				delete layer.link_canvas;
 			}
+			throw err;
 		}
+		// Leave link_canvas for Update_layer_image_action Image.onload.
+	}
+
+	abort_stroke() {
+		if (!this.started && !this.tmpCanvas) return;
+		var layer = config.layer;
+		var canvas = this.tmpCanvas;
+		if (layer && layer.link_canvas === canvas) {
+			delete layer.link_canvas;
+		}
+		this.tmpCanvas = null;
+		this.tmpCanvasCtx = null;
+		this.sourceCanvas = null;
+		this.selection_snapshot = null;
+		this.started = false;
+		this.last_mouse_x = null;
+		this.last_mouse_y = null;
+		config.need_render = true;
+		if (this.Base_layers) this.Base_layers.render();
+	}
+
+	on_leave() {
+		if (this.started) {
+			this.abort_stroke();
+		}
+		return [];
 	}
 
 	clone_general(canvas_from, canvas_to, type, mouse) {

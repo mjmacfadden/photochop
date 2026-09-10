@@ -212,6 +212,25 @@ class Base_tools_class {
 		window.addEventListener('resize', function (event) {
 			_this.prepare();
 		});
+
+		// End strokes when the pointer is lost off-window / tab blur / capture loss.
+		// Document pointerup normally covers drag-off-canvas, but blur/cancel paths
+		// can leave brush/clone/heal with started=true and a sticky interactive state.
+		window.addEventListener('blur', function () {
+			if (_this.is_drag) {
+				_this.dragEnd({ type: 'pointercancel', button: 0 });
+			}
+		});
+		document.addEventListener('visibilitychange', function () {
+			if (document.visibilityState === 'hidden' && _this.is_drag) {
+				_this.dragEnd({ type: 'pointercancel', button: 0 });
+			}
+		});
+		document.addEventListener('lostpointercapture', function (event) {
+			if (_this.is_drag) {
+				_this.dragEnd(event);
+			}
+		});
 	}
 
 	/**

@@ -108,9 +108,13 @@ class Brush_class extends Base_tools_class {
 	}
 
 	mousedown(e) {
-		this.started = false;
 		var mouse = this.get_mouse_info(e);
 		if (mouse.click_valid == false) {
+			// Toolbar / off-canvas click. If a stroke is still active (e.g. mouseup
+			// never arrived after drag-off), finish it so tools stay clickable.
+			if (this.started) {
+				this.mouseup(e);
+			}
 			return;
 		}
 
@@ -311,6 +315,7 @@ class Brush_class extends Base_tools_class {
 				try {
 					await this._hokusai_init_promise;
 				} catch (err) {
+					this.abort_stroke();
 					return;
 				}
 			}
@@ -321,9 +326,26 @@ class Brush_class extends Base_tools_class {
 			}
 		}
 
+		// Aborted while awaiting Hokusai init (tool switch / on_leave).
+		if (this.started == false) return;
+
 		var layer = config.layer;
 		var canvas = this.tmpCanvas;
-		var stroke_gen = this._stroke_gen;
+		// Release interactive stroke lock BEFORE awaiting toBlob/IndexedDB so
+		// tool buttons and brush presets are clickable immediately. Keep the
+		// local canvas + link_canvas bridge for the async commit/onload path.
+		this.started = false;
+		this.tmpCanvas = null;
+		this.tmpCanvasCtx = null;
+		this.selection_snapshot = null;
+		this.hokusai_base = null;
+		this.hokusai_pending = false;
+		this.hokusai_event_queue = [];
+		this._hokusai_init_promise = null;
+		this.last_x = null;
+		this.last_y = null;
+		this.last_size = null;
+
 		if (canvas && layer && layer.type === 'image') {
 			try {
 				await app.State.do_action(
@@ -331,18 +353,17 @@ class Brush_class extends Base_tools_class {
 						new app.Actions.Update_layer_image_action(canvas, layer.id)
 					])
 				);
-			} finally {
-				// Keep link_canvas until Update_layer_image_action clears it on
-				// Image.onload. Deleting here races the decode and makes WebGL/2D
-				// briefly (or permanently) fall back to the pre-stroke layer.link.
-				// Only reset instance fields if a newer stroke has not already begun
-				// during the await (rapid click / drag overlap).
-				if (this._stroke_gen === stroke_gen) {
-					this.reset_stroke_state();
+			} catch (err) {
+				// Commit failed — drop the bridge if we still own it.
+				if (layer.link_canvas === canvas) {
+					delete layer.link_canvas;
 				}
+				throw err;
 			}
-		} else {
-			this.abort_stroke();
+			// Keep link_canvas until Update_layer_image_action clears it on
+			// Image.onload. Do not touch a newer overlapping stroke's fields.
+		} else if (layer && layer.link_canvas === canvas) {
+			delete layer.link_canvas;
 		}
 	}
 
@@ -377,7 +398,11 @@ class Brush_class extends Base_tools_class {
 	}
 
 	on_leave() {
-		this.abort_stroke();
+		// Only abort an *interactive* stroke. Once mouseup cleared started and
+		// handed the canvas to Update_layer_image, leave the link_canvas bridge alone.
+		if (this.started) {
+			this.abort_stroke();
+		}
 		return [];
 	}
 

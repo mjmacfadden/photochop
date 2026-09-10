@@ -73,6 +73,9 @@ class Spot_heal_class extends Base_tools_class {
 		var mouse = this.get_mouse_info(e);
 
 		if (mouse.click_valid == false) {
+			if (this.started) {
+				this.mouseup(e);
+			}
 			return;
 		}
 
@@ -192,30 +195,28 @@ class Spot_heal_class extends Base_tools_class {
 		}
 		this.constrain_edit_to_selection(canvas, this.selection_snapshot);
 
-		// Keep link_canvas until Update_layer_image_action reads the pixels.
-		// Never shrink the canvas before toBlob finishes (that saved a blank 1×1
-		// image and made the layer flash white / disappear).
-		var stroke_gen = this._stroke_gen;
+		// Unstick interactive state before awaiting toBlob so tools stay clickable.
+		this.started = false;
+		this.tmpCanvas = null;
+		this.tmpCanvasCtx = null;
+		this.layerImageData = null;
+		this.selection_snapshot = null;
+		this.last_mouse_x = null;
+		this.last_mouse_y = null;
+		this.recentOffsets = [];
+		this.maskCache = {};
+
 		try {
 			await app.State.do_action(
 				new app.Actions.Bundle_action('spot_heal_tool', 'Spot Healing Brush', [
 					new app.Actions.Update_layer_image_action(canvas, layer.id)
 				])
 			);
-		} finally {
-			// Leave link_canvas for Update_layer_image_action Image.onload (same race as brush).
-			// Do not clobber a newer overlapping stroke's tmp canvas / flags.
-			if (this._stroke_gen === stroke_gen) {
-				this.tmpCanvas = null;
-				this.tmpCanvasCtx = null;
-				this.layerImageData = null;
-				this.selection_snapshot = null;
-				this.started = false;
-				this.last_mouse_x = null;
-				this.last_mouse_y = null;
-				this.recentOffsets = [];
-				this.maskCache = {};
+		} catch (err) {
+			if (layer.link_canvas === canvas) {
+				delete layer.link_canvas;
 			}
+			throw err;
 		}
 	}
 
@@ -241,8 +242,11 @@ class Spot_heal_class extends Base_tools_class {
 
 	on_leave() {
 		// Space→Pan (and any tool switch) must drop an in-progress heal
-		// without committing a half stroke.
-		this.abort_stroke();
+		// without committing a half stroke. Do not touch an already-committed
+		// bridge still awaiting Image.onload.
+		if (this.started) {
+			this.abort_stroke();
+		}
 		return [];
 	}
 
