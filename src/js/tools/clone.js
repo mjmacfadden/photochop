@@ -262,9 +262,7 @@ class Clone_class extends Base_tools_class {
 				])
 			);
 		} finally {
-			if (layer.link_canvas === canvas) {
-				delete layer.link_canvas;
-			}
+			// Leave link_canvas for Update_layer_image_action Image.onload (same race as brush).
 			this.tmpCanvas = null;
 			this.tmpCanvasCtx = null;
 			this.sourceCanvas = null;

@@ -37,6 +37,7 @@ class Brush_class extends Base_tools_class {
 		this.hokusai_ready = false;
 		this.hokusai_pending = false;
 		this.hokusai_event_queue = [];
+		this._hokusai_init_promise = null;
 		this._raf_id = null;
 		this._raf_dirty = false;
 	}
@@ -193,7 +194,7 @@ class Brush_class extends Base_tools_class {
 		// link_canvas already set in mousedown — do not null it while awaiting WASM.
 
 		var self = this;
-		this.ensure_hokusai_session(layer, presetId).then(function (session) {
+		this._hokusai_init_promise = this.ensure_hokusai_session(layer, presetId).then(function (session) {
 			if (!self.started) {
 				return;
 			}
@@ -217,6 +218,7 @@ class Brush_class extends Base_tools_class {
 			if (typeof alertify !== 'undefined') {
 				alertify.error('Hokusai brush failed to load. Falling back unavailable this stroke.');
 			}
+			throw err;
 		});
 	}
 
@@ -293,10 +295,21 @@ class Brush_class extends Base_tools_class {
 		this.cancel_stroke_preview();
 
 		var params = this.getParams();
-		if (this.is_hokusai_preset(params) && this.hokusai_session && !this.hokusai_pending) {
-			this.hokusai_session.finishStroke();
-			this.composite_hokusai_onto_tmp();
-			this.constrain_edit_to_selection(this.tmpCanvas, this.selection_snapshot);
+		if (this.is_hokusai_preset(params)) {
+			// Short strokes can end before WASM session init finishes — wait so we
+			// commit the queued pointers instead of the untouched base canvas.
+			if (this.hokusai_pending && this._hokusai_init_promise) {
+				try {
+					await this._hokusai_init_promise;
+				} catch (err) {
+					return;
+				}
+			}
+			if (this.hokusai_session && this.started) {
+				this.hokusai_session.finishStroke();
+				this.composite_hokusai_onto_tmp();
+				this.constrain_edit_to_selection(this.tmpCanvas, this.selection_snapshot);
+			}
 		}
 
 		var layer = config.layer;
@@ -309,9 +322,9 @@ class Brush_class extends Base_tools_class {
 					])
 				);
 			} finally {
-				if (layer.link_canvas === canvas) {
-					delete layer.link_canvas;
-				}
+				// Keep link_canvas until Update_layer_image_action clears it on
+				// Image.onload. Deleting here races the decode and makes WebGL/2D
+				// briefly (or permanently) fall back to the pre-stroke layer.link.
 				this.reset_stroke_state();
 			}
 		} else {
@@ -327,6 +340,7 @@ class Brush_class extends Base_tools_class {
 		this.hokusai_base = null;
 		this.hokusai_pending = false;
 		this.hokusai_event_queue = [];
+		this._hokusai_init_promise = null;
 		this.started = false;
 		this.last_x = null;
 		this.last_y = null;
