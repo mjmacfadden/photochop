@@ -1,8 +1,6 @@
 import app from './../../app.js';
 import config from './../../config.js';
 import Base_layers_class from './../../core/base-layers.js';
-import Dialog_class from './../../libs/popup.js';
-import Helper_class from './../../libs/helpers.js';
 import alertify from './../../../../node_modules/alertifyjs/build/alertify.min.js';
 
 var instance = null;
@@ -16,25 +14,8 @@ class Image_autoAdjust_class {
 		}
 		instance = this;
 
-		this.POP = new Dialog_class();
 		this.Base_layers = new Base_layers_class();
-		this.Helper = new Helper_class();
 
-		this.set_events();
-	}
-
-	set_events() {
-		document.addEventListener('keydown', (event) => {
-			var code = event.keyCode;
-			if (this.Helper.is_input(event.target))
-				return;
-
-			if (code == 70 && event.ctrlKey != true && event.metaKey != true) {
-				//F - adjust
-				this.auto_adjust();
-				event.preventDefault();
-			}
-		}, false);
 	}
 
 	auto_adjust() {

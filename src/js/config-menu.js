@@ -246,6 +246,11 @@ const menuDefinition = [
 				divider: true
 			},
 			{
+				name: 'Canvas Only Mode',
+				shortcut: 'F',
+				target: 'view/full_screen.toggle_canvas_only'
+			},
+			{
 				name: 'Full Screen',
 				target: 'view/full_screen.fs'
 			}
@@ -318,7 +323,6 @@ const menuDefinition = [
 			},
 			{
 				name: 'Auto Adjust Colors',
-				shortcut: 'F',
 				target: 'image/auto_adjust.auto_adjust'
 			},
 			{

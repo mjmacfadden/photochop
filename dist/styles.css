@@ -3915,6 +3915,59 @@ input.swatches_search_input:focus,
 	margin-top: 2px;
 }
 
+/* ========== Canvas-only screen mode (F key) ================================= */
+/* Photoshop-style: hide chrome, black surround, canvas uses full viewport.   */
+/* Independent of browser Fullscreen API (View → Full Screen).                 */
+
+body.canvas-only-mode .main_menu,
+body.canvas-only-mode .submenu,
+body.canvas-only-mode .sidebar_left,
+body.canvas-only-mode .sidebar_right,
+body.canvas-only-mode .status_bar,
+body.canvas-only-mode .document_tabs,
+body.canvas-only-mode .ruler_left,
+body.canvas-only-mode .ruler_top,
+body.canvas-only-mode .mobile_menu,
+body.canvas-only-mode .canvas_guides {
+	display: none !important;
+}
+
+body.canvas-only-mode .wrapper {
+	top: 0;
+	bottom: 0;
+	right: 0;
+	left: 0;
+	-ms-grid-columns: 1fr;
+	grid-template-columns: 1fr;
+	-ms-grid-rows: 1fr;
+	grid-template-rows: 1fr;
+	grid-template-areas: "main";
+	background-color: #000000;
+}
+
+body.canvas-only-mode .middle_area {
+	background-color: #000000;
+	-ms-grid-row: 1;
+	-ms-grid-column: 1;
+}
+
+body.canvas-only-mode .main_wrapper,
+body.canvas-only-mode .middle_area.has-ruler .main_wrapper {
+	top: 0;
+	left: 0;
+	right: 0;
+	bottom: 0;
+	background-color: #000000;
+}
+
+body.canvas-only-mode .canvas_wrapper {
+	box-shadow: none;
+}
+
+body.canvas-only-mode .canvas_wrapper canvas {
+	border-color: #000000;
+}
+
 :root {
 	--menu-dropdown-background-color: #3c3c3c;
 	--menu-dropdown-border-color: #505050;
