@@ -5,9 +5,9 @@ import Helper_class from './../../libs/helpers.js';
 /**
  * View → Full Screen / Screen Mode
  *
- * - fs(): browser Fullscreen API (View → Full Screen menu)
- * - toggle_canvas_only(): Photoshop-style F key — normal ↔ canvas-only
- *   (chrome hidden, black surround, fit-to-screen). Independent of browser fullscreen.
+ * F (and View → Canvas Only Mode / Full Screen) toggles Photoshop-style
+ * screen mode: chrome hidden, black surround, fit-to-screen, PLUS true
+ * browser Fullscreen API so the OS/browser chrome goes away (monitor-fill).
  */
 class View_fullScreen_class {
 
@@ -34,7 +34,9 @@ class View_fullScreen_class {
 				return;
 			}
 
-			// Esc restores normal UI when in canvas-only mode (nice-to-have)
+			// Esc restores normal UI when in canvas-only mode.
+			// (Browser Esc while in Fullscreen API often exits fullscreen first;
+			// fullscreenchange keeps canvas-only in sync in that case.)
 			if (this.canvas_only
 				&& !event.ctrlKey && !event.metaKey && !event.altKey
 				&& (event.key === 'Escape' || event.code === 'Escape' || event.keyCode === 27)) {
@@ -43,6 +45,14 @@ class View_fullScreen_class {
 				this.exit_canvas_only();
 			}
 		}, true);
+
+		document.addEventListener('fullscreenchange', () => {
+			this.on_fullscreen_change();
+		});
+		// Safari / older WebKit
+		document.addEventListener('webkitfullscreenchange', () => {
+			this.on_fullscreen_change();
+		});
 	}
 
 	/**
@@ -83,21 +93,75 @@ class View_fullScreen_class {
 		return false;
 	}
 
-	/**
-	 * Browser Fullscreen API (menu: View → Full Screen).
-	 * Does not change app chrome / canvas-only mode.
-	 */
-	fs() {
-		if (!document.fullscreenElement) {
-			document.documentElement.requestFullscreen();
+	is_browser_fullscreen() {
+		return !!(document.fullscreenElement
+			|| document.webkitFullscreenElement
+			|| document.mozFullScreenElement
+			|| document.msFullscreenElement);
+	}
+
+	request_browser_fullscreen() {
+		const root = document.documentElement;
+		const req = root.requestFullscreen
+			|| root.webkitRequestFullscreen
+			|| root.mozRequestFullScreen
+			|| root.msRequestFullscreen;
+		if (!req) {
+			return Promise.resolve();
 		}
-		else if (document.exitFullscreen) {
-			document.exitFullscreen();
+		try {
+			const result = req.call(root);
+			return result && typeof result.then === 'function'
+				? result.catch(() => {})
+				: Promise.resolve();
+		}
+		catch (e) {
+			return Promise.resolve();
+		}
+	}
+
+	exit_browser_fullscreen() {
+		if (!this.is_browser_fullscreen()) {
+			return Promise.resolve();
+		}
+		const exit = document.exitFullscreen
+			|| document.webkitExitFullscreen
+			|| document.mozCancelFullScreen
+			|| document.msExitFullscreen;
+		if (!exit) {
+			return Promise.resolve();
+		}
+		try {
+			const result = exit.call(document);
+			return result && typeof result.then === 'function'
+				? result.catch(() => {})
+				: Promise.resolve();
+		}
+		catch (e) {
+			return Promise.resolve();
 		}
 	}
 
 	/**
-	 * Photoshop-style screen mode toggle (F): normal ↔ canvas-only.
+	 * If the user leaves browser fullscreen via Esc / browser UI while in
+	 * canvas-only mode, leave canvas-only too so modes stay in sync.
+	 */
+	on_fullscreen_change() {
+		if (!this.is_browser_fullscreen() && this.canvas_only) {
+			this.exit_canvas_only({ from_fullscreenchange: true });
+		}
+	}
+
+	/**
+	 * View → Full Screen: thin wrapper around the combined F screen mode
+	 * (true fullscreen + chrome hide). Same path as F so they don't fight.
+	 */
+	fs() {
+		this.toggle_canvas_only();
+	}
+
+	/**
+	 * Photoshop-style screen mode toggle (F): normal ↔ canvas-only + monitor fullscreen.
 	 */
 	toggle_canvas_only() {
 		if (this.canvas_only) {
@@ -124,7 +188,11 @@ class View_fullScreen_class {
 		this.canvas_only = true;
 		document.body.classList.add('canvas-only-mode');
 
-		// Let layout reflow (chrome hidden) before fitting
+		// True monitor fullscreen (YouTube-like): hide OS/browser chrome.
+		// Must run in this user-gesture turn (F key / menu click).
+		this.request_browser_fullscreen();
+
+		// Let layout reflow (chrome hidden + fullscreen) before fitting
 		requestAnimationFrame(() => {
 			requestAnimationFrame(() => {
 				if (!this.canvas_only) {
@@ -142,15 +210,24 @@ class View_fullScreen_class {
 		});
 	}
 
-	exit_canvas_only() {
+	/**
+	 * @param {{ from_fullscreenchange?: boolean }} [options]
+	 */
+	exit_canvas_only(options) {
 		if (!this.canvas_only) {
 			return;
 		}
 
+		const from_fs_change = options && options.from_fullscreenchange;
 		const saved = this.saved_state;
 		this.canvas_only = false;
 		this.saved_state = null;
 		document.body.classList.remove('canvas-only-mode');
+
+		// Exit browser fullscreen unless we got here because fullscreen already ended
+		if (!from_fs_change) {
+			this.exit_browser_fullscreen();
+		}
 
 		const preview = app.GUI && app.GUI.GUI_preview;
 

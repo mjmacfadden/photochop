@@ -2600,7 +2600,7 @@ input.swatches_search_input:focus,
 
 /* ========== Canvas-only screen mode (F key) ================================= */
 /* Photoshop-style: hide chrome, black surround, canvas uses full viewport.   */
-/* Independent of browser Fullscreen API (View → Full Screen).                 */
+/* Paired with browser Fullscreen API so F fills the whole monitor.           */
 
 body.canvas-only-mode .main_menu,
 body.canvas-only-mode .submenu,
