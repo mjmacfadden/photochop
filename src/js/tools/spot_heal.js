@@ -27,6 +27,7 @@ class Spot_heal_class extends Base_tools_class {
 		this.maskCache = {};
 		this.recentOffsets = [];
 		this.maxRecentOffsets = 6;
+		this._stroke_gen = 0;
 	}
 
 	load() {
@@ -72,6 +73,9 @@ class Spot_heal_class extends Base_tools_class {
 		var mouse = this.get_mouse_info(e);
 
 		if (mouse.click_valid == false) {
+			if (this.started) {
+				this.mouseup(e);
+			}
 			return;
 		}
 
@@ -89,7 +93,10 @@ class Spot_heal_class extends Base_tools_class {
 			alertify.error('Heal on a rotated layer is disabled. Please rasterize first.');
 			return;
 		}
-		var src = layer.link_canvas || layer.link;
+		var src = layer.link_canvas;
+		if (!src && layer.link && layer.link.complete && layer.link.naturalWidth > 0) {
+			src = layer.link;
+		}
 		if (!src) {
 			alertify.error('Layer image is not ready. Add pixels or open an image first.');
 			return;
@@ -101,6 +108,7 @@ class Spot_heal_class extends Base_tools_class {
 		var lho = layer.height_original || lh;
 
 		this.started = true;
+		this._stroke_gen = (this._stroke_gen || 0) + 1;
 		this.last_mouse_x = mouse.x;
 		this.last_mouse_y = mouse.y;
 		this.recentOffsets = [];
@@ -119,6 +127,7 @@ class Spot_heal_class extends Base_tools_class {
 		this.heal_stamp(mouse);
 		this.constrain_edit_to_selection(this.tmpCanvas, this.selection_snapshot);
 
+		config.layer._link_apply_gen = (config.layer._link_apply_gen || 0) + 1;
 		config.layer.link_canvas = this.tmpCanvas;
 		if (this.Base_layers.render_interactive_layer) {
 			this.Base_layers.render_interactive_layer(config.layer.id);
@@ -186,28 +195,28 @@ class Spot_heal_class extends Base_tools_class {
 		}
 		this.constrain_edit_to_selection(canvas, this.selection_snapshot);
 
-		// Keep link_canvas until Update_layer_image_action reads the pixels.
-		// Never shrink the canvas before toBlob finishes (that saved a blank 1×1
-		// image and made the layer flash white / disappear).
+		// Unstick interactive state before awaiting toBlob so tools stay clickable.
+		this.started = false;
+		this.tmpCanvas = null;
+		this.tmpCanvasCtx = null;
+		this.layerImageData = null;
+		this.selection_snapshot = null;
+		this.last_mouse_x = null;
+		this.last_mouse_y = null;
+		this.recentOffsets = [];
+		this.maskCache = {};
+
 		try {
 			await app.State.do_action(
 				new app.Actions.Bundle_action('spot_heal_tool', 'Spot Healing Brush', [
 					new app.Actions.Update_layer_image_action(canvas, layer.id)
 				])
 			);
-		} finally {
+		} catch (err) {
 			if (layer.link_canvas === canvas) {
 				delete layer.link_canvas;
 			}
-			this.tmpCanvas = null;
-			this.tmpCanvasCtx = null;
-			this.layerImageData = null;
-			this.selection_snapshot = null;
-			this.started = false;
-			this.last_mouse_x = null;
-			this.last_mouse_y = null;
-			this.recentOffsets = [];
-			this.maskCache = {};
+			throw err;
 		}
 	}
 
@@ -233,8 +242,11 @@ class Spot_heal_class extends Base_tools_class {
 
 	on_leave() {
 		// Space→Pan (and any tool switch) must drop an in-progress heal
-		// without committing a half stroke.
-		this.abort_stroke();
+		// without committing a half stroke. Do not touch an already-committed
+		// bridge still awaiting Image.onload.
+		if (this.started) {
+			this.abort_stroke();
+		}
 		return [];
 	}
 

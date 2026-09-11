@@ -152,6 +152,7 @@ config.TOOLS = [
 	},
 	{
 		name: 'brush',
+		on_leave: 'on_leave',
 		attributes: {
 			preset: {
 				value: 'classic-round',
@@ -630,6 +631,7 @@ config.TOOLS = [
 	},
 	{
 		name: 'clone',
+		on_leave: 'on_leave',
 		attributes: {
 			size: 30,
 			anti_aliasing: true,

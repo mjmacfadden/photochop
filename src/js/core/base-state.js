@@ -36,6 +36,7 @@ class Base_state_class {
 		this.action_history_index = 0;
 		this.action_history_max = 50;
 		this.autosave_timer = null;
+		this._action_queue = Promise.resolve();
 
 		this.set_events();
 	}
@@ -59,7 +60,39 @@ class Base_state_class {
 		}, false);
 	}
 
+	/**
+	 * True when this action (or a nested bundle child) runs Update_layer_image.
+	 * Those commits do heavy toBlob + IndexedDB and must not interleave per layer,
+	 * but UI actions like Activate_tool must NOT wait behind them — otherwise the
+	 * toolbar feels frozen after every brush stroke.
+	 */
+	_action_needs_image_serialize(action) {
+		if (!action) return false;
+		if (action.action_id === 'update_layer_image') return true;
+		if (Array.isArray(action.actions_to_do)) {
+			for (let i = 0; i < action.actions_to_do.length; i++) {
+				if (this._action_needs_image_serialize(action.actions_to_do[i])) {
+					return true;
+				}
+			}
+		}
+		return false;
+	}
+
 	async do_action(action, options = {}) {
+		// Only serialize layer-image commits so overlapping brush/clone strokes
+		// cannot interleave toBlob / link.src. Activate_tool and other UI actions
+		// run immediately so tool/brush switching stays responsive.
+		if (!this._action_needs_image_serialize(action)) {
+			return this._do_action_unlocked(action, options);
+		}
+		const run = () => this._do_action_unlocked(action, options);
+		const next = (this._action_queue || Promise.resolve()).catch(() => {}).then(run);
+		this._action_queue = next;
+		return next;
+	}
+
+	async _do_action_unlocked(action, options = {}) {
 		let error_during_free = false;
 		try {
 			await action.do();
